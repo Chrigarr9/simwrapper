@@ -143,6 +143,11 @@ const plugins = [
     ],
     component: defineAsyncComponent(() => import('./logistics/LogisticsViewer.vue')),
   },
+  {
+    kebabName: 'commuter-clustering',
+    filePatterns: ['**/viz-commuter*.y?(a)ml'],
+    component: defineAsyncComponent(() => import('./commuter-clustering/CommuterClustering.vue')),
+  },
 ]
 
 export const pluginComponents: { [key: string]: AsyncComponent } = {}
