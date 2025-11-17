@@ -10,7 +10,14 @@
         :has-active-filters="hasActiveFilters"
         @reset="resetFilters"
       )
-      comparison-toggle(v-model="showComparison")
+      comparison-toggle(
+        v-model="showComparison"
+        @update:modelValue="onComparisonToggle"
+      )
+      scroll-toggle(
+        v-model="enableScrollOnHover"
+        @update:modelValue="onScrollToggle"
+      )
 
       .stats-summary
         span {{ filteredRequests.length }} / {{ allRequests.length }} requests
@@ -19,25 +26,30 @@
     .top-panel
       .map-section
         requests-map(
-          :requests="filteredRequests"
-          :geometries="currentGeometries"
+          :requests="allRequests"
+          :filtered-requests="filteredRequests"
+          :geometries="requestGeometries"
           :cluster-boundaries="currentClusterBoundaries"
           :selected-clusters="selectedClusters"
+          :selected-request-ids="selectedRequestIds"
+          :hovered-request-id="hoveredRequestId"
           :cluster-type="clusterType"
           :color-by="colorBy"
           :show-comparison="showComparison"
+          :has-active-filters="hasActiveFilters"
           :is-dark-mode="isDarkMode"
           @cluster-clicked="onClusterClicked"
           @request-clicked="onRequestClicked"
+          @request-hovered="onRequestHovered"
         )
 
       .stats-section
         stats-panel(
           :requests="filteredRequests"
-          :baseline-requests="showComparison ? allRequests : []"
+          :baseline-requests="effectiveShowComparison ? allRequests : []"
           :selected-timebins="selectedTimebins"
           :selected-modes="selectedModes"
-          :show-comparison="showComparison"
+          :show-comparison="effectiveShowComparison"
           :cluster-type="clusterType"
           :is-dark-mode="isDarkMode"
           @timebin-clicked="onTimebinClicked"
@@ -47,8 +59,13 @@
     //- Bottom panel: Table (100vh)
     .table-panel
       request-table(
-        :requests="filteredRequests"
-        @request-selected="onRequestSelected"
+        :requests="allRequests"
+        :filtered-requests="filteredRequests"
+        :selected-request-ids="selectedRequestIds"
+        :hovered-request-id="hoveredRequestId"
+        :enable-scroll-on-hover="enableScrollOnHover"
+        @request-clicked="onRequestClicked"
+        @request-hovered="onRequestHovered"
       )
 
 </template>
@@ -74,6 +91,7 @@ import RequestsMap from './components/RequestsMap.vue'
 import ClusterTypeSelector from './components/controls/ClusterTypeSelector.vue'
 import FilterResetButton from './components/controls/FilterResetButton.vue'
 import ComparisonToggle from './components/controls/ComparisonToggle.vue'
+import ScrollToggle from './components/controls/ScrollToggle.vue'
 import StatsPanel from './components/stats/StatsPanel.vue'
 import RequestTable from './components/RequestTable.vue'
 
@@ -84,6 +102,7 @@ export default defineComponent({
     ClusterTypeSelector,
     FilterResetButton,
     ComparisonToggle,
+    ScrollToggle,
     StatsPanel,
     RequestTable,
   },
@@ -112,9 +131,12 @@ export default defineComponent({
       selectedModes: new Set<string>(),
       clusterType: 'origin' as 'origin' | 'destination' | 'spatial',
 
-      showComparison: false,
+      showComparison: true, // Default to comparison mode
       colorBy: 'mode' as 'mode' | 'activity' | 'detour',
       isDarkMode: false,
+      selectedRequestIds: new Set<string>(), // Track clicked requests for filtering
+      hoveredRequestId: null as string | null, // Track hovered request
+      enableScrollOnHover: true, // Default to auto-scroll enabled
     }
   },
 
@@ -182,6 +204,7 @@ export default defineComponent({
         this.selectedClusters,
         this.selectedTimebins,
         this.selectedModes,
+        this.selectedRequestIds,
         this.clusterType
       )
     },
@@ -221,7 +244,17 @@ export default defineComponent({
     },
 
     hasActiveFilters(): boolean {
-      return this.selectedClusters.size > 0 || this.selectedTimebins.size > 0 || this.selectedModes.size > 0
+      return (
+        this.selectedClusters.size > 0 ||
+        this.selectedTimebins.size > 0 ||
+        this.selectedModes.size > 0 ||
+        this.selectedRequestIds.size > 0
+      )
+    },
+
+    // Comparison mode: Show baseline when filters are active AND comparison toggle is ON
+    effectiveShowComparison(): boolean {
+      return this.showComparison && this.hasActiveFilters
     },
   },
 
@@ -233,6 +266,16 @@ export default defineComponent({
   watch: {
     async '$store.state.colorScheme'() {
       this.isDarkMode = this.$store.state.colorScheme === ColorScheme.DarkMode
+    },
+
+    showComparison(newVal, oldVal) {
+      console.log('Comparison mode changed:', { from: oldVal, to: newVal })
+      console.log('Baseline requests:', newVal ? this.allRequests.length : 0)
+      console.log('Filtered requests:', this.filteredRequests.length)
+    },
+
+    enableScrollOnHover(newVal) {
+      console.log('CommuterRequests: enableScrollOnHover changed to:', newVal)
     },
   },
 
@@ -294,7 +337,22 @@ export default defineComponent({
 
     onRequestClicked(requestId: string) {
       console.log('Request clicked:', requestId)
-      // Future: Highlight in table, show details panel, etc.
+      
+      // Toggle request selection (click again to deselect)
+      if (this.selectedRequestIds.has(requestId)) {
+        this.selectedRequestIds.delete(requestId)
+      } else {
+        this.selectedRequestIds.add(requestId)
+      }
+
+      // Trigger reactivity
+      this.selectedRequestIds = new Set(this.selectedRequestIds)
+      
+      console.log('Selected requests:', Array.from(this.selectedRequestIds))
+    },
+
+    onRequestHovered(requestId: string | null) {
+      this.hoveredRequestId = requestId
     },
 
     onRequestSelected(requestId: string) {
@@ -334,7 +392,22 @@ export default defineComponent({
       this.selectedClusters = new Set()
       this.selectedTimebins = new Set()
       this.selectedModes = new Set()
+      this.selectedRequestIds = new Set()
+      this.hoveredRequestId = null
       console.log('Filters reset')
+    },
+
+    onComparisonToggle(newValue: boolean) {
+      console.log('CommuterRequests.onComparisonToggle received:', newValue)
+      console.log('Current showComparison value:', this.showComparison)
+      this.showComparison = newValue
+      console.log('Updated showComparison value:', this.showComparison)
+    },
+
+    onScrollToggle(newValue: boolean) {
+      console.log('CommuterRequests.onScrollToggle received:', newValue)
+      this.enableScrollOnHover = newValue
+      console.log('Updated enableScrollOnHover value:', this.enableScrollOnHover)
     },
   },
 })

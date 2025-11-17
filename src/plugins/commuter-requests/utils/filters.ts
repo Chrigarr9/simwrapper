@@ -79,6 +79,18 @@ export function applyModeFilter(request: Request, selectedModes: Set<string>): b
 }
 
 /**
+ * Apply request ID filter
+ * Returns true if request passes filter (OR logic within selected IDs)
+ */
+export function applyRequestIdFilter(
+  request: Request,
+  selectedRequestIds: Set<string>
+): boolean {
+  if (selectedRequestIds.size === 0) return true
+  return selectedRequestIds.has(String(request.request_id))
+}
+
+/**
  * Apply all filters to requests (AND logic between filter types)
  */
 export function filterRequests(
@@ -86,12 +98,14 @@ export function filterRequests(
   selectedClusters: Set<string | number>,
   selectedTimebins: Set<string>,
   selectedModes: Set<string>,
+  selectedRequestIds: Set<string>,
   clusterType: 'origin' | 'destination' | 'spatial'
 ): Request[] {
   return allRequests.filter(
     (request) =>
       applyClusterFilter(request, selectedClusters, clusterType) &&
       applyTimebinFilter(request, selectedTimebins) &&
-      applyModeFilter(request, selectedModes)
+      applyModeFilter(request, selectedModes) &&
+      applyRequestIdFilter(request, selectedRequestIds)
   )
 }

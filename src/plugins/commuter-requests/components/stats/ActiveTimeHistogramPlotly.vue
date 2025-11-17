@@ -44,6 +44,7 @@ export default defineComponent({
     },
 
     baselineBins(): TimeBin[] {
+      console.log('Histogram - showComparison:', this.showComparison, 'baselineRequests:', this.baselineRequests.length)
       if (!this.showComparison || this.baselineRequests.length === 0) {
         return []
       }
@@ -52,21 +53,23 @@ export default defineComponent({
 
     plotData(): any[] {
       const data: any[] = []
+      console.log('Histogram - plotData computed, showComparison:', this.showComparison, 'baselineBins:', this.baselineBins.length)
 
-      // Baseline trace (if comparison mode)
+      // Baseline trace (if comparison mode) - shown with lower saturation in background
       if (this.showComparison && this.baselineBins.length > 0) {
         data.push({
           x: this.baselineBins.map(b => b.label),
           y: this.baselineBins.map(b => b.count),
           type: 'bar',
-          name: 'Baseline',
+          name: 'All Requests (Baseline)',
           marker: {
-            color: 'rgba(156, 163, 175, 0.5)',
+            color: 'rgba(156, 163, 175, 0.3)', // Lower opacity for background
           },
+          hovertemplate: '<b>%{x}</b><br>Baseline: %{y} requests<extra></extra>',
         })
       }
 
-      // Filtered trace
+      // Filtered trace - highlighted on top
       const colors = this.bins.map(bin =>
         this.selectedBins.has(bin.label)
           ? 'rgba(59, 130, 246, 1)' // Selected - bright blue
@@ -77,7 +80,7 @@ export default defineComponent({
         x: this.bins.map(b => b.label),
         y: this.bins.map(b => b.count),
         type: 'bar',
-        name: this.showComparison ? 'Filtered' : 'Active Requests',
+        name: this.showComparison ? 'Filtered Requests' : 'Active Requests',
         marker: {
           color: colors,
           line: {
@@ -87,7 +90,7 @@ export default defineComponent({
             width: this.bins.map(bin => this.selectedBins.has(bin.label) ? 2 : 0),
           },
         },
-        hovertemplate: '<b>%{x}</b><br>%{y} requests<extra></extra>',
+        hovertemplate: '<b>%{x}</b><br>Filtered: %{y} requests<extra></extra>',
       })
 
       return data
@@ -124,7 +127,8 @@ export default defineComponent({
           y: 1,
           font: { size: 10 },
         },
-        barmode: this.showComparison ? 'group' : 'overlay',
+        // Always use overlay mode - filtered data appears on top of baseline
+        barmode: 'overlay',
       }
     },
 

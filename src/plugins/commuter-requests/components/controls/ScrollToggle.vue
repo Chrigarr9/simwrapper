@@ -1,17 +1,17 @@
 <template lang="pug">
-.comparison-toggle
-  label(:class="{ active: !localValue }")
+.scroll-toggle
+  label(:class="{ active: localValue }")
     input(type="checkbox" v-model="localValue" @change="onChange")
-    span.mode-label {{ localValue ? 'Focus' : 'Comparison' }}
+    span.mode-label {{ localValue ? 'Auto-scroll On' : 'Auto-scroll Off' }}
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue'
 
 export default defineComponent({
-  name: 'ComparisonToggle',
+  name: 'ScrollToggle',
   props: {
-    modelValue: { type: Boolean, default: false },
+    modelValue: { type: Boolean, default: true },
   },
 
   data() {
@@ -28,7 +28,7 @@ export default defineComponent({
 
   methods: {
     onChange() {
-      console.log('ComparisonToggle.onChange:', this.localValue)
+      console.log('ScrollToggle.onChange:', this.localValue)
       this.$emit('update:modelValue', this.localValue)
     },
   },
@@ -36,7 +36,7 @@ export default defineComponent({
 </script>
 
 <style scoped lang="scss">
-.comparison-toggle {
+.scroll-toggle {
   label {
     display: flex;
     align-items: center;
@@ -58,16 +58,16 @@ export default defineComponent({
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
-    // Active state - when comparison mode is ON
+    // Active state - when auto-scroll is ON
     &.active {
-      background-color: #3b82f6;
-      border-color: #2563eb;
+      background-color: #10b981;
+      border-color: #059669;
       color: white;
-      box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+      box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 
       &:hover {
-        background-color: #2563eb;
-        border-color: #1d4ed8;
+        background-color: #059669;
+        border-color: #047857;
       }
 
       .mode-label {

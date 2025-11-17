@@ -18,13 +18,17 @@ import { getModeColorRGB } from '../utils/colorSchemes'
 export default defineComponent({
   name: 'RequestsMap',
   props: {
-    requests: { type: Array as PropType<Request[]>, required: true },
+    requests: { type: Array as PropType<Request[]>, required: true }, // All requests
+    filteredRequests: { type: Array as PropType<Request[]>, required: true }, // Filtered requests
     geometries: { type: Array as PropType<any[]>, required: true },
     clusterBoundaries: { type: Array as PropType<ClusterBoundary[]>, required: true },
     selectedClusters: { type: Set as PropType<Set<string | number>>, required: true },
+    selectedRequestIds: { type: Set as PropType<Set<string>>, required: true },
+    hoveredRequestId: { type: String as PropType<string | null>, default: null },
     clusterType: { type: String as PropType<'origin' | 'destination' | 'spatial'>, required: true },
     colorBy: { type: String as PropType<'mode' | 'activity' | 'detour'>, default: 'mode' },
     showComparison: { type: Boolean, default: false },
+    hasActiveFilters: { type: Boolean, default: false },
     isDarkMode: { type: Boolean, default: false },
   },
 
@@ -57,11 +61,26 @@ export default defineComponent({
     clusterBoundaries() {
       this.updateLayers()
     },
+    filteredRequests() {
+      this.updateLayers()
+    },
     selectedClusters: {
       handler() {
         this.updateLayers()
       },
       deep: true,
+    },
+    selectedRequestIds: {
+      handler() {
+        this.updateLayers()
+      },
+      deep: true,
+    },
+    hoveredRequestId() {
+      this.updateLayers()
+    },
+    hasActiveFilters() {
+      this.updateLayers()
     },
     colorBy() {
       this.updateLayers()
@@ -241,28 +260,76 @@ export default defineComponent({
         }
       }
 
-      // Request lines layer
+      // Request lines layer - always show all requests, highlight filtered/hovered
       if (this.geometries.length > 0) {
         console.log('Creating LineLayer with geometries:', {
           count: this.geometries.length,
           sample: this.geometries[0],
         })
+        
+        // Create Set of filtered request IDs for quick lookup
+        const filteredRequestIds = new Set(this.filteredRequests.map(r => String(r.request_id)))
+        
         layers.push(
           new LineLayer({
             id: 'request-lines',
             data: this.geometries,
             pickable: true,
-            getWidth: 2,
+            getWidth: (d: any) => {
+              const requestId = String(d.properties.request_id)
+              const isHovered = requestId === this.hoveredRequestId
+              const isFiltered = filteredRequestIds.has(requestId)
+              
+              // Hover: increase width
+              if (isHovered) return 6
+              // Filtered (passes current filters): increase width
+              if (isFiltered) return 4
+              // Unfiltered when filters active: thinner
+              if (this.hasActiveFilters && !isFiltered) return 1
+              // Default (no active filters)
+              return 2
+            },
             getSourcePosition: (d: any) => d.geometry.coordinates[0],
             getTargetPosition: (d: any) => d.geometry.coordinates[1],
             getColor: (d: any) => {
+              const requestId = String(d.properties.request_id)
+              const isHovered = requestId === this.hoveredRequestId
+              const isFiltered = filteredRequestIds.has(requestId)
+              
               const mode = d.properties.main_mode || d.properties.mode || 'default'
-              return getModeColorRGB(mode, 200)
+              const baseColor = getModeColorRGB(mode, 255)
+              
+              // Hover: full saturation, full opacity
+              if (isHovered) return [...baseColor.slice(0, 3), 255]
+              
+              // Filtered (passes current filters): high saturation, high opacity
+              if (isFiltered) {
+                return [...baseColor.slice(0, 3), 220]
+              }
+              
+              // Unfiltered when filters active: low saturation, low opacity
+              if (this.hasActiveFilters && !isFiltered) {
+                // Desaturate by averaging with gray and reduce opacity
+                const desaturated = baseColor.map(c => Math.round((c + 180) / 2))
+                return [...desaturated.slice(0, 3), 60]
+              }
+              
+              // Default: normal saturation and opacity
+              return [...baseColor.slice(0, 3), 200]
             },
             onClick: (info: any) => {
               if (info.object) {
                 this.$emit('request-clicked', info.object.properties.request_id)
               }
+            },
+            onHover: (info: any) => {
+              // Emit hover event (null when no longer hovering)
+              this.$emit('request-hovered', info.object ? info.object.properties.request_id : null)
+            },
+            autoHighlight: false, // We handle highlighting manually
+            updateTriggers: {
+              getWidth: [this.hoveredRequestId, this.selectedRequestIds, this.hasActiveFilters, this.filteredRequests],
+              getColor: [this.hoveredRequestId, this.selectedRequestIds, this.hasActiveFilters, this.filteredRequests],
             },
           })
         )

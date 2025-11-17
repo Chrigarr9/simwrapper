@@ -37,6 +37,7 @@ export default defineComponent({
     },
 
     baselineModeData(): { labels: string[]; values: number[]; colors: string[] } {
+      console.log('PieChart - showComparison:', this.showComparison, 'baselineRequests:', this.baselineRequests.length)
       if (!this.showComparison || this.baselineRequests.length === 0) {
         return { labels: [], values: [], colors: [] }
       }
@@ -45,6 +46,7 @@ export default defineComponent({
 
     plotData(): any[] {
       const data: any[] = []
+      console.log('PieChart - plotData computed, showComparison:', this.showComparison, 'baseline data:', this.baselineModeData.labels.length)
 
       // Apply opacity based on selection
       const colors = this.modeData.labels.map((label, i) => {

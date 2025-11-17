@@ -3,7 +3,10 @@
   .table-header
     h3 Requests Table
     .table-info
-      span Showing {{ requests.length }} requests
+      span(v-if="filteredRequestIds.size > 0")
+        | Showing {{ filteredRequestIds.size }} filtered + {{ requests.length - filteredRequestIds.size }} unfiltered = {{ requests.length }} total
+      span(v-else)
+        | Showing {{ requests.length }} requests
       button.export-btn(@click="exportToCSV") Export CSV
 
   .table-container(ref="tableContainer")
@@ -25,8 +28,14 @@
         tr(
           v-for="request in sortedRequests"
           :key="request.request_id"
+          :data-request-id="request.request_id"
           @click="onRowClick(request)"
-          :class="{ selected: selectedRequestId === request.request_id }"
+          @mouseenter="onRowHover(request)"
+          @mouseleave="onRowHover(null)"
+          :class="{\
+            'is-selected': filteredRequestIds.has(String(request.request_id)),\
+            'is-hovered': hoveredRequestId === String(request.request_id)\
+          }"
         )
           td(v-for="column in visibleColumns" :key="column.key")
             | {{ formatValue(request[column.key], column.type) }}
@@ -47,13 +56,18 @@ export default defineComponent({
   name: 'RequestTable',
   props: {
     requests: { type: Array as PropType<Request[]>, required: true },
+    filteredRequests: { type: Array as PropType<Request[]>, required: true },
+    selectedRequestIds: { type: Set as PropType<Set<string>>, required: true },
+    hoveredRequestId: { type: String as PropType<string | null>, default: null },
+    enableScrollOnHover: { type: Boolean, default: true },
   },
 
   data() {
     return {
       sortColumn: 'request_id' as string,
       sortDirection: 'asc' as 'asc' | 'desc',
-      selectedRequestId: null as string | null,
+      scrollToRequestId: null as string | null,
+      isHoverFromTable: false, // Track if hover originated from table to prevent scroll loop
 
       // Define visible columns (subset of all 84 attributes)
       visibleColumns: [
@@ -72,9 +86,57 @@ export default defineComponent({
     }
   },
 
+  watch: {
+    hoveredRequestId(newVal) {
+      console.log('RequestTable.watch.hoveredRequestId:', {
+        newVal,
+        enableScrollOnHover: this.enableScrollOnHover,
+        isHoverFromTable: this.isHoverFromTable,
+        shouldScroll: newVal && this.enableScrollOnHover && !this.isHoverFromTable,
+      })
+      
+      // Only scroll when:
+      // 1. Auto-scroll is enabled
+      // 2. Hover comes from MAP, not from table itself
+      if (newVal && this.enableScrollOnHover && !this.isHoverFromTable) {
+        this.$nextTick(() => {
+          const row = this.$el.querySelector(`tr[data-request-id="${newVal}"]`)
+          if (row) {
+            console.log('Scrolling to row:', newVal)
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        })
+      }
+    },
+  },
+
   computed: {
+    filteredRequestIds(): Set<string> {
+      // Build Set of filtered request IDs for use in template
+      return new Set(this.filteredRequests.map((r) => String(r.request_id)))
+    },
+
     sortedRequests(): Request[] {
-      const sorted = [...this.requests].sort((a, b) => {
+      // Build Set of filtered request IDs for O(1) lookup
+      const filteredIds = new Set(
+        this.filteredRequests.map((r) => String(r.request_id))
+      )
+
+      // Sort requests within filtered and unfiltered groups separately
+      const filtered: Request[] = []
+      const unfiltered: Request[] = []
+
+      // Separate filtered and unfiltered using ALL active filters
+      for (const request of this.requests) {
+        if (filteredIds.has(String(request.request_id))) {
+          filtered.push(request)
+        } else {
+          unfiltered.push(request)
+        }
+      }
+
+      // Sort each group independently
+      const sortFn = (a: Request, b: Request) => {
         const aVal = a[this.sortColumn]
         const bVal = b[this.sortColumn]
 
@@ -89,9 +151,13 @@ export default defineComponent({
         }
 
         return this.sortDirection === 'asc' ? comparison : -comparison
-      })
+      }
 
-      return sorted
+      filtered.sort(sortFn)
+      unfiltered.sort(sortFn)
+
+      // Filtered on top, then unfiltered
+      return [...filtered, ...unfiltered]
     },
   },
 
@@ -107,8 +173,21 @@ export default defineComponent({
     },
 
     onRowClick(request: Request) {
-      this.selectedRequestId = request.request_id
-      this.$emit('request-selected', request.request_id)
+      // Clicking on a request toggles its selection (adds/removes from filter)
+      this.$emit('request-clicked', String(request.request_id))
+    },
+
+    onRowHover(request: Request | null) {
+      // Mark that hover originated from table to prevent scroll loop
+      this.isHoverFromTable = true
+      
+      // Emit hover event for map highlighting
+      this.$emit('request-hovered', request ? String(request.request_id) : null)
+      
+      // Reset flag after a short delay
+      setTimeout(() => {
+        this.isHoverFromTable = false
+      }, 100)
     },
 
     formatValue(value: any, type: string): string {
@@ -268,20 +347,46 @@ table {
     tr {
       border-bottom: 1px solid var(--borderDim);
       cursor: pointer;
-      transition: background-color 0.1s;
+      transition: all 0.15s;
 
-      &:hover {
-        background-color: var(--bgHover);
+      // Default state
+      background-color: var(--bgPanel);
+
+      // Selected (filtered) requests - highlighted with blue tint
+      &.is-selected {
+        background-color: rgba(59, 130, 246, 0.1);
+        border-left: 3px solid #3b82f6;
+        font-weight: 500;
+        
+        td {
+          color: var(--text);
+        }
       }
 
-      &.selected {
-        background-color: var(--bgCream2);
+      // Hovered request - stronger highlight
+      &.is-hovered {
+        background-color: rgba(59, 130, 246, 0.2);
+        transform: scale(1.01);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 1;
+      }
+
+      // Combined: selected and hovered
+      &.is-selected.is-hovered {
+        background-color: rgba(59, 130, 246, 0.25);
+        border-left: 3px solid #2563eb;
+      }
+
+      // Hover effect for non-selected
+      &:not(.is-hovered):hover {
+        background-color: var(--bgHover);
       }
 
       td {
         padding: 0.75rem 1rem;
         color: var(--text);
         white-space: nowrap;
+        transition: color 0.15s;
       }
     }
   }
