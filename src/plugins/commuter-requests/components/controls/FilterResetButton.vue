@@ -27,25 +27,33 @@ export default defineComponent({
   align-items: center;
   gap: 0.4rem;
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--borderStrong);
-  border-radius: 4px;
+  border: 2px solid var(--borderStrong);
+  border-radius: 6px;
   background-color: var(--bgCream);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
   cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
   &:hover:not(:disabled) {
     background-color: var(--bgHover);
     border-color: var(--link);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
   }
 
   &:active:not(:disabled) {
     background-color: var(--bgCream2);
-    transform: translateY(1px);
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--link);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   &:disabled {

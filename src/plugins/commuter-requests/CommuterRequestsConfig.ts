@@ -19,7 +19,7 @@ export interface Request {
   // Clustering
   origin_cluster?: number
   destination_cluster?: number
-  spatial_cluster?: number
+  od_cluster?: number  // Updated from spatial_cluster to match Python export
   temporal_cluster?: number
   cluster?: number
 
@@ -31,9 +31,15 @@ export interface ClusterBoundary {
   type: 'Feature'
   geometry: any
   properties: {
-    cluster_id: number
+    cluster_id: number | string
+    cluster_type: 'origin' | 'destination' | 'od' | 'spatial' | 'temporal'
+    geometry_type?: 'boundary' | 'centroid' | 'flow'
     num_requests: number
     hull_type?: 'origin' | 'destination'  // For O-D clusters
+    boundary_part?: 'origin' | 'destination'  // Which part of OD cluster boundary
+    centroid_type?: 'origin' | 'destination' | 'od'  // For centroid points
+    mean_travel_time?: number  // For flow features (seconds)
+    mean_distance?: number  // For flow features (meters)
   }
 }
 
@@ -60,19 +66,49 @@ export interface PluginState {
   loadingText: string
 }
 
+export interface ColorByAttribute {
+  attribute: string
+  label: string
+  type: 'categorical' | 'numeric'
+  scale?: [number, number]  // Optional min/max for numeric types
+}
+
+export interface ColorByConfig {
+  default: string
+  attributes: ColorByAttribute[]
+}
+
+export interface ColumnFormat {
+  type?: 'string' | 'number' | 'decimal' | 'time' | 'duration' | 'distance' | 'boolean'
+  unit?: string  // Display unit (e.g., 'km', 'h', 'min', 's', 'm')
+  decimals?: number  // Number of decimal places for numeric types
+  convertFrom?: 'seconds' | 'meters'  // Source unit for automatic conversion
+}
+
+export interface TableColumnConfig {
+  show?: string[]  // Explicit list of columns to show (empty = show all)
+  hide?: string[]  // Columns to hide (applied after show filter)
+  formats?: { [columnKey: string]: ColumnFormat }  // Column-specific formatting
+}
+
+export interface TableConfig {
+  name?: string  // Table display name (default: "Items")
+  columns?: TableColumnConfig  // Column visibility config
+}
+
 export interface PluginConfig {
   files: {
     requestsTable: string
     requestsGeometry: string
-    clusterBoundariesOrigin: string
-    clusterBoundariesDest: string
-    clusterBoundariesOD: string
+    clusterGeometries: string  // Unified cluster geometries file
   }
   display: {
-    colorBy: 'mode' | 'activity' | 'detour'
+    colorBy?: string  // Made optional for backwards compatibility
     defaultClusterType: 'origin' | 'destination' | 'spatial'
     showComparison: boolean
   }
+  table?: TableConfig  // NEW: Table configuration
+  colorBy?: ColorByConfig  // NEW: YAML-driven color-by configuration
   stats: StatConfig[]
 }
 

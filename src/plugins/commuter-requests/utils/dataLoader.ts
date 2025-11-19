@@ -33,32 +33,37 @@ export async function loadRequestData(
 }
 
 /**
- * Load cluster boundary GeoJSON files
+ * Load unified cluster geometries GeoJSON file
+ * Separates features by cluster_type: 'origin', 'destination', 'od'
  */
 export async function loadClusterData(
   fileApi: any,
   config: PluginConfig,
   subfolder: string
 ): Promise<ClusterData> {
-  const loadGeoJSON = async (filename: string): Promise<ClusterBoundary[]> => {
-    try {
-      const path = subfolder + '/' + filename
-      const text = await fileApi.getFileText(path)
-      const geojson = JSON.parse(text)
-      return geojson.features || []
-    } catch (error) {
-      console.warn(`Failed to load ${filename}:`, error)
-      return []
-    }
+  try {
+    const path = subfolder + '/' + config.files.clusterGeometries
+    const text = await fileApi.getFileText(path)
+    const geojson = JSON.parse(text)
+    const features = geojson.features || []
+
+    // Separate features by cluster_type
+    const origin = features.filter((f: any) => f.properties.cluster_type === 'origin')
+    const destination = features.filter((f: any) => f.properties.cluster_type === 'destination')
+    const spatial = features.filter((f: any) => f.properties.cluster_type === 'od')
+
+    console.log('Loaded cluster geometries:', {
+      total: features.length,
+      origin: origin.length,
+      destination: destination.length,
+      spatial: spatial.length,
+    })
+
+    return { origin, destination, spatial }
+  } catch (error) {
+    console.warn('Failed to load cluster geometries:', error)
+    return { origin: [], destination: [], spatial: [] }
   }
-
-  const [origin, destination, spatial] = await Promise.all([
-    loadGeoJSON(config.files.clusterBoundariesOrigin),
-    loadGeoJSON(config.files.clusterBoundariesDest),
-    loadGeoJSON(config.files.clusterBoundariesOD),
-  ])
-
-  return { origin, destination, spatial }
 }
 
 /**

@@ -6,9 +6,13 @@
 
 ### Data Flow
 ```
-CSV (requests_od_flows.csv) → All attributes → Table + Stats
-GeoJSON (requests_od_lines.geojson) → Geometries + minimal props → Map
-GeoJSON (cluster_boundaries_*.geojson) → Cluster polygons → Map
+CSV (requests.csv) → All attributes → Table + Stats
+GeoJSON (requests_geometries.geojson) → Unified geometries (LineStrings + Points) → Map
+  - Each request has 3 features: od_line, origin point, destination point
+  - geometry_type property: 'od_line', 'origin', 'destination'
+GeoJSON (cluster_geometries.geojson) → Unified cluster geometries → Map
+  - Separated by cluster_type: 'origin', 'destination', 'od'
+  - geometry_type: 'boundary', 'centroid', 'flow'
 ```
 
 ### State Management (Vue 3 Reactive)
@@ -84,11 +88,9 @@ type: commuter-requests
 title: Request Analysis Dashboard
 
 files:
-  requestsTable: requests_od_flows.csv
-  requestsGeometry: requests_od_lines.geojson
-  clusterBoundariesOrigin: cluster_boundaries_origin.geojson
-  clusterBoundariesDest: cluster_boundaries_destination.geojson
-  clusterBoundariesOD: cluster_boundaries_od.geojson
+  requestsTable: requests.csv
+  requestsGeometry: requests_geometries.geojson
+  clusterGeometries: cluster_geometries.geojson
 
 display:
   colorBy: mode

@@ -50,3 +50,43 @@ export function generateModePalette(modes: string[]): { [mode: string]: string }
 
   return palette
 }
+
+/**
+ * Activity type colors
+ */
+export const ACTIVITY_COLORS: { [activity: string]: string } = {
+  home: '#4477ff',
+  work: '#ff4477',
+  education: '#44ff77',
+  shopping: '#ff7744',
+  leisure: '#aa44ff',
+  other: '#777777',
+}
+
+/**
+ * Get color for an activity type
+ */
+export function getActivityColor(activity: string): string {
+  return ACTIVITY_COLORS[activity?.toLowerCase()] || '#999999'
+}
+
+/**
+ * Get activity color as RGB array for Deck.gl [R, G, B, A]
+ */
+export function getActivityColorRGB(activity: string, alpha: number = 255): [number, number, number, number] {
+  const hex = getActivityColor(activity)
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return [r, g, b, alpha]
+}
+
+/**
+ * Generic hex to RGB conversion
+ */
+export function hexToRgb(hex: string, alpha: number = 255): [number, number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return [r, g, b, alpha]
+}

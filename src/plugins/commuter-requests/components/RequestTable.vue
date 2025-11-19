@@ -1,12 +1,12 @@
 <template lang="pug">
 .request-table
   .table-header
-    h3 Requests Table
+    h3 {{ tableName }} Table
     .table-info
       span(v-if="filteredRequestIds.size > 0")
-        | Showing {{ filteredRequestIds.size }} filtered + {{ requests.length - filteredRequestIds.size }} unfiltered = {{ requests.length }} total
+        | Showing {{ filteredRequestIds.size }} filtered + {{ requests.length - filteredRequestIds.size }} unfiltered = {{ requests.length }} total {{ tableName.toLowerCase() }}
       span(v-else)
-        | Showing {{ requests.length }} requests
+        | Showing {{ requests.length }} {{ tableName.toLowerCase() }}
       button.export-btn(@click="exportToCSV") Export CSV
 
   .table-container(ref="tableContainer")
@@ -38,18 +38,21 @@
           }"
         )
           td(v-for="column in visibleColumns" :key="column.key")
-            | {{ formatValue(request[column.key], column.type) }}
+            | {{ formatValue(request[column.key], column.type, column.format) }}
 
 </template>
 
 <script lang="ts">
 import { defineComponent, PropType } from 'vue'
-import type { Request } from '../CommuterRequestsConfig'
+import type { Request, TableConfig, ColumnFormat } from '../CommuterRequestsConfig'
 
 interface TableColumn {
   key: string
   label: string
-  type: 'string' | 'number' | 'time' | 'duration'
+  type: 'string' | 'number' | 'decimal' | 'time' | 'duration' | 'distance' | 'boolean'
+  visible: boolean
+  sortable: boolean
+  format?: ColumnFormat  // Optional formatting config from YAML
 }
 
 export default defineComponent({
@@ -60,6 +63,7 @@ export default defineComponent({
     selectedRequestIds: { type: Set as PropType<Set<string>>, required: true },
     hoveredRequestId: { type: String as PropType<string | null>, default: null },
     enableScrollOnHover: { type: Boolean, default: true },
+    tableConfig: { type: Object as PropType<TableConfig | undefined>, default: undefined },
   },
 
   data() {
@@ -68,25 +72,22 @@ export default defineComponent({
       sortDirection: 'asc' as 'asc' | 'desc',
       scrollToRequestId: null as string | null,
       isHoverFromTable: false, // Track if hover originated from table to prevent scroll loop
-
-      // Define visible columns (subset of all 84 attributes)
-      visibleColumns: [
-        { key: 'request_id', label: 'Request ID', type: 'string' },
-        { key: 'pax_id', label: 'Passenger ID', type: 'string' },
-        { key: 'origin', label: 'Origin', type: 'string' },
-        { key: 'destination', label: 'Destination', type: 'string' },
-        { key: 'treq', label: 'Request Time', type: 'time' },
-        { key: 'travel_time', label: 'Travel Time', type: 'duration' },
-        { key: 'mode', label: 'Mode', type: 'string' },
-        { key: 'main_mode', label: 'Main Mode', type: 'string' },
-        { key: 'origin_cluster', label: 'Origin Cluster', type: 'number' },
-        { key: 'destination_cluster', label: 'Dest Cluster', type: 'number' },
-        { key: 'spatial_cluster', label: 'Spatial Cluster', type: 'number' },
-      ] as TableColumn[],
+      allColumns: [] as TableColumn[], // Auto-generated from data
     }
   },
 
+  mounted() {
+    this.generateColumns()
+  },
+
   watch: {
+    requests: {
+      handler() {
+        // Regenerate columns when requests change (in case schema changes)
+        this.generateColumns()
+      },
+      immediate: false,
+    },
     hoveredRequestId(newVal) {
       console.log('RequestTable.watch.hoveredRequestId:', {
         newVal,
@@ -94,7 +95,7 @@ export default defineComponent({
         isHoverFromTable: this.isHoverFromTable,
         shouldScroll: newVal && this.enableScrollOnHover && !this.isHoverFromTable,
       })
-      
+
       // Only scroll when:
       // 1. Auto-scroll is enabled
       // 2. Hover comes from MAP, not from table itself
@@ -111,6 +112,16 @@ export default defineComponent({
   },
 
   computed: {
+    tableName(): string {
+      // Use table name from config, default to "Items"
+      return this.tableConfig?.name || 'Items'
+    },
+
+    visibleColumns(): TableColumn[] {
+      // Return only visible columns
+      return this.allColumns.filter(col => col.visible)
+    },
+
     filteredRequestIds(): Set<string> {
       // Build Set of filtered request IDs for use in template
       return new Set(this.filteredRequests.map((r) => String(r.request_id)))
@@ -162,6 +173,107 @@ export default defineComponent({
   },
 
   methods: {
+    generateColumns() {
+      if (this.requests.length === 0) {
+        this.allColumns = []
+        return
+      }
+
+      const firstRequest = this.requests[0]
+      const columns: TableColumn[] = []
+
+      // Get column visibility config from YAML (or use defaults)
+      const showColumns = this.tableConfig?.columns?.show || []
+      const hideColumns = this.tableConfig?.columns?.hide || []
+      const formatConfig = this.tableConfig?.columns?.formats || {}
+
+      // Determine visibility logic:
+      // - If show is empty array (or not provided): show ALL columns except those in hide
+      // - If show has values: only show those columns, then apply hide filter
+      const showAll = showColumns.length === 0
+
+      // Sample size for type inference
+      const sampleSize = Math.min(10, this.requests.length)
+      const sampleRequests = this.requests.slice(0, sampleSize)
+
+      // Generate columns from all keys in the data
+      for (const key of Object.keys(firstRequest)) {
+        // Get format config for this column (if exists)
+        const format = formatConfig[key]
+
+        // Use explicit type from config, otherwise infer from data
+        const type = format?.type || this.inferColumnType(key, sampleRequests)
+
+        // Determine visibility based on config
+        let visible = showAll ? true : showColumns.includes(key)
+
+        // Apply hide filter (always takes precedence)
+        if (hideColumns.includes(key)) {
+          visible = false
+        }
+
+        columns.push({
+          key,
+          label: this.formatColumnLabel(key),
+          type,
+          visible,
+          sortable: true,
+          format  // Include format config
+        })
+      }
+
+      // Sort columns by smart priority (important ones first, then alphabetical)
+      this.allColumns = columns
+
+      // Debug logging
+      console.log('RequestTable.generateColumns:', {
+        totalRequests: this.requests.length,
+        sampleSize,
+        columnsGenerated: this.allColumns.length,
+        visibleColumns: this.allColumns.filter(c => c.visible).length,
+        hiddenColumns: this.allColumns.filter(c => !c.visible).map(c => c.key),
+        formattedColumns: this.allColumns.filter(c => c.format).map(c => ({ key: c.key, format: c.format })),
+        tableConfig: this.tableConfig,
+      })
+    },
+
+    inferColumnType(key: string, sampleRequests: any[]): 'string' | 'number' | 'decimal' | 'boolean' {
+      // Simplified type inference - just detect basic JavaScript types
+      // Semantic types (time, duration, distance) should be configured in YAML
+
+      const values = sampleRequests.map(r => r[key]).filter(v => v !== null && v !== undefined)
+
+      if (values.length === 0) return 'string'
+
+      const firstValue = values[0]
+
+      // Boolean detection
+      if (typeof firstValue === 'boolean') {
+        const allBooleans = values.every(v => typeof v === 'boolean')
+        if (allBooleans) return 'boolean'
+      }
+
+      // Numeric detection
+      if (typeof firstValue === 'number') {
+        // Check if ANY value has a fractional part
+        const hasDecimal = values.some(v => typeof v === 'number' && v % 1 !== 0)
+
+        return hasDecimal ? 'decimal' : 'number'
+      }
+
+      // Default: string
+      return 'string'
+    },
+
+    formatColumnLabel(key: string): string {
+      // Convert snake_case to Title Case
+      return key.split('_').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ')
+    },
+
+ 
+
     sortBy(column: string) {
       if (this.sortColumn === column) {
         // Toggle direction
@@ -190,28 +302,105 @@ export default defineComponent({
       }, 100)
     },
 
-    formatValue(value: any, type: string): string {
+    formatValue(value: any, type: string, format?: ColumnFormat): string {
       if (value === undefined || value === null) return '-'
 
-      switch (type) {
-        case 'time':
-          // Convert seconds to HH:MM:SS
-          const hours = Math.floor(value / 3600)
-          const minutes = Math.floor((value % 3600) / 60)
-          const seconds = Math.floor(value % 60)
-          return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      // If we have format config, use it
+      if (format) {
+        return this.formatWithConfig(value, format)
+      }
 
-        case 'duration':
-          // Convert seconds to minutes
-          const mins = Math.floor(value / 60)
-          return `${mins} min`
+      // Default formatting based on type
+      switch (type) {
+        case 'boolean':
+          return value ? 'Yes' : 'No'
 
         case 'number':
           return typeof value === 'number' ? value.toFixed(0) : String(value)
 
+        case 'decimal':
+          return typeof value === 'number' ? value.toFixed(2) : String(value)
+
         default:
           return String(value)
       }
+    },
+
+    formatWithConfig(value: any, format: ColumnFormat): string {
+      if (typeof value !== 'number') return String(value)
+
+      let convertedValue = value
+
+      // Handle unit conversion
+      if (format.convertFrom && format.unit) {
+        convertedValue = this.convertUnits(value, format.convertFrom, format.unit)
+      }
+
+      // Handle type-specific formatting
+      switch (format.type) {
+        case 'time':
+          // Time format: HH:MM:SS or HH:MM
+          const totalSeconds = format.convertFrom === 'seconds' ? value : convertedValue
+          const hours = Math.floor(totalSeconds / 3600)
+          const minutes = Math.floor((totalSeconds % 3600) / 60)
+          const seconds = Math.floor(totalSeconds % 60)
+
+          if (format.unit === 'h') {
+            // Show only hours (decimal)
+            const decimals = format.decimals ?? 2
+            return `${(totalSeconds / 3600).toFixed(decimals)} h`
+          } else if (format.unit === 'min') {
+            // Show only minutes (decimal)
+            const decimals = format.decimals ?? 0
+            return `${(totalSeconds / 60).toFixed(decimals)} min`
+          } else {
+            // Default: HH:MM:SS format
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+          }
+
+        case 'duration':
+          // Duration in specified unit
+          const unit = format.unit || 'min'
+          const decimals = format.decimals ?? 0
+          return `${convertedValue.toFixed(decimals)} ${unit}`
+
+        case 'distance':
+          // Distance in specified unit
+          const distUnit = format.unit || 'm'
+          const distDecimals = format.decimals ?? (distUnit === 'km' ? 2 : 0)
+          return `${convertedValue.toFixed(distDecimals)} ${distUnit}`
+
+        case 'decimal':
+          const decimalPlaces = format.decimals ?? 2
+          return convertedValue.toFixed(decimalPlaces)
+
+        case 'number':
+          const numDecimals = format.decimals ?? 0
+          return convertedValue.toFixed(numDecimals)
+
+        default:
+          return String(convertedValue)
+      }
+    },
+
+    convertUnits(value: number, from: 'seconds' | 'meters', to: string): number {
+      if (from === 'seconds') {
+        // Time conversions
+        switch (to) {
+          case 'h': return value / 3600
+          case 'min': return value / 60
+          case 's': return value
+          default: return value
+        }
+      } else if (from === 'meters') {
+        // Distance conversions
+        switch (to) {
+          case 'km': return value / 1000
+          case 'm': return value
+          default: return value
+        }
+      }
+      return value
     },
 
     exportToCSV() {
@@ -219,7 +408,7 @@ export default defineComponent({
       const headers = this.visibleColumns.map((c) => c.label).join(',')
       const rows = this.sortedRequests.map((request) =>
         this.visibleColumns.map((col) => {
-          const val = this.formatValue(request[col.key], col.type)
+          const val = this.formatValue(request[col.key], col.type, col.format)
           // Escape commas and quotes
           return `"${String(val).replace(/"/g, '""')}"`
         }).join(',')
@@ -366,7 +555,7 @@ table {
       // Hovered request - stronger highlight
       &.is-hovered {
         background-color: rgba(59, 130, 246, 0.2);
-        transform: scale(1.01);
+        transform: scale(1.001);
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         z-index: 1;
       }

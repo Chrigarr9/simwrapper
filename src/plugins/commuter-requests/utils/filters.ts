@@ -17,7 +17,7 @@ export function applyClusterFilter(
       ? 'origin_cluster'
       : clusterType === 'destination'
       ? 'destination_cluster'
-      : 'spatial_cluster'
+      : 'od_cluster'  // Updated from spatial_cluster to match Python export
 
   const clusterValue = request[clusterColumn]
   if (clusterValue === undefined || clusterValue === -1) return false

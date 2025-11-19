@@ -1,21 +1,28 @@
 <template lang="pug">
-.cluster-type-selector
-  label Cluster Type:
+.color-by-selector
+  label Color by:
   select(v-model="localValue" @change="onChange")
-    option(value="origin") Origin
-    option(value="destination") Destination
-    option(value="spatial") Origin-Destination (Spatial)
+    option(
+      v-for="attr in options"
+      :key="attr.attribute"
+      :value="attr.attribute"
+    ) {{ attr.label }}
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { defineComponent, PropType } from 'vue'
+import type { ColorByAttribute } from '../../CommuterRequestsConfig'
 
 export default defineComponent({
-  name: 'ClusterTypeSelector',
+  name: 'ColorBySelector',
   props: {
     modelValue: {
-      type: String as () => 'origin' | 'destination' | 'spatial',
-      default: 'origin',
+      type: String,
+      default: 'main_mode',
+    },
+    options: {
+      type: Array as PropType<ColorByAttribute[]>,
+      required: true,
     },
   },
 
@@ -33,7 +40,7 @@ export default defineComponent({
 
   methods: {
     onChange() {
-      console.log('ClusterTypeSelector.onChange:', this.localValue)
+      console.log('ColorBySelector.onChange:', this.localValue)
       this.$emit('update:modelValue', this.localValue)
     },
   },
@@ -41,7 +48,7 @@ export default defineComponent({
 </script>
 
 <style scoped lang="scss">
-.cluster-type-selector {
+.color-by-selector {
   display: flex;
   align-items: center;
   gap: 0.5rem;

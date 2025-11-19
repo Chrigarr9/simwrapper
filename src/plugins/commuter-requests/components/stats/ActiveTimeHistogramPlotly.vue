@@ -1,15 +1,11 @@
 <template lang="pug">
-.panel-item
-  .panel-header
-    h5 Active Time Distribution
-
-  vue-plotly.chart(
-    v-if="plotData.length > 0"
-    :data="plotData"
-    :layout="plotLayout"
-    :options="plotOptions"
-    @click="handleBarClick"
-  )
+vue-plotly.chart(
+  v-if="plotData.length > 0"
+  :data="plotData"
+  :layout="plotLayout"
+  :options="plotOptions"
+  @click="handleBarClick"
+)
 
 </template>
 
@@ -36,6 +32,7 @@ export default defineComponent({
     showComparison: { type: Boolean, default: false },
     binSize: { type: Number, default: 15 }, // minutes
     isDarkMode: { type: Boolean, default: false },
+    isEnlarged: { type: Boolean, default: false },
   },
 
   computed: {
@@ -101,22 +98,27 @@ export default defineComponent({
       const gridColor = this.isDarkMode ? '#374151' : '#e5e7eb'
       const bgColor = this.isDarkMode ? '#1f2937' : '#ffffff'
 
+      // Use larger sizes when enlarged
+      const fontSize = this.isEnlarged ? 16 : 11
+      const tickFontSize = this.isEnlarged ? 14 : 9
+      const legendFontSize = this.isEnlarged ? 14 : 10
+
       return {
         xaxis: {
-          title: { text: 'Time of Day', font: { size: 11 } },
+          title: { text: 'Time of Day', font: { size: fontSize } },
           tickangle: -45,
-          tickfont: { size: 9 },
+          tickfont: { size: tickFontSize },
           gridcolor: gridColor,
           color: textColor,
         },
         yaxis: {
-          title: { text: 'Active Requests', font: { size: 11 } },
-          tickfont: { size: 9 },
+          title: { text: 'Active Requests', font: { size: fontSize } },
+          tickfont: { size: tickFontSize },
           gridcolor: gridColor,
           color: textColor,
         },
-        margin: { l: 50, r: 20, t: 10, b: 60 },
-        height: 220,
+        margin: { l: this.isEnlarged ? 80 : 50, r: 20, t: this.isEnlarged ? 40 : 10, b: this.isEnlarged ? 100 : 60 },
+        autosize: true,
         plot_bgcolor: bgColor,
         paper_bgcolor: bgColor,
         font: { color: textColor },
@@ -125,7 +127,7 @@ export default defineComponent({
           x: 1,
           xanchor: 'right',
           y: 1,
-          font: { size: 10 },
+          font: { size: legendFontSize },
         },
         // Always use overlay mode - filtered data appears on top of baseline
         barmode: 'overlay',
@@ -183,26 +185,8 @@ export default defineComponent({
 </script>
 
 <style scoped lang="scss">
-.panel-item {
-  background-color: var(--bgPanel);
-  border: 1px solid var(--borderDim);
-  border-radius: 4px;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.panel-header {
-  margin-bottom: 0.5rem;
-
-  h5 {
-    margin: 0;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-}
-
 .chart {
   width: 100%;
+  height: 100%;
 }
 </style>

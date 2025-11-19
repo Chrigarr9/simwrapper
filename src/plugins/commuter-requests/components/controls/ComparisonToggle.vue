@@ -43,19 +43,30 @@ export default defineComponent({
     gap: 0.5rem;
     padding: 0.4rem 0.75rem;
     background-color: var(--bgCream);
-    border: 1px solid var(--borderStrong);
-    border-radius: 4px;
+    border: 2px solid var(--borderStrong);
+    border-radius: 6px;
     cursor: pointer;
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text);
-    transition: all 0.15s ease;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
     &:hover {
       background-color: var(--bgHover);
       border-color: var(--link);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    &:focus-within {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     // Active state - when comparison mode is ON
@@ -68,6 +79,8 @@ export default defineComponent({
       &:hover {
         background-color: #2563eb;
         border-color: #1d4ed8;
+        box-shadow: 0 3px 6px rgba(59, 130, 246, 0.4);
+        transform: translateY(-1px);
       }
 
       .mode-label {
@@ -76,7 +89,7 @@ export default defineComponent({
     }
 
     .mode-label {
-      font-weight: 500;
+      font-weight: 600;
       transition: font-weight 0.15s;
     }
 

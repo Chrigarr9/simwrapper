@@ -1,15 +1,11 @@
 <template lang="pug">
-.panel-item
-  .panel-header
-    h5 Mode Share
-
-  vue-plotly.chart(
-    v-if="plotData.length > 0"
-    :data="plotData"
-    :layout="plotLayout"
-    :options="plotOptions"
-    @click="onPlotClick"
-  )
+vue-plotly.chart(
+  v-if="plotData.length > 0"
+  :data="plotData"
+  :layout="plotLayout"
+  :options="plotOptions"
+  @click="onPlotClick"
+)
 
 </template>
 
@@ -29,6 +25,7 @@ export default defineComponent({
     selectedModes: { type: Set as PropType<Set<string>>, default: () => new Set() },
     showComparison: { type: Boolean, default: false },
     isDarkMode: { type: Boolean, default: false },
+    isEnlarged: { type: Boolean, default: false },
   },
 
   computed: {
@@ -74,7 +71,8 @@ export default defineComponent({
           },
         },
         textinfo: 'label+percent',
-        textposition: 'outside',
+        textposition: 'inside',
+        insidetextorientation: 'radial',
         hovertemplate: '<b>%{label}</b><br>%{value} requests (%{percent})<extra></extra>',
         domain: this.showComparison ? { x: [0.15, 0.85], y: [0.15, 0.85] } : undefined,
       })
@@ -102,22 +100,27 @@ export default defineComponent({
       const textColor = this.isDarkMode ? '#e5e7eb' : '#374151'
       const bgColor = this.isDarkMode ? '#1f2937' : '#ffffff'
 
+      // Use larger sizes when enlarged
+      const fontSize = this.isEnlarged ? 14 : 10
+      const annotationFontSize = this.isEnlarged ? 24 : 16
+      const annotationSubtextSize = this.isEnlarged ? 14 : 9
+
       return {
-        height: 250,
-        margin: { l: 20, r: 20, t: 10, b: 10 },
+        autosize: true,
+        margin: { l: this.isEnlarged ? 40 : 20, r: this.isEnlarged ? 40 : 20, t: this.isEnlarged ? 20 : 10, b: this.isEnlarged ? 20 : 10 },
         plot_bgcolor: bgColor,
         paper_bgcolor: bgColor,
-        font: { color: textColor, size: 10 },
+        font: { color: textColor, size: fontSize },
         showlegend: false,
         annotations: [
           {
-            text: `<b>${this.requests.length}</b><br><span style="font-size:9px">requests</span>`,
+            text: `<b>${this.requests.length}</b><br><span style="font-size:${annotationSubtextSize}px">requests</span>`,
             x: 0.5,
             y: 0.5,
             xref: 'paper',
             yref: 'paper',
             showarrow: false,
-            font: { size: 16, color: textColor },
+            font: { size: annotationFontSize, color: textColor },
           },
         ],
       }
@@ -166,26 +169,8 @@ export default defineComponent({
 </script>
 
 <style scoped lang="scss">
-.panel-item {
-  background-color: var(--bgPanel);
-  border: 1px solid var(--borderDim);
-  border-radius: 4px;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.panel-header {
-  margin-bottom: 0.5rem;
-
-  h5 {
-    margin: 0;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-}
-
 .chart {
   width: 100%;
+  height: 100%;
 }
 </style>
