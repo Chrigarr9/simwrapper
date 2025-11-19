@@ -1,8 +1,8 @@
 # Interactive Dashboard - Generalization Plan
 ## From Commuter Requests to Generic Dashboard Plugin
 
-**Last Updated**: 2025-11-19
-**Status**: Planning Phase
+**Last Updated**: 2025-11-19 (Updated with user feedback)
+**Status**: Planning Phase - Ready to implement
 **Based on**: Existing `commuter-requests` plugin implementation
 
 ---
@@ -15,9 +15,10 @@ This document outlines the plan to **generalize** the existing `commuter-request
 
 The `src/plugins/commuter-requests/` plugin is a **complete implementation** with:
 - Interactive data table with filtering and highlighting
-- Multiple statistics (histogram, pie chart, summary cards)
+- Multiple statistics (histogram, pie chart, summary cards) with **OR-logic multi-select**
 - Deck.gl map with request geometries and cluster boundaries
 - Bi-directional filtering between all components
+- **Multi-geometry linkage** (multiple layers linked by same ID)
 - Comparison mode (filtered vs. baseline)
 - Hover interactions and synchronized highlighting
 - YAML configuration support
@@ -26,10 +27,11 @@ The `src/plugins/commuter-requests/` plugin is a **complete implementation** wit
 ### What We Need to Do 🎯
 
 **Extract and generalize** this implementation into:
-- Generic data table that works with any CSV
-- Pluggable stat system (not hard-coded to time/mode)
-- Flexible map system (configurable geometry types and linkages)
-- Generic filter manager (not tied to requests/clusters/timebins)
+- Generic data table that works with any CSV (REQUIRED component)
+- Pluggable stat system (OPTIONAL, not hard-coded to time/mode)
+- Flexible map system (OPTIONAL, configurable geometry types and linkages)
+- Generic filter manager with **OR logic within filter groups**
+- **Layer visibility multi-select** (replace cluster type selector)
 - YAML-driven configuration (no code changes for new dashboards)
 
 ---
@@ -37,13 +39,13 @@ The `src/plugins/commuter-requests/` plugin is a **complete implementation** wit
 ## Table of Contents
 
 1. [Analysis of Existing Implementation](#analysis-of-existing-implementation)
-2. [Generalization Strategy](#generalization-strategy)
-3. [Proposed Architecture](#proposed-architecture)
-4. [Component Mapping](#component-mapping)
-5. [YAML Configuration Design](#yaml-configuration-design)
-6. [Implementation Phases](#implementation-phases)
-7. [Migration Path](#migration-path)
-8. [Open Questions & Decisions](#open-questions--decisions)
+2. [User Requirements & Clarifications](#user-requirements--clarifications)
+3. [Generalization Strategy](#generalization-strategy)
+4. [Proposed Architecture](#proposed-architecture)
+5. [Component Mapping](#component-mapping)
+6. [YAML Configuration Design](#yaml-configuration-design)
+7. [Implementation Phases](#implementation-phases)
+8. [Migration Path](#migration-path)
 
 ---
 
@@ -60,14 +62,14 @@ src/plugins/commuter-requests/
 │   ├── RequestsMap.vue               # Deck.gl map (943 lines)
 │   ├── ColorLegend.vue               # Map legend
 │   ├── stats/
-│   │   ├── ActiveTimeHistogramPlotly.vue    # Time distribution
-│   │   └── MainModePieChartPlotly.vue       # Mode share pie chart
+│   │   ├── ActiveTimeHistogramPlotly.vue    # Time distribution with OR-logic multi-select
+│   │   └── MainModePieChartPlotly.vue       # Mode share with OR-logic multi-select
 │   └── controls/
-│       ├── ClusterTypeSelector.vue   # Cluster type switcher
-│       ├── ColorBySelector.vue       # Attribute color selector
-│       ├── ComparisonToggle.vue      # Filter comparison toggle
-│       ├── FilterResetButton.vue     # Clear all filters
-│       └── ScrollToggle.vue          # Auto-scroll toggle
+│       ├── ClusterTypeSelector.vue   # → REPLACE with layer multi-select
+│       ├── ColorBySelector.vue       # Attribute color selector (keep)
+│       ├── ComparisonToggle.vue      # Filter comparison toggle (keep)
+│       ├── FilterResetButton.vue     # Clear all filters (keep)
+│       └── ScrollToggle.vue          # Auto-scroll toggle (keep)
 └── utils/
     ├── filters.ts                    # Filter logic (111 lines)
     ├── dataLoader.ts                 # Data loading (121 lines)
@@ -76,132 +78,190 @@ src/plugins/commuter-requests/
 
 ### Key Patterns Identified
 
-#### 1. **Filter System** (`utils/filters.ts`)
+#### 1. **Multi-Select Stats with OR Logic** ✅ Already Implemented
 
+**Current Implementation** (from `MainModePieChartPlotly.vue` and `ActiveTimeHistogramPlotly.vue`):
+- User clicks on stat element (pie slice, histogram bin) → **adds** filter
+- User clicks same element again → **removes** filter (toggle behavior)
+- Multiple selections within same stat → **OR logic**
+- Example: Click "car" → show car requests
+- Click "PT" → show car **OR** PT requests
+- Click "PT" again → back to just car requests
+
+**Pattern to extract**:
 ```typescript
-// AND logic between filter types
-export function filterRequests(
-  allRequests: Request[],
-  selectedClusters: Set<string | number>,
-  selectedTimebins: Set<string>,
-  selectedModes: Set<string>,
-  selectedRequestIds: Set<string>,
-  clusterType: 'origin' | 'destination' | 'spatial'
-): Request[]
-```
-
-**Pattern**: Each filter type has a dedicated function, combined with AND logic.
-
-**Generalization needed**:
-- Generic `FilterDefinition` interface
-- Configurable filter functions (not hard-coded)
-- Support for different operators (equals, in, range, contains)
-
-#### 2. **Statistics Components**
-
-**Common Props Pattern**:
-```typescript
-{
-  requests: Request[],                 // Filtered data
-  baselineRequests: Request[],         // Full dataset (for comparison)
-  selected[Type]: Set<string>,         // Selected values (for highlighting)
-  showComparison: boolean,
-  isDarkMode: boolean,
-  isEnlarged: boolean
+// In stat component
+handleClick(value: string) {
+  if (this.selectedValues.has(value)) {
+    this.selectedValues.delete(value)  // Toggle off
+  } else {
+    this.selectedValues.add(value)     // Toggle on
+  }
+  this.$emit('filter-changed', {
+    column: this.column,
+    operator: 'in',  // OR logic
+    values: Array.from(this.selectedValues)
+  })
 }
 ```
 
-**Common Events**:
+#### 2. **Multi-Geometry Linkage** 🆕 User Requirement
+
+**Scenario**: Multiple geometry layers linked by same ID
+
+**Example** (Cluster Dashboard):
+- **Layer 1**: Origin clusters (polygons) → linked to `origin_cluster` column
+- **Layer 2**: Destination clusters (polygons) → linked to `destination_cluster` column
+- **Layer 3**: OD clusters (polygons) → linked to `od_cluster` column
+- **Layer 4**: Request flow arcs (lines) → linked to `od_cluster` column
+
+**Behavior**:
+- **Hover** over origin cluster ID=5 → highlights:
+  - Origin cluster polygon (layer 1)
+  - All requests in table with `origin_cluster==5`
+  - All flow arcs with `od_cluster==5` (if they reference origin cluster 5)
+- **Click** on any geometry → filters ALL linked geometries and table rows
+
+**Implementation Pattern**:
 ```typescript
-@bin-clicked="onTimebinClicked"
-@mode-clicked="onModeClicked"
-```
+// LinkageManager tracks multiple layers per table column
+registerLinkage({
+  layerName: 'clusters_origin',
+  tableColumn: 'origin_cluster',
+  geoProperty: 'cluster_id',
+  onHover: 'highlight',
+  onSelect: 'filter'
+})
 
-**Generalization needed**:
-- Generic `StatPanel.vue` wrapper
-- Registry of stat types
-- YAML-configurable column mappings
+registerLinkage({
+  layerName: 'request_flows',
+  tableColumn: 'od_cluster',
+  geoProperty: 'cluster_id',
+  onHover: 'highlight',
+  onSelect: 'filter'
+})
 
-#### 3. **Table Component** (`RequestTable.vue`)
-
-**Key Features**:
-- **Auto-generates columns** from data (lines 176-232)
-- YAML-based column visibility (`show`, `hide` arrays)
-- YAML-based formatting (`formats` object)
-- Sortable columns
-- Row highlighting (selected vs. unfiltered)
-- CSV export
-- Scroll-to-row on hover
-
-**Generalization needed**:
-- Rename from `RequestTable` → `DashboardTable`
-- Make row ID column configurable (not hard-coded to `request_id`)
-- Generic props (not `requests`-specific)
-
-#### 4. **Map Component** (`RequestsMap.vue`)
-
-**Layer Types**:
-1. **Request Points** - ScatterplotLayer
-2. **Request Lines** - PathLayer (O-D connections)
-3. **Cluster Polygons** - PolygonLayer
-4. **Cluster Flow Arrows** - LineLayer
-
-**Interaction Patterns**:
-- Hover: highlights features + emits `@request-hovered`
-- Click: selects features + emits `@cluster-clicked` / `@request-clicked`
-
-**Generalization needed**:
-- Extract layer creation into separate classes
-- Configurable linkage between geometries and table
-- YAML-driven styling
-
-#### 5. **Main Component Coordination** (`CommuterRequests.vue`)
-
-**State Management**:
-```typescript
-{
-  // Data
-  allRequests: Request[],
-  requestGeometries: any[],
-  clusterBoundaries: ClusterData,
-
-  // Filters (Sets for O(1) lookups)
-  selectedClusters: Set<string | number>,
-  selectedTimebins: Set<string>,
-  selectedModes: Set<string>,
-  selectedRequestIds: Set<string>,
-
-  // UI State
-  showComparison: boolean,
-  hoveredRequestId: string | null,
-  enlargedCard: string
+// When hovering over cluster_id=5
+getLinkedFeatures(column: 'origin_cluster', value: 5) {
+  // Returns features from ALL layers linked to this column/value
 }
 ```
 
-**Computed Properties**:
-```typescript
-filteredRequests(): Request[] {
-  return filterRequests(
-    this.allRequests,
-    this.selectedClusters,
-    this.selectedTimebins,
-    this.selectedModes,
-    this.selectedRequestIds,
-    this.clusterType
-  )
-}
+#### 3. **Layer Visibility Multi-Select** 🆕 Replaces Cluster Type Selector
+
+**Current**: `ClusterTypeSelector.vue` switches between origin/destination/od clusters (domain-specific)
+
+**New**: Generic layer visibility toggles
+```yaml
+map:
+  layers:
+    - name: clusters_origin
+      file: cluster_geometries.geojson
+      filter: { geoProperty: cluster_type, equals: origin }
+      visible: true  # Initially visible
+
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      filter: { geoProperty: cluster_type, equals: destination }
+      visible: false  # Initially hidden
+
+    - name: request_flows
+      file: cluster_geometries.geojson
+      filter: { geoProperty: geometry_type, equals: flow }
+      visible: true
 ```
 
-**Generalization needed**:
-- Generic filter state (not hard-coded filter types)
-- `FilterManager` class to encapsulate logic
-- Generic data properties (not `allRequests`)
+**UI Component**: `LayerVisibilityToggle.vue`
+- Checkboxes for each layer
+- User can show/hide layers independently
+- Persists layer visibility state
+
+---
+
+## User Requirements & Clarifications
+
+### ✅ Confirmed Decisions
+
+#### 1. Testing Domain
+**Use clusters (not rides) for testing**
+
+**Test Dataset**:
+- **Table**: `clusters.csv` with columns:
+  - `cluster_id` (primary key)
+  - `cluster_type` (origin/destination/od)
+  - `num_requests`
+  - `mean_travel_time`
+  - `mean_distance`
+  - Additional cluster attributes
+
+- **Geometries**: `cluster_geometries.geojson`
+  - Cluster polygons (boundaries)
+  - Cluster centroids (points)
+  - Flow arrows (lines) between OD clusters
+
+**Stats to Test**:
+- Histogram: Cluster size distribution
+- Pie chart: Cluster type distribution
+- Bar chart: Requests per cluster
+- Summary: Total clusters, avg size, etc.
+
+**Linkages**:
+- Origin cluster polygons → `origin_cluster` column
+- Destination cluster polygons → `destination_cluster` column
+- OD cluster polygons → `od_cluster` column
+- Flow arcs → `od_cluster` column
+
+#### 2. YAML Structure: Flexible
+**Only required component: Primary data table**
+
+```yaml
+# Minimal valid config
+title: "My Dashboard"
+plugin: interactive-dashboard
+
+table:
+  dataset: data.csv
+  idColumn: id
+
+# Stats are OPTIONAL (can have 0, 1, or many)
+stats: []
+
+# Map is OPTIONAL (can be omitted entirely)
+# map: ...
+```
+
+#### 3. Multi-Select Stats: OR Logic with Toggle
+**Already implemented correctly in commuter-requests**
+
+- Click element → add filter
+- Click again → remove filter
+- Multiple selections → OR logic
+- Reference existing implementation for extraction
+
+#### 4. Layer Filtering & Multi-Select
+**Confirmed approach**:
+- Single GeoJSON file with all cluster types
+- YAML `filter` to show specific features
+- Multi-select UI to show/hide layers dynamically
+
+#### 5. Time Range Filtering: Removed
+**Not needed for generic plugin**
+
+- Use single time column (e.g., `treq`)
+- No `columnEnd` support
+- If users need time ranges, they can add separate columns in CSV export
+
+#### 6. Performance: Defer
+**Address when actual performance issues arise**
+
+- Start with client-side filtering
+- Add optimizations (pagination, Web Worker) only if needed
 
 ---
 
 ## Generalization Strategy
 
-### Phase 1: Parallel Implementation (Recommended)
+### Phase 1: Parallel Implementation (Confirmed Approach)
 
 **Create `interactive-dashboard` plugin alongside `commuter-requests`**
 
@@ -211,30 +271,12 @@ filteredRequests(): Request[] {
 - Easy to compare and validate
 - Low risk
 
-**Cons**:
-- Some code duplication initially
-- Need to maintain both during transition
-
 **Approach**:
 1. Copy `commuter-requests/` → `interactive-dashboard/`
 2. Generalize components one-by-one
-3. Test with commuter-requests YAML config
-4. Test with new domain (e.g., rides)
-5. Once stable, deprecate commuter-requests (or keep as example)
-
-### Phase 2: Direct Refactor (Alternative)
-
-**Refactor `commuter-requests` in-place to be generic**
-
-**Pros**:
-- No duplication
-- Single source of truth
-
-**Cons**:
-- Higher risk of breaking existing dashboards
-- Harder to test both versions
-
-**Not recommended** for this project.
+3. Test with **clusters** dataset (not rides)
+4. Test with commuter-requests config
+5. Once stable, optionally deprecate commuter-requests
 
 ---
 
@@ -248,8 +290,8 @@ src/plugins/interactive-dashboard/
 ├── InteractiveDashboardConfig.ts     # Generic TypeScript types
 │
 ├── components/
-│   ├── DashboardTable.vue            # Generalized from RequestTable.vue
-│   ├── DashboardMap.vue              # Generalized from RequestsMap.vue
+│   ├── DashboardTable.vue            # Generalized from RequestTable.vue (REQUIRED)
+│   ├── DashboardMap.vue              # Generalized from RequestsMap.vue (OPTIONAL)
 │   ├── FilterSummary.vue             # Active filters display
 │   ├── ColorLegend.vue               # (reuse as-is)
 │   │
@@ -257,7 +299,7 @@ src/plugins/interactive-dashboard/
 │   │   ├── StatPanel.vue             # Generic wrapper
 │   │   ├── BarChartStat.vue          # From MainModePieChart → generalized
 │   │   ├── HistogramStat.vue         # From ActiveTimeHistogram → generalized
-│   │   ├── PieChartStat.vue          # New
+│   │   ├── PieChartStat.vue          # New (or rename from MainModePieChart)
 │   │   ├── SummaryCardStat.vue       # From summary stats → generalized
 │   │   └── _statCatalog.ts           # Registry
 │   │
@@ -269,14 +311,16 @@ src/plugins/interactive-dashboard/
 │   │   └── _layerCatalog.ts          # Registry
 │   │
 │   └── controls/
+│       ├── LayerVisibilityToggle.vue # NEW: Multi-select for map layers
 │       ├── ComparisonToggle.vue      # (reuse as-is)
 │       ├── FilterResetButton.vue     # (reuse as-is)
 │       ├── ScrollToggle.vue          # (reuse as-is)
+│       ├── ColorBySelector.vue       # (enhance: YAML-driven options)
 │       └── EnlargeButton.vue         # Extract from cards
 │
 ├── managers/
-│   ├── FilterManager.ts              # Centralized filtering
-│   ├── LinkageManager.ts             # Table ↔ geometry linkage
+│   ├── FilterManager.ts              # Centralized filtering with OR logic support
+│   ├── LinkageManager.ts             # Table ↔ geometry linkage (multi-geometry support)
 │   └── StatManager.ts                # Stat instantiation
 │
 └── utils/
@@ -287,52 +331,103 @@ src/plugins/interactive-dashboard/
 
 ### Core Classes
 
-#### `FilterManager.ts`
+#### `FilterManager.ts` (Enhanced with OR Logic)
 
 ```typescript
 export interface FilterDefinition {
-  id: string                    // Unique filter ID
+  id: string                    // Unique filter ID (e.g., 'mode-filter')
   column: string                // Table column name
-  operator: 'equals' | 'in' | 'range' | 'contains'
-  value: any | any[]
-  invert?: boolean              // NOT logic
+  operator: 'equals' | 'in'     // 'in' for OR logic multi-select
+  value: any | any[]            // Single value or array for OR
+  invert?: boolean              // NOT logic (optional)
 }
 
 export class FilterManager {
   private filters = new Map<string, FilterDefinition>()
   private listeners = new Set<Function>()
 
-  addFilter(filter: FilterDefinition): void
+  // Update or add filter (replaces filter with same ID)
+  setFilter(filter: FilterDefinition): void
+
+  // Remove filter by ID
   removeFilter(filterId: string): void
+
+  // Clear all filters
   clearFilters(): void
-  applyFilters<T>(data: T[], idColumn: string): T[]
+
+  // Apply all filters to data (AND logic between different filter IDs)
+  applyFilters<T>(data: T[]): T[]
+
+  // Subscribe to filter changes
   subscribe(listener: Function): void
 }
+
+// Example usage for multi-select:
+// Click "car" mode → setFilter({ id: 'mode', column: 'mode', operator: 'in', value: ['car'] })
+// Click "PT" mode → setFilter({ id: 'mode', column: 'mode', operator: 'in', value: ['car', 'PT'] })
+// Click "PT" again → setFilter({ id: 'mode', column: 'mode', operator: 'in', value: ['car'] })
 ```
 
-**Extracted from**: `utils/filters.ts` + main component state
-
-#### `LinkageManager.ts`
+#### `LinkageManager.ts` (Multi-Geometry Support)
 
 ```typescript
 export interface LinkageConfig {
   layerName: string
-  tableColumn: string           // Column in table (e.g., 'request_id')
-  geoProperty: string           // Property in GeoJSON (e.g., 'id')
+  tableColumn: string           // Column in table (e.g., 'origin_cluster')
+  geoProperty: string           // Property in GeoJSON (e.g., 'cluster_id')
   onHover: 'highlight' | 'none'
   onSelect: 'filter' | 'highlight' | 'none'
 }
 
 export class LinkageManager {
-  private linkages = new Map<string, LinkageConfig>()
+  private linkages: LinkageConfig[] = []
 
+  // Register linkage (can have multiple layers per column)
   registerLinkage(config: LinkageConfig): void
-  getTableIdsForFeature(layerName: string, feature: GeoJSONFeature): string[]
-  getFeaturesForTableId(layerName: string, tableId: string): GeoJSONFeature[]
-}
-```
 
-**Extracted from**: Logic currently embedded in `RequestsMap.vue`
+  // Get all layers linked to a specific table column
+  getLayersByColumn(column: string): LinkageConfig[]
+
+  // Get all features across all layers linked to a table value
+  getLinkedFeatures(column: string, value: any): {
+    layerName: string
+    features: GeoJSONFeature[]
+  }[]
+
+  // Get table IDs for a clicked feature
+  getTableIdsForFeature(layerName: string, feature: GeoJSONFeature): {
+    column: string
+    value: any
+  }
+}
+
+// Example: Three layers linked to same cluster ID
+linkageManager.registerLinkage({
+  layerName: 'clusters_origin',
+  tableColumn: 'origin_cluster',
+  geoProperty: 'cluster_id',
+  onHover: 'highlight',
+  onSelect: 'filter'
+})
+
+linkageManager.registerLinkage({
+  layerName: 'clusters_destination',
+  tableColumn: 'destination_cluster',
+  geoProperty: 'cluster_id',
+  onHover: 'highlight',
+  onSelect: 'filter'
+})
+
+linkageManager.registerLinkage({
+  layerName: 'request_flows',
+  tableColumn: 'od_cluster',
+  geoProperty: 'cluster_id',
+  onHover: 'highlight',
+  onSelect: 'filter'
+})
+
+// Hovering over cluster_id=5 in any layer highlights all linked features
+```
 
 ---
 
@@ -345,10 +440,11 @@ export class LinkageManager {
 | `CommuterRequests.vue` | `InteractiveDashboard.vue` | Rename, genericize state |
 | `allRequests: Request[]` | `tableData: DataRow[]` | Generic type |
 | `filteredRequests: Request[]` | `filteredData: DataRow[]` | Generic computed |
-| `selectedClusters: Set` | → FilterManager | Encapsulate |
-| `selectedTimebins: Set` | → FilterManager | Encapsulate |
-| `selectedModes: Set` | → FilterManager | Encapsulate |
-| `onClusterClicked()` | `onFeatureClicked()` | Generic handler |
+| `selectedClusters: Set` | → FilterManager | Encapsulate, OR logic support |
+| `selectedTimebins: Set` | → FilterManager | Encapsulate, OR logic support |
+| `selectedModes: Set` | → FilterManager | Encapsulate, OR logic support |
+| `clusterType: string` | **REMOVE** | Replaced by layer visibility |
+| `onClusterClicked()` | `onFeatureClicked()` | Generic handler, multi-geometry |
 
 ### 2. Table Component
 
@@ -364,18 +460,19 @@ export class LinkageManager {
 | RequestsMap.vue | DashboardMap.vue | Changes |
 |-----------------|------------------|---------|
 | Hard-coded layers | `layers: GeometryLayer[]` | Dynamic from config |
-| `@cluster-clicked` | `@feature-clicked` | Generic event |
+| `clusterType` prop | **REMOVE** | Use layer visibility instead |
+| `@cluster-clicked` | `@feature-clicked` | Generic event, multi-geometry support |
 | `@request-clicked` | `@feature-clicked` | Generic event |
 | Layer creation (inline) | → Layer classes | Extract to `map-layers/` |
 
 ### 4. Stats Components
 
-| Existing | New Generic | Config |
-|----------|-------------|--------|
-| `ActiveTimeHistogramPlotly.vue` | `HistogramStat.vue` | `{type: 'histogram', column: 'treq', binSize: 900}` |
-| `MainModePieChartPlotly.vue` | `PieChartStat.vue` | `{type: 'pie', column: 'main_mode'}` |
-| Summary stats (inline) | `SummaryCardStat.vue` | `{type: 'summary', aggregation: 'count'}` |
-| *(none)* | `BarChartStat.vue` | `{type: 'bar', column: 'mode'}` |
+| Existing | New Generic | Config | Multi-Select |
+|----------|-------------|--------|--------------|
+| `ActiveTimeHistogramPlotly.vue` | `HistogramStat.vue` | `{type: 'histogram', column: 'treq', binSize: 900}` | ✅ OR logic (keep) |
+| `MainModePieChartPlotly.vue` | `PieChartStat.vue` | `{type: 'pie', column: 'main_mode'}` | ✅ OR logic (keep) |
+| Summary stats (inline) | `SummaryCardStat.vue` | `{type: 'summary', aggregation: 'count'}` | ❌ Not clickable |
+| *(none)* | `BarChartStat.vue` | `{type: 'bar', column: 'mode'}` | ✅ OR logic (new) |
 
 ### 5. Control Components
 
@@ -384,8 +481,9 @@ export class LinkageManager {
 | `ComparisonToggle.vue` | ✅ Reuse as-is | Already generic |
 | `FilterResetButton.vue` | ✅ Reuse as-is | Already generic |
 | `ScrollToggle.vue` | ✅ Reuse as-is | Already generic |
-| `ClusterTypeSelector.vue` | ❌ Remove | Domain-specific |
+| `ClusterTypeSelector.vue` | ❌ **REMOVE** | Replaced by LayerVisibilityToggle |
 | `ColorBySelector.vue` | ✅ Enhance | Make color options YAML-driven |
+| *(new)* | `LayerVisibilityToggle.vue` | **CREATE**: Multi-select for map layers |
 
 ---
 
@@ -397,53 +495,41 @@ export class LinkageManager {
 title: "Commuter Requests Dashboard"
 plugin: interactive-dashboard
 
-# Primary data table
+# Primary data table (REQUIRED)
 table:
   name: "Requests"
   dataset: requests.csv
   idColumn: request_id
   visible: true
   columns:
-    show: []  # Empty = show all
     hide: [pax_id, origin, destination]
     formats:
-      treq:
-        type: time
-        unit: "HH:mm"
-      travel_time:
-        type: duration
-        unit: "min"
-        convertFrom: seconds
-      distance:
-        type: distance
-        unit: "km"
-        convertFrom: meters
+      treq: { type: time, unit: "HH:mm" }
+      travel_time: { type: duration, unit: "min", convertFrom: seconds }
+      distance: { type: distance, unit: "km", convertFrom: meters }
 
-# Statistics panels
+# Statistics panels (OPTIONAL - can be empty or omitted)
 stats:
   - type: histogram
     title: "Active Time Distribution"
     column: treq
     binSize: 900  # 15 minutes in seconds
-    clickable: true
+    clickable: true  # Enables multi-select with OR logic
     comparison: true
 
   - type: pie
     title: "Mode Share"
     column: main_mode
-    clickable: true
+    clickable: true  # Enables multi-select with OR logic
     comparison: true
 
   - type: summary
     title: "Summary Statistics"
     metrics:
-      - label: "Total Requests"
-        aggregation: count
-      - label: "Unique Modes"
-        aggregation: count_distinct
-        column: main_mode
+      - { label: "Total Requests", aggregation: count }
+      - { label: "Unique Modes", aggregation: count_distinct, column: main_mode }
 
-# Map visualization
+# Map visualization (OPTIONAL - can be omitted)
 map:
   center: [13.391, 52.515]
   zoom: 10
@@ -451,19 +537,15 @@ map:
   colorBy:
     default: main_mode
     options:
-      - attribute: main_mode
-        label: "Transport Mode"
-        type: categorical
-      - attribute: travel_time
-        label: "Travel Time"
-        type: numeric
-        scale: [0, 3600]
+      - { attribute: main_mode, label: "Transport Mode", type: categorical }
+      - { attribute: travel_time, label: "Travel Time", type: numeric }
 
   layers:
     # Request point geometries
     - name: requests
       file: requests_geometries.geojson
       type: point
+      visible: true  # Initially visible
       linkage:
         tableColumn: request_id
         geoProperty: request_id
@@ -472,25 +554,77 @@ map:
       style:
         radius: 5
         opacity: 0.7
-        colorBy: main_mode  # References colorBy config above
+        colorBy: main_mode
 
-    # Cluster polygons
-    - name: origin_clusters
+    # Origin cluster polygons
+    - name: clusters_origin
       file: cluster_geometries.geojson
       type: polygon
+      visible: false  # Initially hidden (user can toggle on)
       filter:
         geoProperty: cluster_type
         equals: origin
       linkage:
         tableColumn: origin_cluster
         geoProperty: cluster_id
-        onHover: none
+        onHover: highlight
         onSelect: filter
       style:
         fillColor: "#ffcccc"
         fillOpacity: 0.3
         strokeColor: "#666666"
-        strokeWidth: 2
+
+    # Destination cluster polygons
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter:
+        geoProperty: cluster_type
+        equals: destination
+      linkage:
+        tableColumn: destination_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccccff"
+        fillOpacity: 0.3
+
+    # OD cluster polygons
+    - name: clusters_od
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter:
+        geoProperty: cluster_type
+        equals: od
+      linkage:
+        tableColumn: od_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccffcc"
+        fillOpacity: 0.3
+
+    # Flow arrows between OD clusters
+    - name: request_flows
+      file: cluster_geometries.geojson
+      type: line
+      visible: true
+      filter:
+        geoProperty: geometry_type
+        equals: flow
+      linkage:
+        tableColumn: od_cluster  # Links to same column as OD clusters!
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        color: "#3366ff"
+        width: 2
+        opacity: 0.7
 
 # Display settings
 display:
@@ -511,45 +645,132 @@ display:
           width: 3
 ```
 
-### Example 2: Rides Dashboard (New Domain)
+### Example 2: Cluster Dashboard (New Testing Domain)
 
 ```yaml
-title: "Ride Analysis Dashboard"
+title: "Cluster Analysis Dashboard"
 plugin: interactive-dashboard
 
+# Primary data table
 table:
-  name: "Rides"
-  dataset: rides.csv
-  idColumn: ride_id
+  name: "Clusters"
+  dataset: clusters.csv
+  idColumn: cluster_id
   visible: true
+  columns:
+    formats:
+      mean_travel_time: { type: duration, unit: "min", convertFrom: seconds }
+      mean_distance: { type: distance, unit: "km", convertFrom: meters }
 
+# Statistics (all optional)
 stats:
-  - type: bar
-    title: "Rides by Vehicle"
-    column: vehicle_id
-    groupBy: vehicle_id
-    aggregation: count
-    clickable: true
-
   - type: histogram
-    title: "Ride Duration Distribution"
-    column: duration
-    binSize: 300  # 5 minutes
+    title: "Cluster Size Distribution"
+    column: num_requests
+    binSize: 10
     clickable: true
 
+  - type: pie
+    title: "Cluster Type Distribution"
+    column: cluster_type
+    clickable: true
+
+  - type: bar
+    title: "Requests per Cluster"
+    column: cluster_id
+    aggregation: sum
+    valueColumn: num_requests
+    clickable: true
+
+  - type: summary
+    title: "Summary"
+    metrics:
+      - { label: "Total Clusters", aggregation: count }
+      - { label: "Avg Cluster Size", aggregation: avg, column: num_requests }
+
+# Map (optional)
 map:
+  center: [13.391, 52.515]
+  zoom: 10
+
   layers:
-    - name: ride_routes
-      file: ride_routes.geojson
-      type: line
+    # Origin clusters
+    - name: clusters_origin
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: true
+      filter: { geoProperty: cluster_type, equals: origin }
       linkage:
-        tableColumn: ride_id
-        geoProperty: ride_id
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ff9999"
+        fillOpacity: 0.4
+
+    # Destination clusters
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: true
+      filter: { geoProperty: cluster_type, equals: destination }
+      linkage:
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#9999ff"
+        fillOpacity: 0.4
+
+    # OD clusters
+    - name: clusters_od
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false  # Hidden by default
+      filter: { geoProperty: cluster_type, equals: od }
+      linkage:
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#99ff99"
+        fillOpacity: 0.4
+
+    # Flow arrows (linked to OD clusters by same cluster_id)
+    - name: cluster_flows
+      file: cluster_geometries.geojson
+      type: line
+      visible: true
+      filter: { geoProperty: geometry_type, equals: flow }
+      linkage:
+        tableColumn: cluster_id  # Same column! Multi-geometry linkage
+        geoProperty: cluster_id
         onHover: highlight
         onSelect: filter
       style:
         color: "#3366ff"
-        width: 2
+        width:
+          property: num_requests
+          scale: [2, 10]  # Width based on request count
+
+# Note: When user hovers over cluster_id=5 in ANY layer (origin, destination, od, flows)
+# ALL features with cluster_id=5 across ALL layers will highlight!
+```
+
+### Example 3: Minimal Dashboard (Table Only)
+
+```yaml
+title: "Simple Data Table"
+plugin: interactive-dashboard
+
+table:
+  dataset: data.csv
+  idColumn: id
+
+# No stats, no map - just a table!
 ```
 
 ---
@@ -558,91 +779,86 @@ map:
 
 ### Phase 1: Setup & Core Managers (Week 1)
 
-**Goal**: Create plugin structure and core managers
+**Goal**: Create plugin structure and core managers with OR logic and multi-geometry support
 
 - [ ] Create `src/plugins/interactive-dashboard/` directory
-- [ ] Copy base files from `commuter-requests/`
 - [ ] Create `InteractiveDashboardConfig.ts` with generic types
 - [ ] Implement `FilterManager.ts`
-  - [ ] Generic filter definitions
+  - [ ] Support OR logic within filter groups (operator: 'in')
+  - [ ] `setFilter()` method (update/replace by ID)
   - [ ] `applyFilters()` method
   - [ ] Subscribe/notify pattern
   - [ ] Unit tests
 - [ ] Implement `LinkageManager.ts`
-  - [ ] Linkage registration
-  - [ ] ID mapping methods
+  - [ ] Support multiple layers per table column
+  - [ ] `getLinkedFeatures()` for multi-geometry highlighting
   - [ ] Unit tests
 - [ ] Register plugin in `pluginRegistry.ts`
 
-**Deliverable**: Plugin loads, managers work independently
+**Deliverable**: Plugin loads, managers handle OR logic and multi-geometry
 
 ### Phase 2: Generalize Table (Week 2)
 
 **Goal**: Extract and generalize table component
 
 - [ ] Copy `RequestTable.vue` → `DashboardTable.vue`
-- [ ] Rename props: `requests` → `data`
-- [ ] Add `idColumn` prop (configurable, not hard-coded)
-- [ ] Make `tableName` from config (already done)
+- [ ] Make `idColumn` configurable prop
 - [ ] Test with commuter-requests data
-- [ ] Test with rides data
-- [ ] Update styles if needed
+- [ ] Test with clusters data
+- [ ] Keep all existing features (sorting, export, formatting)
 
 **Deliverable**: Generic table works with any CSV
 
-### Phase 3: Generalize Stats Framework (Week 3-4)
+### Phase 3: Generalize Stats with Multi-Select (Week 3-4)
 
-**Goal**: Create pluggable stat system
+**Goal**: Extract stats with OR-logic multi-select
 
-- [ ] Create `components/stats/_statCatalog.ts`
-- [ ] Create `components/stats/StatPanel.vue` wrapper
-- [ ] Generalize `HistogramStat.vue`
-  - [ ] Accept `column` prop (not hard-coded `treq`)
-  - [ ] Accept `binSize` from config
-  - [ ] Generic filtering (not time-specific)
-- [ ] Generalize `PieChartStat.vue`
-  - [ ] Accept `column` prop
-  - [ ] Generic grouping
-- [ ] Create `BarChartStat.vue` (similar to pie)
-- [ ] Create `SummaryCardStat.vue`
-  - [ ] Configurable metrics
-  - [ ] Support count, sum, avg, min, max
-- [ ] Connect stats to FilterManager
+- [ ] Create stat catalog and wrapper
+- [ ] Extract `HistogramStat.vue`
+  - [ ] **Keep OR-logic multi-select** (toggle on/off)
+  - [ ] Make column configurable
+  - [ ] Reference existing implementation
+- [ ] Extract `PieChartStat.vue`
+  - [ ] **Keep OR-logic multi-select** (toggle on/off)
+  - [ ] Make column configurable
+- [ ] Create `BarChartStat.vue` with multi-select
+- [ ] Create `SummaryCardStat.vue` (no click)
+- [ ] Connect to FilterManager with OR logic
 
-**Deliverable**: Stats work generically, configurable via YAML
+**Deliverable**: Stats support multi-select with toggle behavior
 
-### Phase 4: Generalize Map (Week 5-6)
+### Phase 4: Generalize Map with Layer Multi-Select (Week 5-6)
 
-**Goal**: Extract map layers into classes
+**Goal**: Extract map with multi-geometry linkage and layer visibility
 
-- [ ] Copy `RequestsMap.vue` → `DashboardMap.vue`
-- [ ] Create `map-layers/BaseGeometryLayer.ts`
-- [ ] Extract point rendering → `PointLayer.ts`
-  - [ ] Load GeoJSON
-  - [ ] Create ScatterplotLayer
-  - [ ] Apply styling from config
-  - [ ] Handle linkage
-- [ ] Extract polygon rendering → `PolygonLayer.ts`
-- [ ] Extract line rendering → `LineLayer.ts`
-- [ ] Create `map-layers/_layerCatalog.ts`
-- [ ] Update `DashboardMap` to use layer catalog
-- [ ] Connect map to LinkageManager
+- [ ] Create layer framework and catalog
+- [ ] Extract `PointLayer.ts`
+- [ ] Extract `PolygonLayer.ts`
+- [ ] Extract `LineLayer.ts`
+- [ ] Create `DashboardMap.vue`
+  - [ ] Dynamic layer loading from config
+  - [ ] Multi-geometry hover (highlights all linked features)
+  - [ ] Multi-geometry click (filters all linked features)
+  - [ ] Connect to LinkageManager
+- [ ] Create `LayerVisibilityToggle.vue`
+  - [ ] Checkboxes for each layer
+  - [ ] Show/hide layers independently
+- [ ] Test with multiple layers linked to same column
 
-**Deliverable**: Map supports multiple configurable layers
+**Deliverable**: Map supports configurable layers with multi-geometry linkage
 
 ### Phase 5: Main Component Integration (Week 7)
 
 **Goal**: Wire everything together
 
 - [ ] Rename `CommuterRequests.vue` → `InteractiveDashboard.vue`
-- [ ] Replace hard-coded filter state with FilterManager
-- [ ] Replace hard-coded data props with generic versions
+- [ ] Replace filter state with FilterManager
+- [ ] **Remove `clusterType` logic** (replaced by layer visibility)
 - [ ] Load stats from YAML config
 - [ ] Load map layers from YAML config
-- [ ] Connect all components to managers
-- [ ] Implement layout system from YAML
 - [ ] Test with commuter-requests YAML
-- [ ] Test with rides YAML
+- [ ] Test with clusters YAML (multi-geometry linkage)
+- [ ] Test with minimal YAML (table only)
 
 **Deliverable**: Fully functional generic dashboard
 
@@ -651,14 +867,11 @@ map:
 **Goal**: Production-ready plugin
 
 - [ ] Add `FilterSummary.vue` component
-- [ ] Improve error handling
-- [ ] Add loading states
-- [ ] Performance optimization
-- [ ] Write user documentation
-- [ ] Write developer documentation
-- [ ] Create example YAMLs
-- [ ] Update planning docs
-- [ ] Testing and bug fixes
+- [ ] Error handling and validation
+- [ ] Performance testing
+- [ ] User documentation with YAML reference
+- [ ] Developer documentation
+- [ ] Migration guide from commuter-requests
 
 **Deliverable**: Documented, tested, production-ready plugin
 
@@ -668,146 +881,51 @@ map:
 
 ### For Existing Commuter Requests Dashboards
 
-**Option A: Keep Both Plugins**
+**Recommended: Keep both plugins**
 
 - `commuter-requests` plugin remains for backwards compatibility
 - New dashboards use `interactive-dashboard` plugin
 - Eventually deprecate `commuter-requests`
 
-**Option B: Migrate to Generic Plugin**
-
-1. Create YAML config for commuter-requests (see Example 1 above)
-2. Change `viz-commuter-requests-*.yaml` → `viz-interactive-*.yaml`
-3. Update YAML to use new schema
-4. Test thoroughly
-5. Remove old plugin
-
-**Recommendation**: Option A for safety
+**Migration steps** (when ready):
+1. Create `viz-interactive-*.yaml` based on Example 1 above
+2. Replace cluster type selector logic with layer visibility in YAML
+3. Test thoroughly
+4. Deprecate old YAML
 
 ---
 
-## Open Questions & Decisions
+## Summary of Key Changes from Original Plan
 
-### 1. ✅ RESOLVED: Cluster Type Selector
+### ✅ Confirmed & Clarified
 
-**Question**: The `ClusterTypeSelector` is domain-specific (origin/destination/spatial clusters). How to generalize?
+1. **Multi-select stats**: OR logic with toggle (already implemented in commuter-requests)
+2. **Multi-geometry linkage**: Multiple layers can link to same table column, all highlight/filter together
+3. **Layer visibility**: Replace cluster type selector with generic multi-select UI
+4. **YAML flexibility**: Only table is required; stats and map are optional
+5. **Testing domain**: Use clusters (not rides) for testing
+6. **Time range filtering**: Removed from generalization scope
+7. **Performance**: Defer optimizations until needed
 
-**Decision**: **Remove from generic plugin**. For commuter-requests, add as custom control via:
-```yaml
-customControls:
-  - type: cluster-type-selector
-    options: [origin, destination, spatial]
-```
+### 🆕 New Components
 
-Or simpler: Use stat filtering instead (click on cluster type in a stat).
+- `LayerVisibilityToggle.vue`: Multi-select UI for map layers
+- Enhanced `LinkageManager`: Multi-geometry linkage support
+- Enhanced `FilterManager`: OR logic within filter groups
 
-### 2. ✅ RESOLVED: Color-By Selector
+### ❌ Removed Components
 
-**Question**: Should color-by be a generic feature?
-
-**Decision**: **Yes, keep and enhance**. Already YAML-driven in commuter-requests:
-```yaml
-map:
-  colorBy:
-    default: main_mode
-    options:
-      - attribute: main_mode
-        type: categorical
-      - attribute: travel_time
-        type: numeric
-```
-
-This is generic enough to keep.
-
-### 3. ❓ OPEN: Time-Based Filtering
-
-**Question**: How to handle time range overlap (active_time_start to active_time_end)?
-
-**Current Implementation**: Hard-coded in `applyTimebinFilter()`:
-```typescript
-const requestStart = request.treq
-const requestEnd = request.treq + request.travel_time
-```
-
-**Options**:
-- **A**: Support `columnEnd` in filter config
-- **B**: Stat emits range filter automatically
-- **C**: User defines custom filter function
-
-**Recommendation**: Option A for simplicity.
-
-### 4. ❓ OPEN: Stat Click Behavior
-
-**Question**: Should stats support multi-select (Ctrl+Click)?
-
-**Current Implementation**: Single-select (click replaces filter)
-
-**Recommendation**: Start with single-select, add multi-select in v2 if requested.
-
-### 5. ❓ OPEN: Layer Filtering
-
-**Question**: How to handle layer filtering (e.g., show only `cluster_type: origin`)?
-
-**Example**:
-```yaml
-layers:
-  - name: origin_clusters
-    file: cluster_geometries.geojson  # Contains all cluster types
-    filter:
-      geoProperty: cluster_type
-      equals: origin
-```
-
-**Recommendation**: Support simple property matching in layer config.
-
-### 6. ❓ OPEN: Performance for Large Datasets
-
-**Question**: How to handle >100k rows?
-
-**Current Implementation**: Filters entire dataset client-side
-
-**Options**:
-- **A**: Pagination + virtual scrolling (table only)
-- **B**: Web Worker for filtering
-- **C**: Server-side filtering (future)
-
-**Recommendation**: Start with A, add B if needed.
+- `ClusterTypeSelector.vue`: Replaced by layer visibility toggles
 
 ---
 
-## Success Criteria
+## Ready to Implement
 
-The generalized plugin is successful when:
+All user requirements have been incorporated. The plan is ready for Phase 1 implementation.
 
-1. ✅ **Reusability**: Works for requests, rides, trips, etc. without code changes
-2. ✅ **Configuration**: Non-developers can create dashboards via YAML only
-3. ✅ **Compatibility**: Existing commuter-requests dashboards still work
-4. ✅ **Performance**: Handles 10k+ rows with <1s filter response
-5. ✅ **Maintainability**: Adding new stat/layer types requires <100 lines
-6. ✅ **Documentation**: Complete examples and API docs
+**Next Step**: Begin Phase 1 (Setup & Core Managers)
 
 ---
 
-## Next Steps
-
-1. **Review this plan** with team
-2. **Make decisions** on open questions
-3. **Create feature branch**: `feature/interactive-dashboard`
-4. **Start Phase 1** (setup & core managers)
-5. **Iterate** through remaining phases
-
----
-
-## References
-
-- **Existing Plugin**: `/src/plugins/commuter-requests/`
-- **Example Docs**: `/src/plugins/commuter-requests/IMPLEMENTATION_SUMMARY.md`
-- **Original Planning**: `/docs/INTERACTIVE_DASHBOARD_PLANNING.md`
-- **SimWrapper Patterns**: `/src/plugins/layer-map/` (for layer architecture)
-- **Dashboard System**: `/src/layout-manager/DashBoard.vue`
-
----
-
-**Document Version**: 1.0
-**Author**: Planning based on code analysis
-**Feedback**: Please review open questions and provide input
+**Document Version**: 2.0 (Updated with user feedback)
+**Feedback Incorporated**: Multi-select stats, multi-geometry linkage, layer visibility, flexible YAML
