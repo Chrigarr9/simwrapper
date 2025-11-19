@@ -1,25 +1,23 @@
 # Interactive Dashboard - Generalization Plan
-## From Commuter Requests to Generic Dashboard Panel
+## From Commuter Requests to Generic Dashboard Plugin
 
-**Last Updated**: 2025-11-19 (Updated with SimWrapper integration architecture)
+**Last Updated**: 2025-11-19 (Corrected architecture - standalone plugin with internal layout)
 **Status**: Planning Phase - Ready to implement
-**Based on**: Existing `commuter-requests` plugin implementation + SimWrapper dashboard system
+**Based on**: Existing `commuter-requests` plugin implementation + SimWrapper dashboard layout patterns
 
 ---
 
 ## Executive Summary
 
-This document outlines the plan to **generalize** the existing `commuter-requests` plugin into a reusable **Interactive Dashboard** panel type for SimWrapper. The commuter-requests plugin is a fully-functional, specialized implementation that demonstrates all the key patterns we need. Our task is to extract these patterns into a generic, YAML-configurable system that **integrates with SimWrapper's existing dashboard architecture**.
+This document outlines the plan to **generalize** the existing `commuter-requests` plugin into a reusable **Interactive Dashboard** plugin for SimWrapper. The commuter-requests plugin is a fully-functional, specialized implementation that demonstrates all the key patterns we need. Our task is to extract these patterns into a generic, YAML-configurable system with an **internal layout system** inspired by SimWrapper's dashboard patterns.
 
 ### What We Have ✅
 
-**SimWrapper Dashboard System:**
+**SimWrapper Dashboard Layout Patterns:**
 - Row-based layout with flex weights
 - Card system with configurable width/height
-- Subtabs support (true, file array, or row ID array)
-- DashboardDataManager for data coordination
-- Panel registry (`panelLookup`) for component loading
-- Existing dashboard YAML structure: `header`, `layout`, `subtabs`
+- Clean YAML structure for organizing components
+- These patterns can be adapted for the interactive dashboard's **internal layout**
 
 **Commuter Requests Plugin:**
 - Interactive data table with filtering and highlighting
@@ -34,19 +32,20 @@ This document outlines the plan to **generalize** the existing `commuter-request
 
 ### What We Need to Do 🎯
 
-**Build on SimWrapper's existing dashboard system** by creating an **interactive-dashboard panel type** that:
-- Registers in `panelLookup` like other panel types (plot, table, etc.)
-- Works as a card within existing dashboard layouts
-- Receives props via SimWrapper's existing dashboard YAML structure
-- Integrates with DashboardDataManager for data coordination
-- Supports all SimWrapper dashboard features (rows, widths, heights, subtabs)
+**Create a standalone interactive dashboard plugin** that:
+- Is a **complete plugin** (like `commuter-requests`, `transit`, etc.)
+- Has its **own internal layout system** for arranging map/stats/table in rows
+- Receives a single YAML configuration file (`viz-interactive-*.yaml`)
+- Registers in the plugin registry as a standalone visualization type
+- Uses layout patterns inspired by SimWrapper's dashboard system
 
-**Interactive dashboard panel features:**
+**Interactive dashboard features:**
 - Generic data table that works with any CSV (REQUIRED component)
 - Pluggable stat system (OPTIONAL, not hard-coded to time/mode)
 - Flexible map system (OPTIONAL, configurable geometry types and linkages)
 - Generic filter manager with **OR logic within filter groups**
 - **Layer visibility multi-select** (replace cluster type selector)
+- **Internal layout system** to arrange components in rows (e.g., row1: map + stats, row2: table)
 - YAML-driven configuration (no code changes for new dashboards)
 
 ---
@@ -448,40 +447,44 @@ linkageManager.registerLinkage({
 
 ## Proposed Architecture
 
-### Integration with SimWrapper Dashboard System
+### Standalone Plugin with Internal Layout System
 
-The interactive dashboard is implemented as a **dashboard panel type** that integrates seamlessly with SimWrapper's existing architecture:
+The interactive dashboard is implemented as a **standalone plugin** (like `commuter-requests`, `transit`, etc.) with its **own internal layout system** for arranging components:
 
 ```
-SimWrapper Dashboard System
-└── DashBoard.vue                         # Manages rows/cards/subtabs
-    ├── Card 1: type: "plot"             # Standard plotly chart
-    ├── Card 2: type: "table"            # Standard data table
-    └── Card 3: type: "interactive-dashboard"   # Our new panel type
-        └── InteractiveDashboard.vue     # Main component
-            ├── FilterManager            # Manages filters (OR logic)
-            ├── LinkageManager           # Manages multi-geometry linkage
-            ├── DashboardTable.vue       # Generic data table
-            ├── DashboardMap.vue         # Generic map with layers
-            └── Stats Components         # Clickable stats with multi-select
+Interactive Dashboard Plugin (viz-interactive-*.yaml)
+└── InteractiveDashboard.vue              # Main plugin component
+    ├── FilterManager                     # Manages filters (OR logic)
+    ├── LinkageManager                    # Manages multi-geometry linkage
+    └── Internal Layout System            # Arranges components in rows
+        ├── Row 1
+        │   ├── DashboardMap.vue          # Map component (width: 2)
+        │   └── StatsPanel.vue            # Stats container (width: 1)
+        │       ├── HistogramStat.vue
+        │       ├── PieChartStat.vue
+        │       └── SummaryStat.vue
+        └── Row 2
+            └── DashboardTable.vue        # Table component (width: 3)
 ```
 
 **Data Flow:**
 
-1. **Dashboard YAML → DashBoard.vue:**
-   - Parses YAML structure
-   - Creates rows and cards
-   - Passes `config.props` to each panel
+1. **viz-interactive-*.yaml → InteractiveDashboard.vue:**
+   - Plugin receives single YAML config file
+   - Contains: `table`, `stats`, `map`, `layout` configuration
 
-2. **DashBoard.vue → InteractiveDashboard.vue:**
-   - Receives standard panel props: `config`, `datamanager`, `fileSystemConfig`, `subfolder`, `files`
-   - `config.table`, `config.stats`, `config.map` contain panel-specific configuration
-
-3. **InteractiveDashboard.vue:**
-   - Loads data files using `datamanager` or `fileSystemConfig`
+2. **InteractiveDashboard.vue:**
+   - Loads data files (CSV, GeoJSON) from file system
    - Initializes `FilterManager` and `LinkageManager`
-   - Renders table, stats, and map based on config
+   - Parses `layout` configuration to determine component arrangement
+   - Renders rows with configured widths/heights
    - Coordinates interactions (hover, click, filter)
+
+3. **Internal Layout System:**
+   - Similar to SimWrapper's dashboard row/card system but internal to the plugin
+   - Each row can contain multiple components with flex weights
+   - Example: Row 1 has map (width: 2) + stats (width: 1)
+   - Example: Row 2 has table (width: 3, full width)
 
 4. **Internal Components:**
    - Table, stats, and map emit events (hover, click, filter-changed)
@@ -491,24 +494,24 @@ SimWrapper Dashboard System
 
 **Key Benefits of This Architecture:**
 
-1. **Reuses SimWrapper Infrastructure:**
-   - No need to reimplement layout system
-   - Automatic support for rows, widths, heights, subtabs
-   - Consistent with other SimWrapper panels
+1. **Standalone and Self-Contained:**
+   - Complete visualization plugin with its own layout
+   - Single YAML file configures entire dashboard
+   - No dependencies on SimWrapper's dashboard system
 
-2. **Flexible Integration:**
-   - Can be mixed with other panel types in one dashboard
-   - Can span full width or share row with other cards
-   - Can appear in multiple rows/subtabs
+2. **Flexible Internal Layout:**
+   - Adapts SimWrapper's row/card patterns for internal use
+   - Configurable arrangement of map/stats/table
+   - Users can customize layout per use case
 
-3. **Data Coordination:**
-   - Uses existing `DashboardDataManager` for file loading
-   - Consistent file path resolution
-   - Shared caching with other panels
+3. **Consistent with Other Plugins:**
+   - Registered and invoked like `commuter-requests`, `transit`, etc.
+   - Single entry point with clear configuration
+   - Standard plugin lifecycle
 
 4. **Maintains Isolation:**
-   - Each interactive dashboard instance has its own filter state
-   - Multiple instances can coexist on same dashboard
+   - Each instance has its own filter state
+   - Self-contained data management
    - No global state conflicts
 
 ---
@@ -571,321 +574,345 @@ SimWrapper Dashboard System
 
 ## YAML Configuration Design
 
-### Integration with SimWrapper Dashboard System
+### Standalone Plugin with Internal Layout
 
-The interactive dashboard is a **panel type** (like `plot`, `table`, `map`) that works within SimWrapper's existing dashboard YAML structure.
+The interactive dashboard is a **standalone plugin** with its own YAML configuration file (`viz-interactive-*.yaml`). The YAML defines the data sources, components, and **internal layout** for arranging those components.
 
-**SimWrapper Dashboard YAML Structure:**
+**Interactive Dashboard YAML Structure:**
 ```yaml
-header:
-  title: "Dashboard Title"
-  description: "Optional description"
+title: "Dashboard Title"
+description: "Optional description"
 
+# Data and Components Configuration
+table:
+  dataset: data.csv
+  idColumn: id
+  # ... table config
+
+stats:
+  - type: histogram
+    column: value
+    # ... stat config
+  - type: pie
+    column: category
+    # ... stat config
+
+map:
+  layers:
+    - name: layer1
+      file: geometries.geojson
+      # ... layer config
+
+# Internal Layout (how to arrange map/stats/table in rows)
 layout:
-  row1:  # Row ID (can be any name)
-    - type: panel-type      # Panel type (plot, table, map, interactive-dashboard, etc.)
-      title: "Card Title"   # Card title
+  row1:  # Row identifier
+    - component: map        # Component type: map, stats, table
       width: 2              # Flex weight (default: 1)
-      height: 8             # Height in 60px units (default: 5)
-      props:                # Panel-specific configuration
-        ...
+      height: 12            # Height in 60px units (default: 8)
+    - component: stats
+      width: 1
+      height: 12
 
   row2:
-    - type: another-panel
-      width: 1
-      ...
-
-subtabs: true  # Optional: Convert each row to a subtab
-# OR
-subtabs:       # Array of dashboard files
-  - dashboard-tab1.yaml
-  - dashboard-tab2.yaml
-# OR
-subtabs:       # Array of row groupings
-  - title: "Overview"
-    rows: [row1, row2]
-  - title: "Details"
-    rows: [row3]
+    - component: table
+      width: 3              # Full width
+      height: 8
 ```
 
-**Key Integration Points:**
-1. **Panel Registration**: Register `interactive-dashboard` in `/src/dash-panels/_allPanels.ts`
-2. **Props**: Interactive dashboard config is passed via `props` object (like all panels)
-3. **Data Manager**: Access `datamanager` prop for data coordination
-4. **File System**: Access `files`, `subfolder`, `fileSystemConfig` props for data loading
-5. **Layout**: Uses existing row/card system with width/height
+**Key Points:**
+1. **Plugin Registration**: Register in plugin registry (not panel lookup)
+2. **Single YAML file**: Complete configuration in one file
+3. **Internal layout**: Plugin manages its own row/card arrangement
+4. **File loading**: Plugin loads data files directly from configured paths
+5. **Component types**: `map`, `stats`, `table` (not arbitrary panel types)
 
-### Example 1: Commuter Requests Dashboard (SimWrapper Integration)
+### Example 1: Commuter Requests Dashboard
+
+**File**: `viz-interactive-commuter-requests.yaml`
 
 ```yaml
-header:
-  title: "Commuter Requests Dashboard"
-  description: "Interactive analysis of commuter travel requests"
+title: "Commuter Requests Dashboard"
+description: "Interactive analysis of commuter travel requests"
 
+# Primary data table (REQUIRED)
+table:
+  name: "Requests"
+  dataset: requests.csv
+  idColumn: request_id
+  visible: true
+  columns:
+    hide: [pax_id, origin, destination]
+    formats:
+      treq: { type: time, unit: "HH:mm" }
+      travel_time: { type: duration, unit: "min", convertFrom: seconds }
+      distance: { type: distance, unit: "km", convertFrom: meters }
+
+# Statistics panels (OPTIONAL - can be empty or omitted)
+stats:
+  - type: histogram
+    title: "Active Time Distribution"
+    column: treq
+    binSize: 900  # 15 minutes in seconds
+    clickable: true  # Enables multi-select with OR logic
+    comparison: true
+
+  - type: pie
+    title: "Mode Share"
+    column: main_mode
+    clickable: true  # Enables multi-select with OR logic
+    comparison: true
+
+  - type: summary
+    title: "Summary Statistics"
+    metrics:
+      - { label: "Total Requests", aggregation: count }
+      - { label: "Unique Modes", aggregation: count_distinct, column: main_mode }
+
+# Map visualization (OPTIONAL - can be omitted)
+map:
+  center: [13.391, 52.515]
+  zoom: 10
+
+  colorBy:
+    default: main_mode
+    options:
+      - { attribute: main_mode, label: "Transport Mode", type: categorical }
+      - { attribute: travel_time, label: "Travel Time", type: numeric }
+
+  layers:
+    # Request point geometries
+    - name: requests
+      file: requests_geometries.geojson
+      type: point
+      visible: true  # Initially visible
+      linkage:
+        tableColumn: request_id
+        geoProperty: request_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        radius: 5
+        opacity: 0.7
+        colorBy: main_mode
+
+    # Origin cluster polygons
+    - name: clusters_origin
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false  # Initially hidden (user can toggle on)
+      filter:
+        geoProperty: cluster_type
+        equals: origin
+      linkage:
+        tableColumn: origin_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ffcccc"
+        fillOpacity: 0.3
+        strokeColor: "#666666"
+
+    # Destination cluster polygons
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter:
+        geoProperty: cluster_type
+        equals: destination
+      linkage:
+        tableColumn: destination_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccccff"
+        fillOpacity: 0.3
+
+    # OD cluster polygons
+    - name: clusters_od
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter:
+        geoProperty: cluster_type
+        equals: od
+      linkage:
+        tableColumn: od_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccffcc"
+        fillOpacity: 0.3
+
+    # Flow arrows between OD clusters
+    - name: request_flows
+      file: cluster_geometries.geojson
+      type: line
+      visible: true
+      filter:
+        geoProperty: geometry_type
+        equals: flow
+      linkage:
+        tableColumn: od_cluster  # Links to same column as OD clusters!
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        color: "#3366ff"
+        width: 2
+        opacity: 0.7
+
+# Internal layout (arrange map/stats/table in rows)
 layout:
-  overview:
-    - type: interactive-dashboard
-      title: "Commuter Analysis"
-      width: 3
+  row1:
+    - component: map
+      width: 2
       height: 12
-      props:
-        # Primary data table (REQUIRED)
-        table:
-          name: "Requests"
-          dataset: requests.csv
-          idColumn: request_id
-          visible: true
-          columns:
-            hide: [pax_id, origin, destination]
-            formats:
-              treq: { type: time, unit: "HH:mm" }
-              travel_time: { type: duration, unit: "min", convertFrom: seconds }
-              distance: { type: distance, unit: "km", convertFrom: meters }
+    - component: stats
+      width: 1
+      height: 12
+  row2:
+    - component: table
+      width: 3
+      height: 8
 
-        # Statistics panels (OPTIONAL - can be empty or omitted)
-        stats:
-          - type: histogram
-            title: "Active Time Distribution"
-            column: treq
-            binSize: 900  # 15 minutes in seconds
-            clickable: true  # Enables multi-select with OR logic
-            comparison: true
-
-          - type: pie
-            title: "Mode Share"
-            column: main_mode
-            clickable: true  # Enables multi-select with OR logic
-            comparison: true
-
-          - type: summary
-            title: "Summary Statistics"
-            metrics:
-              - { label: "Total Requests", aggregation: count }
-              - { label: "Unique Modes", aggregation: count_distinct, column: main_mode }
-
-        # Map visualization (OPTIONAL - can be omitted)
-        map:
-          center: [13.391, 52.515]
-          zoom: 10
-
-          colorBy:
-            default: main_mode
-            options:
-              - { attribute: main_mode, label: "Transport Mode", type: categorical }
-              - { attribute: travel_time, label: "Travel Time", type: numeric }
-
-          layers:
-            # Request point geometries
-            - name: requests
-              file: requests_geometries.geojson
-              type: point
-              visible: true  # Initially visible
-              linkage:
-                tableColumn: request_id
-                geoProperty: request_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                radius: 5
-                opacity: 0.7
-                colorBy: main_mode
-
-            # Origin cluster polygons
-            - name: clusters_origin
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: false  # Initially hidden (user can toggle on)
-              filter:
-                geoProperty: cluster_type
-                equals: origin
-              linkage:
-                tableColumn: origin_cluster
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#ffcccc"
-                fillOpacity: 0.3
-                strokeColor: "#666666"
-
-            # Destination cluster polygons
-            - name: clusters_destination
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: false
-              filter:
-                geoProperty: cluster_type
-                equals: destination
-              linkage:
-                tableColumn: destination_cluster
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#ccccff"
-                fillOpacity: 0.3
-
-            # OD cluster polygons
-            - name: clusters_od
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: false
-              filter:
-                geoProperty: cluster_type
-                equals: od
-              linkage:
-                tableColumn: od_cluster
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#ccffcc"
-                fillOpacity: 0.3
-
-            # Flow arrows between OD clusters
-            - name: request_flows
-              file: cluster_geometries.geojson
-              type: line
-              visible: true
-              filter:
-                geoProperty: geometry_type
-                equals: flow
-              linkage:
-                tableColumn: od_cluster  # Links to same column as OD clusters!
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                color: "#3366ff"
-                width: 2
-                opacity: 0.7
-
-        # Display settings
-        display:
-          showComparison: true
+# Display settings
+display:
+  showComparison: true
 ```
 
 ### Example 2: Cluster Dashboard (New Testing Domain)
 
+**File**: `viz-interactive-clusters.yaml`
+
 ```yaml
-header:
-  title: "Cluster Analysis Dashboard"
-  description: "Testing interactive dashboard with cluster data"
+title: "Cluster Analysis Dashboard"
+description: "Testing interactive dashboard with cluster data"
 
+# Primary data table (REQUIRED)
+table:
+  name: "Clusters"
+  dataset: clusters.csv
+  idColumn: cluster_id
+  visible: true
+  columns:
+    formats:
+      mean_travel_time: { type: duration, unit: "min", convertFrom: seconds }
+      mean_distance: { type: distance, unit: "km", convertFrom: meters }
+
+# Statistics (all optional)
+stats:
+  - type: histogram
+    title: "Cluster Size Distribution"
+    column: num_requests
+    binSize: 10
+    clickable: true
+
+  - type: pie
+    title: "Cluster Type Distribution"
+    column: cluster_type
+    clickable: true
+
+  - type: bar
+    title: "Requests per Cluster"
+    column: cluster_id
+    aggregation: sum
+    valueColumn: num_requests
+    clickable: true
+
+  - type: summary
+    title: "Summary"
+    metrics:
+      - { label: "Total Clusters", aggregation: count }
+      - { label: "Avg Cluster Size", aggregation: avg, column: num_requests }
+
+# Map (optional)
+map:
+  center: [13.391, 52.515]
+  zoom: 10
+
+  layers:
+    # Origin clusters
+    - name: clusters_origin
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: true
+      filter: { geoProperty: cluster_type, equals: origin }
+      linkage:
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ff9999"
+        fillOpacity: 0.4
+
+    # Destination clusters
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: true
+      filter: { geoProperty: cluster_type, equals: destination }
+      linkage:
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#9999ff"
+        fillOpacity: 0.4
+
+    # OD clusters
+    - name: clusters_od
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false  # Hidden by default
+      filter: { geoProperty: cluster_type, equals: od }
+      linkage:
+        tableColumn: cluster_id
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#99ff99"
+        fillOpacity: 0.4
+
+    # Flow arrows (linked to OD clusters by same cluster_id)
+    - name: cluster_flows
+      file: cluster_geometries.geojson
+      type: line
+      visible: true
+      filter: { geoProperty: geometry_type, equals: flow }
+      linkage:
+        tableColumn: cluster_id  # Same column! Multi-geometry linkage
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        color: "#3366ff"
+        width:
+          property: num_requests
+          scale: [2, 10]  # Width based on request count
+
+# Internal layout (arrange map/stats/table in rows)
 layout:
-  main:
-    - type: interactive-dashboard
-      title: "Cluster Analysis"
-      width: 3
+  row1:
+    - component: map
+      width: 2
       height: 12
-      props:
-        # Primary data table (REQUIRED)
-        table:
-          name: "Clusters"
-          dataset: clusters.csv
-          idColumn: cluster_id
-          visible: true
-          columns:
-            formats:
-              mean_travel_time: { type: duration, unit: "min", convertFrom: seconds }
-              mean_distance: { type: distance, unit: "km", convertFrom: meters }
+    - component: stats
+      width: 1
+      height: 12
+  row2:
+    - component: table
+      width: 3
+      height: 8
 
-        # Statistics (all optional)
-        stats:
-          - type: histogram
-            title: "Cluster Size Distribution"
-            column: num_requests
-            binSize: 10
-            clickable: true
-
-          - type: pie
-            title: "Cluster Type Distribution"
-            column: cluster_type
-            clickable: true
-
-          - type: bar
-            title: "Requests per Cluster"
-            column: cluster_id
-            aggregation: sum
-            valueColumn: num_requests
-            clickable: true
-
-          - type: summary
-            title: "Summary"
-            metrics:
-              - { label: "Total Clusters", aggregation: count }
-              - { label: "Avg Cluster Size", aggregation: avg, column: num_requests }
-
-        # Map (optional)
-        map:
-          center: [13.391, 52.515]
-          zoom: 10
-
-          layers:
-            # Origin clusters
-            - name: clusters_origin
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: true
-              filter: { geoProperty: cluster_type, equals: origin }
-              linkage:
-                tableColumn: cluster_id
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#ff9999"
-                fillOpacity: 0.4
-
-            # Destination clusters
-            - name: clusters_destination
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: true
-              filter: { geoProperty: cluster_type, equals: destination }
-              linkage:
-                tableColumn: cluster_id
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#9999ff"
-                fillOpacity: 0.4
-
-            # OD clusters
-            - name: clusters_od
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: false  # Hidden by default
-              filter: { geoProperty: cluster_type, equals: od }
-              linkage:
-                tableColumn: cluster_id
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                fillColor: "#99ff99"
-                fillOpacity: 0.4
-
-            # Flow arrows (linked to OD clusters by same cluster_id)
-            - name: cluster_flows
-              file: cluster_geometries.geojson
-              type: line
-              visible: true
-              filter: { geoProperty: geometry_type, equals: flow }
-              linkage:
-                tableColumn: cluster_id  # Same column! Multi-geometry linkage
-                geoProperty: cluster_id
-                onHover: highlight
-                onSelect: filter
-              style:
-                color: "#3366ff"
-                width:
-                  property: num_requests
-                  scale: [2, 10]  # Width based on request count
-
-        display:
-          showComparison: true
+display:
+  showComparison: true
 
 # Note: When user hovers over cluster_id=5 in ANY layer (origin, destination, od, flows)
 # ALL features with cluster_id=5 across ALL layers will highlight!
@@ -893,150 +920,44 @@ layout:
 
 ### Example 3: Minimal Dashboard (Table Only)
 
-```yaml
-header:
-  title: "Simple Data Table"
+**File**: `viz-interactive-simple.yaml`
 
+```yaml
+title: "Simple Data Table"
+
+table:
+  dataset: data.csv
+  idColumn: id
+
+# No stats, no map - just a table!
+# Layout defaults to table only
 layout:
-  main:
-    - type: interactive-dashboard
+  row1:
+    - component: table
       width: 3
       height: 8
-      props:
-        table:
-          dataset: data.csv
-          idColumn: id
-        # No stats, no map - just a table!
-```
-
-### Example 4: Mixed Dashboard (Interactive + Other Panels)
-
-This example shows how the interactive dashboard can be combined with other SimWrapper panel types in a single dashboard.
-
-```yaml
-header:
-  title: "Comprehensive Analysis Dashboard"
-  description: "Combining interactive dashboard with other SimWrapper panels"
-
-layout:
-  # Row 1: Interactive dashboard with table/stats/map
-  interactive_analysis:
-    - type: interactive-dashboard
-      title: "Interactive Cluster Analysis"
-      width: 2
-      height: 12
-      props:
-        table:
-          dataset: clusters.csv
-          idColumn: cluster_id
-        stats:
-          - type: histogram
-            column: num_requests
-            binSize: 10
-            clickable: true
-        map:
-          layers:
-            - name: clusters
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: true
-              linkage:
-                tableColumn: cluster_id
-                geoProperty: cluster_id
-
-  # Row 2: Standard SimWrapper panels (non-interactive)
-  additional_charts:
-    - type: plotly
-      title: "Time Series Analysis"
-      width: 1
-      height: 6
-      props:
-        file: timeseries.csv
-        x: time
-        y: value
-
-    - type: text
-      title: "Documentation"
-      width: 1
-      height: 6
-      props:
-        file: README.md
-
-subtabs: true  # Each row becomes a subtab
-```
-
-### Example 5: Multi-Tab Dashboard with Subtabs
-
-```yaml
-header:
-  title: "Multi-Tab Analysis"
-  description: "Using subtabs to organize different views"
-
-subtabs:
-  - dashboard-overview.yaml
-  - dashboard-clusters.yaml
-  - dashboard-flows.yaml
-
-# Each dashboard file can contain an interactive-dashboard card or any other panel types
-```
-
-**dashboard-clusters.yaml:**
-```yaml
-header:
-  title: "Cluster Analysis"
-  tab: "Clusters"  # Tab label
-
-layout:
-  main:
-    - type: interactive-dashboard
-      width: 3
-      height: 12
-      props:
-        table:
-          dataset: clusters.csv
-          idColumn: cluster_id
-        map:
-          layers:
-            - name: clusters
-              file: cluster_geometries.geojson
-              type: polygon
-              visible: true
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 0: SimWrapper Integration Setup (Week 1, Part 1)
+### Phase 0: Plugin Structure & Internal Layout System (Week 1, Part 1)
 
-**Goal**: Register interactive dashboard as a panel type in SimWrapper's dashboard system
+**Goal**: Create standalone plugin structure with internal layout system
 
-- [ ] Create `src/dash-panels/interactive-dashboard/` directory
-- [ ] Register in `/src/dash-panels/_allPanels.ts`:
-  ```typescript
-  import InteractiveDashboard from './interactive-dashboard/InteractiveDashboard.vue'
-
-  export const panelLookup: { [key: string]: any } = {
-    // ... existing panels
-    'interactive-dashboard': InteractiveDashboard,
-  }
-  ```
-- [ ] Create `InteractiveDashboard.vue` main component with standard dashboard panel props:
-  ```typescript
-  props: {
-    fileSystemConfig: { type: Object as PropType<FileSystemConfig>, required: true },
-    subfolder: { type: String, required: true },
-    files: { type: Array as PropType<string[]>, required: true },
-    config: { type: Object, required: true },  // Contains table, stats, map config
-    datamanager: { type: Object as PropType<DashboardDataManager>, required: true },
-    cardId: { type: String, required: true },
-    cardTitle: { type: String },
-  }
-  ```
-- [ ] Emit standard dashboard events:
-  - `@isLoaded` - when component finishes loading
-  - `@dimension-resizer` - for responsive resizing
-  - `@error` - for error reporting
+- [ ] Create `src/plugins/interactive-dashboard/` directory
+- [ ] Register in plugin registry as standalone visualization type
+- [ ] Create `InteractiveDashboard.vue` main component:
+  - Receives YAML config file path as prop
+  - Parses `table`, `stats`, `map`, `layout` configuration
+  - Implements internal row/card rendering system (inspired by SimWrapper's DashBoard.vue)
+  - Manages component arrangement based on layout config
+- [ ] Create internal layout rendering:
+  - Row container with flex layout
+  - Card containers with configurable width/height
+  - Support for `component: map`, `component: stats`, `component: table`
+- [ ] Test basic layout rendering with placeholder components
 
 ### Phase 1: Setup & Core Managers (Week 1, Part 2)
 
@@ -1157,20 +1078,21 @@ layout:
 
 ## Summary of Key Changes
 
-### ✅ Architecture Decision: Dashboard Panel (Not Standalone Plugin)
+### ✅ Architecture Decision: Standalone Plugin with Internal Layout
 
-**Critical Change**: The interactive dashboard is implemented as a **dashboard panel type** (like `plot`, `table`, `map`) that works within SimWrapper's existing dashboard YAML structure, NOT as a standalone plugin.
+**Corrected Architecture**: The interactive dashboard is implemented as a **standalone plugin** (like `commuter-requests`, `transit`, etc.) with its **own internal layout system** for arranging components.
 
-**Why This Matters:**
-- ✅ **Leverages existing infrastructure**: Reuses SimWrapper's row/card layout, subtabs, width/height system
-- ✅ **Better integration**: Works seamlessly with other panels in mixed dashboards
-- ✅ **Consistent patterns**: Follows same registration and prop-passing patterns as all other panels
-- ✅ **Flexible deployment**: Can be used in subtabs, mixed with other panels, multiple instances per dashboard
-- ❌ **Not standalone**: Cannot be invoked directly like other plugins (e.g., `commuter-requests`, `transit`, etc.)
+**Why This Architecture:**
+- ✅ **Standalone and self-contained**: Complete visualization with single YAML config
+- ✅ **Internal layout system**: Adapts SimWrapper's row/card patterns for internal component arrangement
+- ✅ **Consistent with other plugins**: Follows plugin registration and lifecycle patterns
+- ✅ **Flexible layout**: Users configure how map/stats/table are arranged in rows
+- ✅ **Clear separation**: The whole dashboard is the plugin, not a card within another dashboard
 
 **Location:**
-- `src/dash-panels/interactive-dashboard/` (NOT `src/plugins/interactive-dashboard/`)
-- Registered in `src/dash-panels/_allPanels.ts` panel lookup
+- `src/plugins/interactive-dashboard/` (standalone plugin directory)
+- Registered in plugin registry (not panel lookup)
+- YAML files: `viz-interactive-*.yaml`
 
 ### ✅ User Requirements Confirmed
 
@@ -1188,61 +1110,75 @@ layout:
 - `LayerVisibilityToggle.vue`: Multi-select UI for map layers
 - Enhanced `LinkageManager`: Multi-geometry linkage support
 - Enhanced `FilterManager`: OR logic within filter groups
-- `InteractiveDashboard.vue`: Main panel component with standard dashboard props
+- `InteractiveDashboard.vue`: Main plugin component with internal layout system
+- Internal layout renderer: Row/card system for arranging map/stats/table
 
 ### ❌ Removed/Changed Components
 
 - `ClusterTypeSelector.vue`: Replaced by layer visibility toggles
-- Standalone plugin structure: Changed to dashboard panel structure
-- Custom layout system: Removed, using SimWrapper's existing layout
+- Domain-specific filtering: Generalized to configurable filters
+- Hard-coded layout: Replaced with configurable internal layout system
 
-### 📝 YAML Structure Changes
+### 📝 YAML Structure
 
-**Before (Standalone Plugin):**
+**Interactive Dashboard Plugin YAML** (viz-interactive-*.yaml):
 ```yaml
-title: "Dashboard"
-plugin: interactive-dashboard
-table: ...
-stats: ...
-map: ...
-```
+title: "Dashboard Title"
+description: "Optional description"
 
-**After (Dashboard Panel):**
-```yaml
-header:
-  title: "Dashboard"
+# Data and components
+table:
+  dataset: data.csv
+  idColumn: id
+  ...
+
+stats:
+  - type: histogram
+    column: value
+    ...
+
+map:
+  layers:
+    - name: layer1
+      file: geometries.geojson
+      ...
+
+# Internal layout (arrange map/stats/table in rows)
 layout:
   row1:
-    - type: interactive-dashboard
-      width: 3
+    - component: map
+      width: 2
       height: 12
-      props:
-        table: ...
-        stats: ...
-        map: ...
+    - component: stats
+      width: 1
+      height: 12
+  row2:
+    - component: table
+      width: 3
+      height: 8
 ```
 
 ---
 
 ## Ready to Implement
 
-All user requirements have been incorporated. The architecture aligns with SimWrapper's existing dashboard system.
+All user requirements have been incorporated. The architecture is corrected to be a standalone plugin with internal layout system.
 
-**Next Step**: Begin Phase 0 (SimWrapper Integration Setup) → Register panel type and create main component with standard props
+**Next Step**: Begin Phase 0 (Plugin Structure & Internal Layout System) → Create plugin directory, implement internal row/card rendering, and test layout system
 
 ---
 
-**Document Version**: 3.0 (Updated with SimWrapper dashboard integration architecture)
-**Major Changes in v3.0**:
-- Changed from standalone plugin to dashboard panel type
-- Integration with SimWrapper's existing dashboard system (rows, cards, subtabs)
-- Proper panel registration in `panelLookup`
-- Standard dashboard panel props and events
-- Updated YAML structure to fit within SimWrapper dashboard format
+**Document Version**: 4.0 (Corrected architecture - standalone plugin with internal layout)
+**Major Changes in v4.0**:
+- **Architecture Correction**: Changed from dashboard panel type BACK to standalone plugin
+- **Internal Layout System**: Plugin has its own row/card layout (inspired by SimWrapper's patterns but internal)
+- **Single YAML Config**: Complete configuration in one `viz-interactive-*.yaml` file
+- **Location**: `src/plugins/interactive-dashboard/` (not `src/dash-panels/`)
+- **Component Arrangement**: Layout section defines how map/stats/table are arranged in rows
 
 **Feedback Incorporated**:
 - Multi-select stats with OR logic (user requirement)
 - Multi-geometry linkage (user requirement)
 - Layer visibility multi-select (user requirement)
 - Flexible YAML with optional components (user requirement)
-- SimWrapper dashboard integration (user requirement: "building an interactive version of the SimWrapper dashboard that is already there")
+- **Standalone plugin with internal layout** (user requirement: whole document is the interactive dashboard, with internal rows for arranging components)
