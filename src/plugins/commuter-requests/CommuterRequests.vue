@@ -47,6 +47,7 @@
               :has-active-filters="hasActiveFilters"
               :is-dark-mode="isDarkMode"
               @cluster-clicked="onClusterClicked"
+              @clusters-clicked="onClustersClicked"
               @request-clicked="onRequestClicked"
               @request-hovered="onRequestHovered"
             )
@@ -641,6 +642,25 @@ export default defineComponent({
       console.log('Cluster clicked:', clusterId, 'Selected:', Array.from(this.selectedClusters))
     },
 
+    onClustersClicked(clusterIds: (string | number)[]) {
+      // Toggle selection for all clusters in the array
+      // If any are already selected, deselect all. Otherwise, select all.
+      const allSelected = clusterIds.every(id => this.selectedClusters.has(id))
+
+      if (allSelected) {
+        // Deselect all
+        clusterIds.forEach(id => this.selectedClusters.delete(id))
+      } else {
+        // Select all
+        clusterIds.forEach(id => this.selectedClusters.add(id))
+      }
+
+      // Trigger reactivity
+      this.selectedClusters = new Set(this.selectedClusters)
+
+      console.log('Multiple clusters clicked:', clusterIds, 'Selected:', Array.from(this.selectedClusters))
+    },
+
     onRequestClicked(requestId: string) {
       console.log('Request clicked:', requestId)
       
@@ -954,6 +974,7 @@ $cardSpacing: 0.5rem;
   flex-direction: row;
   height: 60vh;
   min-height: 400px;
+  max-height: 60vh; // Prevent overflow beyond allocated height
   gap: $cardSpacing;
 
   .map-card {
@@ -961,9 +982,11 @@ $cardSpacing: 0.5rem;
     min-width: 0;
   }
 
-  .stats-card {
+  .stats-cards-container {
     flex: 1 1 30%;
     min-width: 0;
+    max-height: 100%; // Constrain to parent height
+    overflow-y: auto; // Allow scrolling if content overflows
   }
 
   // Mobile responsive layout
@@ -1017,18 +1040,17 @@ $cardSpacing: 0.5rem;
   }
 }
 
-// ===== STATS CARDS CONTAINER =====
+// ===== STATS CARDS CONTAINER (continued) =====
 
 .stats-cards-container {
+  // Layout already defined in .top-panel scope above
   display: flex;
   flex-direction: column;
   gap: $cardSpacing;
-  flex: 1 1 30%;
-  min-width: 0;
 
   .stat-card {
     flex: 1;
-    min-height: 300px;
+    min-height: 200px; // Reduced to fit better in constrained space
 
     .dash-card {
       overflow-y: auto;
@@ -1041,6 +1063,8 @@ $cardSpacing: 0.5rem;
 
   @media (max-width: 800px) {
     flex: none;
+    max-height: none; // Remove height constraint on mobile
+    overflow-y: visible;
 
     .stat-card {
       flex: none;
