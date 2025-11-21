@@ -1,9 +1,37 @@
 # Interactive Dashboard - Implementation Tasks
 ## Detailed Task List for Coding Agents
 
-**Document Version**: 1.0  
-**Created**: 2025-11-21  
+**Document Version**: 1.1
+**Created**: 2025-11-21
+**Updated**: 2025-11-21 - Added SimWrapper integration and acceptance criteria
 **Purpose**: Self-contained tasks with all context for autonomous implementation
+
+---
+
+## 🎯 Acceptance Criteria
+
+**The interactive dashboard is considered complete when**:
+
+1. ✅ **SimWrapper Integration**: Follows SimWrapper's dashboard discovery pattern
+   - Files like `interactive-dashboard-*.yaml` are auto-discovered
+   - Listed alongside regular dashboards
+   - Same loading mechanism as `dashboard-*.yaml` files
+
+2. ✅ **Feature Parity**: Re-implementation of existing commuter-requests dashboard
+   - Create `interactive-dashboard-commuter-requests.yaml` config
+   - Produces identical (or nearly identical) visualization to current plugin
+   - All interactions work: filtering, hover, selection, comparison mode
+   - Serves as validation that generic approach has full feature parity
+
+3. ✅ **Multi-domain Support**: Works with clusters dataset
+   - Demonstrates multi-geometry linkage
+   - Layer visibility controls
+   - Stacked geometry handling
+
+4. ✅ **Testing**: Comprehensive test coverage
+   - Unit tests for managers (>80% coverage)
+   - Integration tests comparing with original
+   - Side-by-side validation passes
 
 ---
 
@@ -35,6 +63,49 @@ mkdir -p src/plugins/interactive-dashboard/{components/{stats,map-layers,control
 ```
 
 **Output**: Directory structure with placeholder files
+
+---
+
+### TASK-001B: Study SimWrapper Plugin Registration
+
+**Priority**: High | **Effort**: Small | **Dependencies**: TASK-001
+
+**Objective**: Understand how SimWrapper discovers and loads dashboard/plugin YAML files
+
+**Context Files to Read**:
+- Search for dashboard registration patterns in SimWrapper codebase
+- Look for: `dashboard-*.yaml` file discovery
+- Find: Plugin registry, file pattern matching, auto-loading mechanism
+
+**Research Questions**:
+1. How does SimWrapper discover `dashboard-*.yaml` files?
+2. Where are plugins registered?
+3. What's the plugin interface/API?
+4. How to make `interactive-dashboard-*.yaml` follow same pattern?
+
+**Steps**:
+```bash
+# Search for dashboard discovery
+grep -r "dashboard-.*\.yaml" src/
+
+# Find plugin registry
+grep -r "pluginRegistry\|registerPlugin" src/
+
+# Find dashboard loading
+grep -r "loadDashboard\|DashBoard" src/
+```
+
+**Expected Findings**:
+- Plugin registry location
+- YAML file discovery mechanism
+- Plugin interface/contract
+- How to register interactive-dashboard plugin
+
+**Output**:
+- Document findings in code comments
+- Understand registration pattern for TASK-601
+
+**Notes**: This research task informs how we register the interactive-dashboard plugin to follow SimWrapper's conventions.
 
 ---
 
@@ -373,13 +444,228 @@ data() {
 
 ---
 
+### TASK-703: Re-implement Commuter Requests Dashboard
+
+**Priority**: CRITICAL | **Effort**: Medium | **Dependencies**: TASK-601, TASK-701
+
+**Objective**: Create YAML config that recreates the existing commuter-requests dashboard using the generic plugin
+
+**Context Files**:
+- Current implementation: `src/plugins/commuter-requests/` (all files)
+- Especially: `CommuterRequests.vue` for understanding what features to replicate
+
+**Create**: `interactive-dashboard-commuter-requests.yaml`
+
+**YAML Structure** (based on current implementation):
+
+```yaml
+title: "Commuter Requests Dashboard"
+description: "Interactive analysis of commuter travel requests"
+
+# Table configuration
+table:
+  name: "Requests"
+  dataset: requests.csv
+  idColumn: request_id
+  visible: true
+  columns:
+    hide: [pax_id, origin, destination]
+    formats:
+      treq: { type: time, unit: "HH:mm" }
+      travel_time: { type: duration, unit: "min", convertFrom: seconds }
+      distance: { type: distance, unit: "km", convertFrom: meters }
+
+# Statistics (matching current implementation)
+stats:
+  - type: histogram
+    title: "Active Time Distribution"
+    column: treq
+    binSize: 900  # 15 minutes
+    clickable: true
+    comparison: true
+
+  - type: pie
+    title: "Mode Share"
+    column: main_mode
+    clickable: true
+    comparison: true
+
+  - type: summary
+    title: "Summary Statistics"
+    metrics:
+      - { label: "Total Requests", aggregation: count }
+      - { label: "Unique Modes", aggregation: count_distinct, column: main_mode }
+
+# Map layers (matching current RequestsMap.vue)
+map:
+  center: [13.391, 52.515]
+  zoom: 10
+
+  colorBy:
+    default: main_mode
+    options:
+      - { attribute: main_mode, label: "Transport Mode", type: categorical }
+      - { attribute: travel_time, label: "Travel Time", type: numeric }
+
+  layers:
+    # Request points
+    - name: requests
+      file: requests_geometries.geojson
+      type: point
+      visible: true
+      linkage:
+        tableColumn: request_id
+        geoProperty: request_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        radius: 5
+        opacity: 0.7
+        colorBy: main_mode
+
+    # Cluster boundaries (all types)
+    - name: clusters_origin
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter: { geoProperty: cluster_type, equals: origin }
+      linkage:
+        tableColumn: origin_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ffcccc"
+        fillOpacity: 0.3
+        strokeColor: "#666666"
+
+    - name: clusters_destination
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter: { geoProperty: cluster_type, equals: destination }
+      linkage:
+        tableColumn: destination_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccccff"
+        fillOpacity: 0.3
+
+    - name: clusters_od
+      file: cluster_geometries.geojson
+      type: polygon
+      visible: false
+      filter: { geoProperty: cluster_type, equals: od }
+      linkage:
+        tableColumn: od_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        fillColor: "#ccffcc"
+        fillOpacity: 0.3
+
+    # Flow arrows
+    - name: request_flows
+      file: cluster_geometries.geojson
+      type: line
+      visible: true
+      filter: { geoProperty: geometry_type, equals: flow }
+      linkage:
+        tableColumn: od_cluster
+        geoProperty: cluster_id
+        onHover: highlight
+        onSelect: filter
+      style:
+        color: "#3366ff"
+        width: 2
+        opacity: 0.7
+
+# Layout (matching current component arrangement)
+layout:
+  row1:
+    - component: map
+      width: 2
+      height: 12
+    - component: stats
+      width: 1
+      height: 12
+  row2:
+    - component: table
+      width: 3
+      height: 8
+
+# Display options
+display:
+  showComparison: true
+```
+
+**Validation Steps**:
+
+1. **Side-by-side comparison**:
+   ```bash
+   # Open both:
+   # - Original: viz-commuter-requests.yaml (current plugin)
+   # - New: interactive-dashboard-commuter-requests.yaml (generic plugin)
+
+   # Compare:
+   # - Visual appearance
+   # - Filter behavior
+   # - Hover interactions
+   # - Selection behavior
+   # - Comparison mode
+   # - Table sorting/export
+   ```
+
+2. **Feature checklist**:
+   - [ ] Table displays all requests with correct columns
+   - [ ] Histogram shows time distribution with 15-min bins
+   - [ ] Pie chart shows mode share
+   - [ ] Summary shows total requests and unique modes
+   - [ ] Map shows request points
+   - [ ] Map shows cluster boundaries (toggle-able)
+   - [ ] Map shows flow arrows
+   - [ ] Clicking histogram bin filters data (OR logic)
+   - [ ] Clicking pie slice filters data (OR logic)
+   - [ ] Clicking map feature filters data
+   - [ ] Hovering map highlights related features
+   - [ ] Hovering table row highlights on map
+   - [ ] Multi-select works correctly
+   - [ ] Stacked cluster selection works
+   - [ ] Comparison mode shows baseline overlay
+   - [ ] Filter reset clears all filters
+   - [ ] Table export works
+
+3. **Performance comparison**:
+   - Load time: within 5% of original
+   - Filter response: <100ms difference
+   - Hover response: no visible lag
+
+**Output**:
+- `interactive-dashboard-commuter-requests.yaml` that produces functionally identical dashboard
+- Validation report documenting feature parity
+- List of any minor differences (acceptable if documented)
+
+**Success Criteria**:
+- 100% feature parity OR documented acceptable differences
+- Performance within 5% of original
+- User cannot tell the difference in normal usage
+
+**Notes**: This is the PRIMARY acceptance test. If this works, the generic approach is validated!
+
+---
+
 ## Task Execution Order
 
 **Critical Path**:
 ```
-TASK-001 → TASK-002 → TASK-101, TASK-102 → TASK-401 → TASK-402 → TASK-601
+TASK-001 → TASK-001B (research) → TASK-002
            ↓
-         TASK-201, TASK-301, TASK-501 → TASK-601
+         TASK-101, TASK-102 → TASK-401 → TASK-402 → TASK-601 → TASK-703 (validation)
+           ↓                                          ↑
+         TASK-201, TASK-301, TASK-501 ---------------┘
 ```
 
 **Parallelizable Groups**:
@@ -387,7 +673,12 @@ TASK-001 → TASK-002 → TASK-101, TASK-102 → TASK-401 → TASK-402 → TASK-
 - Group B: TASK-301, TASK-501, TASK-502 (after Group A)
 - Group C: TASK-401 (after TASK-102)
 
-**Timeline Estimate**: 14-20 days for full implementation
+**Final Validation**:
+- TASK-703: Re-implement commuter-requests (CRITICAL acceptance test)
+
+**Timeline Estimate**: 15-22 days for full implementation including validation
+
+**Total Tasks**: 22 tasks (was 21, added TASK-001B and TASK-703)
 
 ---
 
