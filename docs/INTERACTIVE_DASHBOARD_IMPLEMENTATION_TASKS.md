@@ -1,10 +1,24 @@
 # Interactive Dashboard - Implementation Tasks
 ## Detailed Task List for Coding Agents
 
-**Document Version**: 1.1
+**Document Version**: 2.0
 **Created**: 2025-11-21
-**Updated**: 2025-11-21 - Added SimWrapper integration and acceptance criteria
+**Updated**: 2025-11-21 - UNIFIED FORMAT: Uses SimWrapper's layout structure with optional interactive features
 **Purpose**: Self-contained tasks with all context for autonomous implementation
+
+---
+
+## 🎯 Architecture Decision: Unified Format
+
+**IMPORTANT**: The interactive dashboard uses SimWrapper's existing dashboard structure with optional enhancements:
+
+- **Layout**: Uses SimWrapper's row/card layout system (NOT a new layout)
+- **Types**: Uses SimWrapper's card types (map, vega, etc.) with new options
+- **Enhancement**: Adds optional `table` section that enables interactive coordination
+- **Detection**: Parser checks for `table` section to enable FilterManager/LinkageManager
+- **Backward Compatible**: Dashboards without `table` work as standard SimWrapper dashboards
+
+See `docs/UNIFIED_YAML_FORMAT.md` for complete details.
 
 ---
 
@@ -12,23 +26,29 @@
 
 **The interactive dashboard is considered complete when**:
 
-1. ✅ **SimWrapper Integration**: Follows SimWrapper's dashboard discovery pattern
+1. ✅ **Unified Format**: Uses SimWrapper's dashboard structure
+   - Same row/card layout as regular dashboards
+   - Same card types (map, vega, table, etc.)
+   - `table` section is optional and triggers interactive mode
+   - Legacy dashboards without `table` continue to work
+
+2. ✅ **SimWrapper Integration**: Follows dashboard discovery pattern
    - Files like `interactive-dashboard-*.yaml` are auto-discovered
    - Listed alongside regular dashboards
-   - Same loading mechanism as `dashboard-*.yaml` files
+   - Reuses SimWrapper's existing card components where possible
 
-2. ✅ **Feature Parity**: Re-implementation of existing commuter-requests dashboard
+3. ✅ **Feature Parity**: Re-implementation of existing commuter-requests dashboard
    - Create `interactive-dashboard-commuter-requests.yaml` config
    - Produces identical (or nearly identical) visualization to current plugin
    - All interactions work: filtering, hover, selection, comparison mode
    - Serves as validation that generic approach has full feature parity
 
-3. ✅ **Multi-domain Support**: Works with clusters dataset
-   - Demonstrates multi-geometry linkage
-   - Layer visibility controls
-   - Stacked geometry handling
+4. ✅ **Backward Compatibility**: Legacy dashboards work without modification
+   - Parser detects absence of `table` section
+   - Falls back to standard SimWrapper dashboard behavior
+   - No breaking changes to existing dashboards
 
-4. ✅ **Testing**: Comprehensive test coverage
+5. ✅ **Testing**: Comprehensive test coverage
    - Unit tests for managers (>80% coverage)
    - Integration tests comparing with original
    - Side-by-side validation passes

@@ -1,9 +1,9 @@
 # Interactive Dashboard - Generalization Plan
 ## From Commuter Requests to Generic Dashboard Plugin
 
-**Last Updated**: 2025-11-21 (Updated with latest master improvements)
+**Last Updated**: 2025-11-21 (UNIFIED FORMAT - Uses SimWrapper's layout with optional interactivity)
 **Status**: Planning Phase - Ready to implement
-**Based on**: Existing `commuter-requests` plugin implementation + SimWrapper dashboard layout patterns
+**Based on**: Existing `commuter-requests` plugin + **SimWrapper's dashboard structure (UNIFIED FORMAT)**
 
 **Recent Improvements from Master** (2025-11-21):
 - ✅ Multi-cluster selection for stacked/overlapping geometries
@@ -14,19 +14,64 @@
 
 ---
 
+## ⚡ ARCHITECTURE: Unified Format Approach
+
+**IMPORTANT DECISION**: The interactive dashboard will use **SimWrapper's existing dashboard structure** with optional interactive features, NOT a separate plugin:
+
+### Why Unified Format?
+
+- ✅ **Backward Compatible**: Legacy dashboards continue to work without changes
+- ✅ **Progressive Enhancement**: Add `table` section to enable interactive coordination
+- ✅ **Code Reuse**: Leverage SimWrapper's existing card components (map, vega, table, etc.)
+- ✅ **Familiar Structure**: Same row/card layout developers already know
+- ✅ **Gradual Migration**: Users can migrate dashboards incrementally
+
+### How It Works
+
+```yaml
+# Legacy dashboard (still works)
+title: "Traffic Dashboard"
+layout:
+  row1:
+    - type: map
+      file: data.geojson
+
+# Interactive dashboard (add table to enable coordination)
+title: "Traffic Dashboard (Interactive)"
+table:                    # ← This triggers interactive mode!
+  dataset: data.csv
+  idColumn: id
+
+layout:                   # ← Same layout structure
+  row1:
+    - type: map
+      layers:
+        - file: data.geojson
+          linkage:        # ← New: Linkage to table
+            tableColumn: id
+            geoProperty: feature_id
+```
+
+**Parser logic**: If `table` exists → Initialize FilterManager/LinkageManager. Otherwise → Standard SimWrapper dashboard.
+
+See `docs/UNIFIED_YAML_FORMAT.md` for complete details.
+
+---
+
 ## Executive Summary
 
-This document outlines the plan to **generalize** the existing `commuter-requests` plugin into a reusable **Interactive Dashboard** plugin for SimWrapper. The commuter-requests plugin is a fully-functional, specialized implementation that demonstrates all the key patterns we need. Our task is to extract these patterns into a generic, YAML-configurable system with an **internal layout system** inspired by SimWrapper's dashboard patterns.
+This document outlines the plan to **generalize** the existing `commuter-requests` plugin into reusable **interactive coordination features** for SimWrapper dashboards. The commuter-requests plugin is a fully-functional, specialized implementation that demonstrates all the key patterns we need. Our task is to extract these patterns into a generic, YAML-configurable system that layers on top of **SimWrapper's existing dashboard structure**.
 
 ### What We Have ✅
 
-**SimWrapper Dashboard Layout Patterns:**
-- Row-based layout with flex weights
-- Card system with configurable width/height
-- Clean YAML structure for organizing components
-- These patterns can be adapted for the interactive dashboard's **internal layout**
+**SimWrapper Dashboard System:**
+- ✅ Row-based layout with flex weights (REUSE this)
+- ✅ Card system with configurable width/height (REUSE this)
+- ✅ Existing card types: map, vega, table, links, etc. (EXTEND these)
+- ✅ YAML configuration structure (ADD to this)
+- ✅ Dashboard discovery mechanism (FOLLOW this pattern)
 
-**Commuter Requests Plugin:**
+**Commuter Requests Plugin (patterns to extract):**
 - Interactive data table with filtering and highlighting
 - Multiple statistics (histogram, pie chart, summary cards) with **OR-logic multi-select**
 - Deck.gl map with request geometries and cluster boundaries
@@ -39,21 +84,30 @@ This document outlines the plan to **generalize** the existing `commuter-request
 
 ### What We Need to Do 🎯
 
-**Create a standalone interactive dashboard plugin** that:
-- Is a **complete plugin** (like `commuter-requests`, `transit`, etc.)
-- Has its **own internal layout system** for arranging map/stats/table in rows
-- Receives a single YAML configuration file (`viz-interactive-*.yaml`)
-- Registers in the plugin registry as a standalone visualization type
-- Uses layout patterns inspired by SimWrapper's dashboard system
+**Add interactive coordination features to SimWrapper dashboards**:
 
-**Interactive dashboard features:**
-- Generic data table that works with any CSV (REQUIRED component)
-- Pluggable stat system (OPTIONAL, not hard-coded to time/mode)
-- Flexible map system (OPTIONAL, configurable geometry types and linkages)
-- Generic filter manager with **OR logic within filter groups**
-- **Layer visibility multi-select** (replace cluster type selector)
-- **Internal layout system** to arrange components in rows (e.g., row1: map + stats, row2: table)
-- YAML-driven configuration (no code changes for new dashboards)
+1. **Coordination Layer** (NEW):
+   - FilterManager: Coordinates filtering across cards
+   - LinkageManager: Links map geometries to table rows
+   - Centralized data table (optional `table` section in YAML)
+
+2. **Enhanced Card Types** (EXTEND existing):
+   - Map cards with linkage configuration
+   - Statistics cards that are clickable filters
+   - Table cards that show filtered/highlighted data
+   - All use SimWrapper's existing card structure
+
+3. **Detection & Backward Compatibility** (CRITICAL):
+   - Parser detects presence of `table` section
+   - If present: Initialize coordination layer
+   - If absent: Use standard SimWrapper dashboard (no breaking changes)
+
+4. **Features**:
+   - Generic filter manager with **OR logic within filter groups**
+   - **Multi-geometry linkage** (multiple layers linked to same table column)
+   - **Layer visibility multi-select** (replace cluster type selector)
+   - YAML-driven configuration (no code changes for new dashboards)
+   - Progressive enhancement (add features incrementally)
 
 ---
 

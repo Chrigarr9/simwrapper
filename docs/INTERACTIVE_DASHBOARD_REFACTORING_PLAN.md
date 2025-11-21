@@ -1,9 +1,29 @@
 # Interactive Dashboard - Refactoring Plan
 ## Systematic Extraction from Commuter Requests Plugin
 
-**Document Version**: 1.0
+**Document Version**: 2.0
 **Created**: 2025-11-21
+**Updated**: 2025-11-21 - UNIFIED FORMAT: Adopts SimWrapper's layout system with optional interactivity
 **Purpose**: Guide the refactoring of `commuter-requests` into a generic `interactive-dashboard` plugin
+
+---
+
+## ⚡ IMPORTANT: Architecture Change
+
+**This plan has been updated to reflect a UNIFIED FORMAT approach:**
+
+Instead of creating a separate layout system, the interactive dashboard will:
+- ✅ **Use SimWrapper's existing row/card layout structure**
+- ✅ **Add optional `table` section that triggers interactive coordination**
+- ✅ **Preserve backward compatibility** (dashboards without `table` work as standard)
+- ✅ **Layer coordination features** (FilterManager, LinkageManager) on top of existing structure
+
+See `docs/UNIFIED_YAML_FORMAT.md` for complete architectural details.
+
+**Impact on this plan**:
+- Sections about layout systems are now simplified (we reuse SimWrapper's)
+- Focus shifts to coordination layer (FilterManager, LinkageManager)
+- Component extraction focuses on making cards "linkable" rather than creating new card types
 
 ---
 
@@ -27,7 +47,9 @@ Extract and generalize the `commuter-requests` plugin into a reusable `interacti
 - Maintains all current functionality patterns
 - Supports ANY domain/dataset through YAML configuration
 - Has zero domain-specific logic in the codebase
-- Uses an internal layout system for component arrangement
+- **Uses SimWrapper's existing row/card layout system** (NEW)
+- **Adds optional interactive coordination layer** (NEW)
+- **Maintains full backward compatibility with standard SimWrapper dashboards** (NEW)
 
 ### Source Plugin Analysis
 
