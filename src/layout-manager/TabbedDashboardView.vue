@@ -24,7 +24,8 @@
       v-if="dashboardTabWithDelay && dashboardTabWithDelay !== 'FILE__BROWSER' && dashboards[dashboardTabWithDelay] && dashboards[dashboardTabWithDelay].header.tab !== '...'"
       :class="{'is-breadcrumbs-hidden': !isShowingBreadcrumbs && !isZoomed}"
     )
-      dash-board(
+      component(
+        :is="getDashboardComponent(dashboards[dashboardTabWithDelay])"
         :root="root"
         :xsubfolder="xsubfolder"
         :config="dashboards[dashboardTabWithDelay]"
@@ -62,6 +63,7 @@ import globalStore from '@/store'
 import { FavoriteLocation, FileSystemConfig, NavigationItem, Status, YamlConfigs } from '@/Globals'
 import BreadCrumbs from '@/components/BreadCrumbs.vue'
 import DashBoard from './DashBoard.vue'
+import InteractiveDashboard from './InteractiveDashboard.vue'
 import DashboardDataManager from '@/js/DashboardDataManager'
 import FolderBrowser from './FolderBrowser.vue'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
@@ -76,7 +78,7 @@ const mdRenderer = new markdown({
 
 export default defineComponent({
   name: 'TabbedDashboardView',
-  components: { BreadCrumbs, DashBoard, FolderBrowser },
+  components: { BreadCrumbs, DashBoard, InteractiveDashboard, FolderBrowser },
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -173,6 +175,18 @@ export default defineComponent({
     },
   },
   methods: {
+    getDashboardComponent(config: any) {
+      // Check if this dashboard uses interactive coordination (config.table)
+      if (config && config.table) {
+        console.log('[Dashboard] Loading InteractiveDashboard (coordination enabled)')
+        console.log('[Dashboard] Table dataset:', config.table.dataset)
+        return 'InteractiveDashboard'
+      } else {
+        console.log('[Dashboard] Loading standard DashBoard (no coordination)')
+        return 'DashBoard'
+      }
+    },
+
     clearStyles() {
       if (this.styleElement) {
         document.getElementsByTagName('head')[0].removeChild(this.styleElement)

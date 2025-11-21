@@ -1,0 +1,69 @@
+header:
+  tab: "Interactive Dashboard Example"
+  title: "Interactive Dashboard Example"
+  description: "Demonstrates interactive coordination with histogram, pie chart, map, and table"
+
+# Centralized data table (triggers InteractiveDashboard)
+table:
+  name: "Sample Data"
+  dataset: sample-data.csv
+  idColumn: id
+  visible: true
+  columns:
+    formats:
+      value: { type: number, decimals: 1 }
+      lat: { type: number, decimals: 5 }
+      lon: { type: number, decimals: 5 }
+
+layout:
+  row1:
+    # Map card with linkage
+    - type: map
+      title: "Geographic View"
+      width: 2
+      height: 8
+      center: [13.40, 52.52]
+      zoom: 11
+      layers:
+        - name: points
+          file: points.geojson
+          type: circle
+          visible: true
+          radius: 8
+          fillColor: "#4dabf7"
+          linkage:
+            tableColumn: id
+            geoProperty: id
+            onHover: highlight
+            onSelect: filter
+
+    # Histogram card with linkage
+    - type: histogram
+      title: "Value Distribution"
+      column: value
+      binSize: 20
+      width: 1
+      height: 4
+      linkage:
+        type: filter
+        column: value
+        behavior: toggle
+
+    # Pie chart card with linkage
+    - type: pie-chart
+      title: "Category Distribution"
+      column: category
+      width: 1
+      height: 4
+      linkage:
+        type: filter
+        column: category
+        behavior: toggle
+
+  row2:
+    # Table card showing filtered data
+    - type: table
+      title: "Data Table"
+      width: 3
+      height: 6
+      source: table

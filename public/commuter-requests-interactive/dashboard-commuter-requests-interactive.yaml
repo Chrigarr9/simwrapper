@@ -1,0 +1,288 @@
+header:
+  tab: "Commuter Requests (Interactive)"
+  title: "Commuter Requests Dashboard"
+  description: "Re-implementation using InteractiveDashboard with full feature parity"
+
+# Centralized data table (triggers InteractiveDashboard)
+table:
+  name: "Requests"
+  dataset: requests.csv
+  idColumn: request_id
+  visible: true
+  columns:
+    hide: [pax_id, origin, destination]
+    formats:
+      treq:
+        type: time
+        unit: "HH:mm:ss"
+        convertFrom: seconds
+      travel_time:
+        type: duration
+        unit: "min"
+        decimals: 1
+        convertFrom: seconds
+      distance:
+        type: distance
+        unit: "km"
+        decimals: 2
+        convertFrom: meters
+      max_detour:
+        type: decimal
+        decimals: 2
+      max_cost:
+        type: decimal
+        decimals: 2
+
+layout:
+  row1:
+    # Map (left side, 2/3 width)
+    - type: map
+      title: "Request Map"
+      width: 2
+      height: 12
+      center: [13.4, 52.52]
+      zoom: 10
+      layers:
+        # Cluster boundaries layer (polygon)
+        - name: cluster_boundaries
+          file: cluster_geometries.geojson
+          type: polygon
+          visible: true
+          fillOpacity: 0.15
+          lineOpacity: 1.0
+          lineWidth: 2
+          linkage:
+            tableColumn: origin_cluster  # Will switch based on cluster type selector
+            geoProperty: cluster_id
+            onHover: highlight
+            onSelect: filter
+
+        # Request lines layer (arc - curved flows from origin to destination)
+        - name: request_flows
+          file: requests_geometries.geojson
+          type: arc
+          visible: true
+          arcHeight: 0.2
+          arcTilt: 25
+          widthScale: 2
+          colorBy: main_mode
+          linkage:
+            tableColumn: request_id
+            geoProperty: request_id
+            onHover: highlight
+            onSelect: filter
+
+        # Request destination indicators (points at destination)
+        - name: request_destinations
+          file: requests_geometries.geojson
+          type: point
+          visible: true
+          radius: 3
+          radiusMax: 8
+          colorBy: main_mode
+          linkage:
+            tableColumn: request_id
+            geoProperty: request_id
+            onHover: highlight
+            onSelect: filter
+
+        # Cluster flow arrows (only visible for spatial/OD clusters)
+        - name: cluster_flows
+          file: cluster_geometries.geojson
+          type: arc
+          visible: false  # Toggled by cluster type selector
+          arcHeight: 0.2
+          arcTilt: 25
+          widthScale: 4
+          filter:
+            property: geometry_type
+            value: flow
+          linkage:
+            tableColumn: od_cluster
+            geoProperty: cluster_id
+            onHover: highlight
+            onSelect: filter
+
+    # Right column - Stats
+    - type: column
+      width: 1
+      height: 12
+      items:
+        # Active time histogram (top)
+        - type: histogram
+          title: "Active Time Distribution"
+          column: treq
+          binSize: 900  # 15 minutes in seconds
+          height: 4
+          linkage:
+            type: filter
+            column: treq
+            behavior: toggle
+            mode: active_time  # Special mode: checks if request is active during bin
+            useColumn: travel_time  # Additional column for active time calculation
+
+        # Main mode pie chart (middle)
+        - type: pie-chart
+          title: "Main Mode Share"
+          column: main_mode
+          height: 4
+          linkage:
+            type: filter
+            column: main_mode
+            behavior: toggle
+
+        # Summary statistics (bottom)
+        - type: stats
+          title: "Summary Statistics"
+          height: 4
+          metrics:
+            - label: "Total Requests"
+              value: "count"
+            - label: "Unique Modes"
+              value: "unique"
+              column: main_mode
+            - label: "Active Clusters"
+              value: "unique"
+              column: origin_cluster  # Dynamic based on cluster type
+
+  row2:
+    # Data table (full width)
+    - type: table
+      title: "Requests"
+      width: 3
+      height: 8
+      source: table
+      features:
+        - export
+        - search
+        - sort
+        - pagination
+        - hover_highlight
+        - click_filter
+      showFilteredCount: true
+
+# Color schemes for categorical attributes
+colorSchemes:
+  main_mode:
+    type: categorical
+    colors:
+      car: "#e74c3c"
+      pt: "#3498db"
+      bike: "#2ecc71"
+      walk: "#f39c12"
+      drt: "#9b59b6"
+      ride: "#1abc9c"
+      default: "#95a5a6"
+
+  start_activity_type:
+    type: categorical
+    colors:
+      home: "#4477ff"
+      work: "#ff4477"
+      education: "#44ff77"
+      shopping: "#ff7744"
+      leisure: "#aa44ff"
+      other: "#777777"
+      default: "#999999"
+
+  end_activity_type:
+    type: categorical
+    colors:
+      home: "#4477ff"
+      work: "#ff4477"
+      education: "#44ff77"
+      shopping: "#ff7744"
+      leisure: "#aa44ff"
+      other: "#777777"
+      default: "#999999"
+
+# Controls
+controls:
+  - type: cluster-type-selector
+    label: "Cluster Type"
+    options:
+      - value: origin
+        label: "Origin"
+        updates:
+          layers:
+            cluster_boundaries:
+              linkage:
+                tableColumn: origin_cluster
+            cluster_flows:
+              visible: false
+      - value: destination
+        label: "Destination"
+        updates:
+          layers:
+            cluster_boundaries:
+              linkage:
+                tableColumn: destination_cluster
+            cluster_flows:
+              visible: false
+      - value: spatial
+        label: "Spatial (OD)"
+        updates:
+          layers:
+            cluster_boundaries:
+              linkage:
+                tableColumn: od_cluster
+            cluster_flows:
+              visible: true
+              linkage:
+                tableColumn: od_cluster
+
+  - type: color-by-selector
+    label: "Color By"
+    target: [request_flows, request_destinations]
+    options:
+      - value: main_mode
+        label: "Transport Mode"
+        type: categorical
+      - value: max_detour
+        label: "Max Detour Factor"
+        type: numeric
+        scale: [1.0, 3.0]
+      - value: max_cost
+        label: "Max Cost"
+        type: numeric
+      - value: travel_time
+        label: "Travel Time"
+        type: numeric
+      - value: distance
+        label: "Distance"
+        type: numeric
+      - value: start_activity_type
+        label: "Origin Activity"
+        type: categorical
+      - value: end_activity_type
+        label: "Destination Activity"
+        type: categorical
+
+  - type: comparison-toggle
+    label: "Show Comparison"
+    default: true
+    description: "Show baseline (all data) vs filtered data"
+    affects: [histogram, pie-chart]
+
+  - type: filter-reset
+    label: "Clear Filters"
+    position: header
+
+  - type: scroll-toggle
+    label: "Auto-scroll on Hover"
+    default: true
+    description: "Automatically scroll table to hovered row"
+
+# Interaction modes
+interactions:
+  filterLogic:
+    betweenTypes: AND  # Combine different filter types with AND
+    withinType: OR     # Combine same type filters with OR
+
+  hover:
+    enabled: true
+    crossHighlight: true  # Hover in one component highlights in others
+
+  selection:
+    mode: toggle  # Click to select/deselect
+    multiSelect: true  # Allow multiple selections

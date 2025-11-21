@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type": "Feature", "properties": {"id": 1, "name": "Point A"}, "geometry": {"type": "Point", "coordinates": [13.40, 52.52]}},
+    {"type": "Feature", "properties": {"id": 2, "name": "Point B"}, "geometry": {"type": "Point", "coordinates": [13.41, 52.51]}},
+    {"type": "Feature", "properties": {"id": 3, "name": "Point C"}, "geometry": {"type": "Point", "coordinates": [13.39, 52.53]}},
+    {"type": "Feature", "properties": {"id": 4, "name": "Point D"}, "geometry": {"type": "Point", "coordinates": [13.42, 52.50]}},
+    {"type": "Feature", "properties": {"id": 5, "name": "Point E"}, "geometry": {"type": "Point", "coordinates": [13.38, 52.54]}},
+    {"type": "Feature", "properties": {"id": 6, "name": "Point F"}, "geometry": {"type": "Point", "coordinates": [13.43, 52.49]}},
+    {"type": "Feature", "properties": {"id": 7, "name": "Point G"}, "geometry": {"type": "Point", "coordinates": [13.37, 52.55]}},
+    {"type": "Feature", "properties": {"id": 8, "name": "Point H"}, "geometry": {"type": "Point", "coordinates": [13.44, 52.48]}},
+    {"type": "Feature", "properties": {"id": 9, "name": "Point I"}, "geometry": {"type": "Point", "coordinates": [13.36, 52.56]}},
+    {"type": "Feature", "properties": {"id": 10, "name": "Point J"}, "geometry": {"type": "Point", "coordinates": [13.45, 52.47]}}
+  ]
+}

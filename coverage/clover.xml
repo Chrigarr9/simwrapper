@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1763732319610" clover="3.2.0">
+  <project timestamp="1763732319611" name="All files">
+    <metrics statements="15" coveredstatements="15" conditionals="0" coveredconditionals="0" methods="14" coveredmethods="14" elements="29" coveredelements="29" complexity="0" loc="15" ncloc="15" packages="1" files="1" classes="1"/>
+    <file name="DataTableManager.ts" path="/home/user/simwrapper/src/managers/DataTableManager.ts">
+      <metrics statements="15" coveredstatements="15" conditionals="0" coveredconditionals="0" methods="14" coveredmethods="14"/>
+      <line num="19" count="13" type="stmt"/>
+      <line num="24" count="13" type="stmt"/>
+      <line num="25" count="13" type="stmt"/>
+      <line num="32" count="2" type="stmt"/>
+      <line num="34" count="2" type="stmt"/>
+      <line num="35" count="2" type="stmt"/>
+      <line num="36" count="1" type="stmt"/>
+      <line num="41" count="1" type="stmt"/>
+      <line num="42" count="1" type="stmt"/>
+      <line num="54" count="3" type="stmt"/>
+      <line num="61" count="5" type="stmt"/>
+      <line num="68" count="6" type="stmt"/>
+      <line num="75" count="6" type="stmt"/>
+      <line num="82" count="1" type="stmt"/>
+      <line num="89" count="1" type="stmt"/>
+    </file>
+  </project>
+</coverage>
