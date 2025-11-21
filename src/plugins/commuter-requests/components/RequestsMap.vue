@@ -41,8 +41,8 @@ export default defineComponent({
       map: null as maplibregl.Map | null,
       deckOverlay: null as MapboxOverlay | null,
       isLoading: true,
-      hoveredClusterId: null as number | null, // Track hovered cluster for highlighting
-      hoveredFlowId: null as string | null, // Track hovered flow for highlighting
+      hoveredClusterIds: new Set() as Set<number>, // Track multiple hovered clusters (stacked)
+      hoveredFlowClusterPair: null as { origin: number, destination: number } | null, // Track specific flow hover
     }
   },
 
@@ -135,11 +135,17 @@ export default defineComponent({
     hoveredRequestId() {
       this.updateLayers()
     },
-    hoveredClusterId() {
-      this.updateLayers()
+    hoveredClusterIds: {
+      handler() {
+        this.updateLayers()
+      },
+      deep: true,
     },
-    hoveredFlowId() {
-      this.updateLayers()
+    hoveredFlowClusterPair: {
+      handler() {
+        this.updateLayers()
+      },
+      deep: true,
     },
     hasActiveFilters() {
       this.updateLayers()
@@ -316,6 +322,30 @@ export default defineComponent({
             }
             return true
           })
+          .sort((a: any, b: any) => {
+            // Sort to render selected/hovered clusters last (on top)
+            const aClusterId = a.properties.cluster_id
+            const bClusterId = b.properties.cluster_id
+
+            const aIsHovered = this.hoveredClusterIds.has(aClusterId) ||
+              (this.hoveredFlowClusterPair &&
+               (this.hoveredFlowClusterPair.origin === aClusterId ||
+                this.hoveredFlowClusterPair.destination === aClusterId))
+
+            const bIsHovered = this.hoveredClusterIds.has(bClusterId) ||
+              (this.hoveredFlowClusterPair &&
+               (this.hoveredFlowClusterPair.origin === bClusterId ||
+                this.hoveredFlowClusterPair.destination === bClusterId))
+
+            const aIsSelected = this.selectedClusters.has(aClusterId)
+            const bIsSelected = this.selectedClusters.has(bClusterId)
+
+            // Render order priority: normal < hovered < selected
+            const aScore = aIsSelected ? 2 : (aIsHovered ? 1 : 0)
+            const bScore = bIsSelected ? 2 : (bIsHovered ? 1 : 0)
+
+            return aScore - bScore  // Lower scores rendered first (bottom)
+          })
 
         if (validBoundaries.length === 0) {
           console.warn('No valid cluster boundaries found')
@@ -350,13 +380,19 @@ export default defineComponent({
               getFillColor: (d: any) => {
                 const clusterId = d.properties.cluster_id
                 const isSelected = this.selectedClusters.has(clusterId)
-                const isClusterHovered = this.hoveredClusterId === clusterId
-                const isFlowHovered = this.hoveredFlowId === `${clusterId}`
+
+                // Check if this cluster is in the hovered set (from stacked cluster hover)
+                const isClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+                // Check if this cluster is part of a hovered flow's origin/destination pair
+                const isFlowHovered = this.hoveredFlowClusterPair &&
+                  (this.hoveredFlowClusterPair.origin === clusterId ||
+                   this.hoveredFlowClusterPair.destination === clusterId)
 
                 if (isSelected) {
                   return [59, 130, 246, 120] // Blue when selected
                 }
-                // Highlight cluster when either cluster or its flow is hovered
+                // Highlight cluster when either stacked-cluster-hovered OR flow-hovered
                 if (isClusterHovered || isFlowHovered) {
                   return [251, 146, 60, 100] // Orange when hovered
                 }
@@ -365,13 +401,19 @@ export default defineComponent({
               getLineColor: (d: any) => {
                 const clusterId = d.properties.cluster_id
                 const isSelected = this.selectedClusters.has(clusterId)
-                const isClusterHovered = this.hoveredClusterId === clusterId
-                const isFlowHovered = this.hoveredFlowId === `${clusterId}`
+
+                // Check if this cluster is in the hovered set (from stacked cluster hover)
+                const isClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+                // Check if this cluster is part of a hovered flow's origin/destination pair
+                const isFlowHovered = this.hoveredFlowClusterPair &&
+                  (this.hoveredFlowClusterPair.origin === clusterId ||
+                   this.hoveredFlowClusterPair.destination === clusterId)
 
                 if (isSelected) {
                   return [59, 130, 246, 255] // Blue border when selected
                 }
-                // Highlight cluster when either cluster or its flow is hovered
+                // Highlight cluster when either stacked-cluster-hovered OR flow-hovered
                 if (isClusterHovered || isFlowHovered) {
                   return [251, 146, 60, 255] // Orange border when hovered
                 }
@@ -380,35 +422,70 @@ export default defineComponent({
               getLineWidth: (d: any) => {
                 const clusterId = d.properties.cluster_id
                 const isSelected = this.selectedClusters.has(clusterId)
-                const isClusterHovered = this.hoveredClusterId === clusterId
-                const isFlowHovered = this.hoveredFlowId === `${clusterId}`
+
+                // Check if this cluster is in the hovered set (from stacked cluster hover)
+                const isClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+                // Check if this cluster is part of a hovered flow's origin/destination pair
+                const isFlowHovered = this.hoveredFlowClusterPair &&
+                  (this.hoveredFlowClusterPair.origin === clusterId ||
+                   this.hoveredFlowClusterPair.destination === clusterId)
 
                 if (isSelected) return 4 // Thick border when selected
-                // Highlight cluster when either cluster or its flow is hovered
+                // Highlight cluster when either stacked-cluster-hovered OR flow-hovered
                 if (isClusterHovered || isFlowHovered) return 3 // Medium border when hovered
                 return 2 // Default border
               },
               onHover: (info: any) => {
-                if (info.object) {
-                  const clusterId = info.object.properties.cluster_id
-                  const clusterType = info.object.properties.cluster_type
-                  const boundaryPart = info.object.properties.boundary_part
+                if (info.object && this.deckOverlay) {
+                  // Use pickMultipleObjects to get ALL clusters at cursor position
+                  const picked = this.deckOverlay.pickMultipleObjects({
+                    x: info.x,
+                    y: info.y,
+                    layerIds: ['cluster-boundaries'],
+                    radius: 2,  // Very small radius for precise detection
+                  })
 
-                  console.log('Cluster hover:', { clusterId, clusterType, boundaryPart })
-                  this.hoveredClusterId = clusterId
+                  // Extract all cluster IDs at this position
+                  this.hoveredClusterIds = new Set(
+                    picked.map((p: any) => p.object.properties.cluster_id)
+                  )
+
+                  // Clear flow-specific hover when hovering clusters
+                  this.hoveredFlowClusterPair = null
+
+                  console.log('Clusters hovered (stacked):', Array.from(this.hoveredClusterIds))
                 } else {
-                  this.hoveredClusterId = null
+                  this.hoveredClusterIds = new Set()
+                  this.hoveredFlowClusterPair = null
                 }
               },
               onClick: (info: any) => {
-                if (info.object) {
-                  this.$emit('cluster-clicked', info.object.properties.cluster_id)
+                if (info.object && this.deckOverlay) {
+                  // Get ALL clusters at click position
+                  const picked = this.deckOverlay.pickMultipleObjects({
+                    x: info.x,
+                    y: info.y,
+                    layerIds: ['cluster-boundaries'],
+                    radius: 2,
+                  })
+
+                  const clusterIds = picked.map((p: any) => p.object.properties.cluster_id)
+
+                  console.log('Clusters clicked (all stacked):', clusterIds)
+
+                  // Emit all cluster IDs for multi-select
+                  if (clusterIds.length > 1) {
+                    this.$emit('clusters-clicked', clusterIds)  // Plural for multiple
+                  } else if (clusterIds.length === 1) {
+                    this.$emit('cluster-clicked', clusterIds[0])  // Singular for single
+                  }
                 }
               },
               updateTriggers: {
-                getFillColor: [this.selectedClusters, this.hoveredClusterId, this.hoveredFlowId],
-                getLineColor: [this.selectedClusters, this.hoveredClusterId, this.hoveredFlowId],
-                getLineWidth: [this.selectedClusters, this.hoveredClusterId, this.hoveredFlowId],
+                getFillColor: [this.selectedClusters, this.hoveredClusterIds, this.hoveredFlowClusterPair],
+                getLineColor: [this.selectedClusters, this.hoveredClusterIds, this.hoveredFlowClusterPair],
+                getLineWidth: [this.selectedClusters, this.hoveredClusterIds, this.hoveredFlowClusterPair],
               },
             })
           )
@@ -437,32 +514,46 @@ export default defineComponent({
             // Arc configuration for curved lines
             greatCircle: false, // Use simple arcs, not great circle paths
             getWidth: (d: any) => {
-              const flowId = `${d.properties.cluster_id}`
               const clusterId = d.properties.cluster_id
-              const isFlowHovered = flowId === this.hoveredFlowId
-              const isClusterHovered = this.hoveredClusterId === clusterId
               const isSelected = this.selectedClusters.has(clusterId) || this.selectedClusters.has(String(clusterId))
+
+              // Flow is highlighted if ANY of its related clusters are hovered
+              const isRelatedClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+              // Flow is highlighted if this specific flow is hovered
+              const isFlowHovered = this.hoveredFlowClusterPair &&
+                (this.hoveredFlowClusterPair.origin === clusterId ||
+                 this.hoveredFlowClusterPair.destination === clusterId)
 
               // Scale width based on num_requests (min 4, max 14)
               const numRequests = d.properties.num_requests || 1
               const normalizedWidth = (numRequests / maxRequests) * 10 + 4
 
-              // Increase width for hovered or selected flows (cluster hover also highlights flow)
-              if (isFlowHovered || isClusterHovered) return normalizedWidth * 1.5
+              // Increase width for hovered or selected flows
+              if (isFlowHovered) return normalizedWidth * 1.5
+              if (isRelatedClusterHovered) return normalizedWidth * 1.3
               if (isSelected) return normalizedWidth * 1.2
               return normalizedWidth
             },
             getSourcePosition: (d: any) => d.geometry.coordinates[0],
             getTargetPosition: (d: any) => d.geometry.coordinates[1],
             getSourceColor: (d: any) => {
-              const flowId = `${d.properties.cluster_id}`
               const clusterId = d.properties.cluster_id
               const isSelected = this.selectedClusters.has(clusterId) || this.selectedClusters.has(String(clusterId))
-              const isFlowHovered = flowId === this.hoveredFlowId
-              const isClusterHovered = this.hoveredClusterId === clusterId
 
-              if (isFlowHovered || isClusterHovered) {
-                return [251, 146, 60, 255] // Orange when hovered (full opacity)
+              // Flow is highlighted if ANY of its related clusters are hovered
+              const isRelatedClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+              // Flow is highlighted if this specific flow is hovered
+              const isFlowHovered = this.hoveredFlowClusterPair &&
+                (this.hoveredFlowClusterPair.origin === clusterId ||
+                 this.hoveredFlowClusterPair.destination === clusterId)
+
+              if (isFlowHovered) {
+                return [251, 146, 60, 255] // Orange when flow specifically hovered (full opacity)
+              }
+              if (isRelatedClusterHovered) {
+                return [251, 146, 60, 200] // Slightly less opacity when cluster hovered
               }
               if (isSelected) {
                 return [59, 130, 246, 200] // Blue when selected
@@ -471,14 +562,22 @@ export default defineComponent({
             },
             getTargetColor: (d: any) => {
               // Same color as source for uniform arc
-              const flowId = `${d.properties.cluster_id}`
               const clusterId = d.properties.cluster_id
               const isSelected = this.selectedClusters.has(clusterId) || this.selectedClusters.has(String(clusterId))
-              const isFlowHovered = flowId === this.hoveredFlowId
-              const isClusterHovered = this.hoveredClusterId === clusterId
 
-              if (isFlowHovered || isClusterHovered) {
-                return [251, 146, 60, 255] // Orange when hovered (full opacity)
+              // Flow is highlighted if ANY of its related clusters are hovered
+              const isRelatedClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+              // Flow is highlighted if this specific flow is hovered
+              const isFlowHovered = this.hoveredFlowClusterPair &&
+                (this.hoveredFlowClusterPair.origin === clusterId ||
+                 this.hoveredFlowClusterPair.destination === clusterId)
+
+              if (isFlowHovered) {
+                return [251, 146, 60, 255] // Orange when flow specifically hovered (full opacity)
+              }
+              if (isRelatedClusterHovered) {
+                return [251, 146, 60, 200] // Slightly less opacity when cluster hovered
               }
               if (isSelected) {
                 return [59, 130, 246, 200] // Blue when selected
@@ -490,26 +589,36 @@ export default defineComponent({
             getHeight: () => 0.2, // needs hight to render tilted arcs
             onHover: (info: any) => {
               if (info.object) {
-                const flowId = `${info.object.properties.cluster_id}`
-                console.log('Flow hover:', { flowId, properties: info.object.properties })
-                this.hoveredFlowId = flowId
+                const clusterId = info.object.properties.cluster_id
+
+                // For flows, store the specific cluster pair (origin + destination)
+                this.hoveredFlowClusterPair = {
+                  origin: clusterId,  // Same cluster_id for both in OD flow
+                  destination: clusterId,
+                }
+
+                // Clear stacked cluster hover when hovering flows
+                this.hoveredClusterIds = new Set()
+
+                console.log('Flow hovered - cluster pair:', clusterId)
               } else {
-                this.hoveredFlowId = null
+                this.hoveredFlowClusterPair = null
               }
             },
             onClick: (info: any) => {
               if (info.object) {
-                // Clicking a flow arrow should select BOTH origin and destination clusters
-                // They share the same cluster_id, so emit it to select both
                 const clusterId = info.object.properties.cluster_id
+
                 console.log('Flow arrow clicked - selecting cluster pair:', clusterId)
-                this.$emit('cluster-clicked', clusterId)
+
+                // Emit only the specific cluster pair for this flow
+                this.$emit('cluster-clicked', clusterId)  // Singular - specific cluster only
               }
             },
             updateTriggers: {
-              getWidth: [this.hoveredFlowId, this.hoveredClusterId, this.selectedClusters, this.filteredClusterFlows],
-              getSourceColor: [this.hoveredFlowId, this.hoveredClusterId, this.selectedClusters, this.filteredClusterFlows],
-              getTargetColor: [this.hoveredFlowId, this.hoveredClusterId, this.selectedClusters, this.filteredClusterFlows],
+              getWidth: [this.hoveredFlowClusterPair, this.hoveredClusterIds, this.selectedClusters, this.filteredClusterFlows],
+              getSourceColor: [this.hoveredFlowClusterPair, this.hoveredClusterIds, this.selectedClusters, this.filteredClusterFlows],
+              getTargetColor: [this.hoveredFlowClusterPair, this.hoveredClusterIds, this.selectedClusters, this.filteredClusterFlows],
             },
           })
         )
@@ -524,29 +633,43 @@ export default defineComponent({
             radiusMaxPixels: 20,
             getPosition: (d: any) => d.geometry.coordinates[1], // Destination position
             getRadius: (d: any) => {
-              const flowId = `${d.properties.cluster_id}`
               const clusterId = d.properties.cluster_id
-              const isFlowHovered = flowId === this.hoveredFlowId
-              const isClusterHovered = this.hoveredClusterId === clusterId
               const isSelected = this.selectedClusters.has(clusterId) || this.selectedClusters.has(String(clusterId))
+
+              // Flow is highlighted if ANY of its related clusters are hovered
+              const isRelatedClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+              // Flow is highlighted if this specific flow is hovered
+              const isFlowHovered = this.hoveredFlowClusterPair &&
+                (this.hoveredFlowClusterPair.origin === clusterId ||
+                 this.hoveredFlowClusterPair.destination === clusterId)
 
               // Scale radius based on num_requests
               const numRequests = d.properties.num_requests || 1
               const normalizedRadius = (numRequests / maxRequests) * 4 + 3
 
-              if (isFlowHovered || isClusterHovered) return normalizedRadius * 1.5
+              if (isFlowHovered) return normalizedRadius * 1.5
+              if (isRelatedClusterHovered) return normalizedRadius * 1.3
               if (isSelected) return normalizedRadius * 1.2
               return normalizedRadius
             },
             getFillColor: (d: any) => {
-              const flowId = `${d.properties.cluster_id}`
               const clusterId = d.properties.cluster_id
               const isSelected = this.selectedClusters.has(clusterId) || this.selectedClusters.has(String(clusterId))
-              const isFlowHovered = flowId === this.hoveredFlowId
-              const isClusterHovered = this.hoveredClusterId === clusterId
 
-              if (isFlowHovered || isClusterHovered) {
-                return [251, 146, 60, 255] // Orange when hovered
+              // Flow is highlighted if ANY of its related clusters are hovered
+              const isRelatedClusterHovered = this.hoveredClusterIds.has(clusterId)
+
+              // Flow is highlighted if this specific flow is hovered
+              const isFlowHovered = this.hoveredFlowClusterPair &&
+                (this.hoveredFlowClusterPair.origin === clusterId ||
+                 this.hoveredFlowClusterPair.destination === clusterId)
+
+              if (isFlowHovered) {
+                return [251, 146, 60, 255] // Orange when flow specifically hovered
+              }
+              if (isRelatedClusterHovered) {
+                return [251, 146, 60, 220] // Slightly less opacity when cluster hovered
               }
               if (isSelected) {
                 return [59, 130, 246, 255] // Blue when selected (full opacity for tips)
@@ -557,10 +680,18 @@ export default defineComponent({
             lineWidthMinPixels: 1,
             onHover: (info: any) => {
               if (info.object) {
-                const flowId = `${info.object.properties.cluster_id}`
-                this.hoveredFlowId = flowId
+                const clusterId = info.object.properties.cluster_id
+
+                // For arrow tips, store the specific cluster pair (same as flow hover)
+                this.hoveredFlowClusterPair = {
+                  origin: clusterId,
+                  destination: clusterId,
+                }
+
+                // Clear stacked cluster hover
+                this.hoveredClusterIds = new Set()
               } else {
-                this.hoveredFlowId = null
+                this.hoveredFlowClusterPair = null
               }
             },
             onClick: (info: any) => {
@@ -570,8 +701,8 @@ export default defineComponent({
               }
             },
             updateTriggers: {
-              getRadius: [this.hoveredFlowId, this.hoveredClusterId, this.selectedClusters, this.filteredClusterFlows],
-              getFillColor: [this.hoveredFlowId, this.hoveredClusterId, this.selectedClusters, this.filteredClusterFlows],
+              getRadius: [this.hoveredFlowClusterPair, this.hoveredClusterIds, this.selectedClusters, this.filteredClusterFlows],
+              getFillColor: [this.hoveredFlowClusterPair, this.hoveredClusterIds, this.selectedClusters, this.filteredClusterFlows],
             },
           })
         )
