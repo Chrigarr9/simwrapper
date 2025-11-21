@@ -49,20 +49,8 @@ table:
       volume: { type: number, decimals: 0 }
       timestamp: { type: time, unit: "HH:mm" }
 
-# NEW: Statistics components (clickable filters)
-stats:
-  - type: histogram
-    title: "Volume Distribution"
-    column: volume
-    binSize: 100
-    clickable: true
-
-  - type: categorical
-    title: "Road Type"
-    column: road_type
-    clickable: true
-
 # SAME: Layout structure as before
+# NEW: Stats are card types with linkage (not separate section)
 layout:
   row1:
     - type: map
@@ -71,8 +59,6 @@ layout:
       height: 8
       center: [13.4, 52.5]
       zoom: 10
-
-      # NEW: Linkage to centralized table
       layers:
         - name: segments
           file: segments.geojson
@@ -84,20 +70,39 @@ layout:
             onHover: highlight
             onSelect: filter
 
+    - type: histogram                    # Stats as card types
+      title: "Volume Distribution"
+      column: volume
+      binSize: 100
+      width: 1
+      height: 4
+      linkage:
+        type: filter                     # Same linkage pattern
+        column: volume
+        behavior: toggle                 # Click toggles filter
+
+    - type: pie-chart
+      title: "Road Type"
+      column: road_type
+      width: 1
+      height: 4
+      linkage:
+        type: filter
+        column: road_type
+        behavior: toggle
+
+  row2:
     - type: table
       title: "Traffic Data"
-      width: 1
-      height: 4
-      source: table  # References centralized table
-
-    - type: stats
-      width: 1
-      height: 4
+      width: 3
+      height: 6
+      source: table                      # References centralized table
 ```
 
 **Behavior**:
 - Centralized data loading from `table.dataset`
-- Stats clicks filter the table and map
+- Stats (histogram, pie-chart) are regular cards with linkage
+- Clicking stats filters the table and map
 - Map selections filter table and update stats
 - All views stay synchronized
 
@@ -108,12 +113,12 @@ layout:
 | Feature | Legacy Dashboard | Interactive Dashboard |
 |---------|-----------------|---------------------|
 | Data loading | Per-card (independent) | Centralized table + per-card |
-| `table` section | ❌ Not present | ✅ Required |
+| `table` section | ❌ Not present | ✅ Required (triggers interactive mode) |
 | Filtering | ❌ None | ✅ Coordinated via FilterManager |
 | Linkage | ❌ None | ✅ Map ↔ Table via LinkageManager |
-| Stats | Static vega charts | Clickable filter controls |
+| Stats | Static vega charts | Card types with `linkage` config |
 | Layout | Row/card structure | Same row/card structure |
-| Card types | map, vega, links, etc. | Same types + new options |
+| Card types | map, vega, links, etc. | Same + histogram, pie-chart (with linkage) |
 
 ---
 
@@ -158,27 +163,31 @@ layout:
             geoProperty: feature_id
 ```
 
-**Step 4**: Add interactive stats
+**Step 4**: Add interactive stats (as card types)
 ```yaml
 title: "My Dashboard"
 table:
   dataset: data.csv
   idColumn: id
 
-stats:
-  - type: histogram
-    column: value
-    clickable: true
-
 layout:
   row1:
     - type: map
+      width: 2
       layers:
         - file: data.geojson
           linkage:
             tableColumn: id
             geoProperty: feature_id
-    - type: stats
+
+    - type: histogram              # Stats as regular cards
+      title: "Value Distribution"
+      column: value
+      width: 1
+      linkage:
+        type: filter
+        column: value
+        behavior: toggle
 ```
 
 ---
@@ -192,13 +201,13 @@ interface DashboardConfig {
   title: string
   description?: string
   table?: TableConfig        // Optional - triggers interactive mode
-  stats?: StatConfig[]      // Optional - only for interactive mode
-  layout: LayoutConfig      // Same structure as SimWrapper
+  layout: LayoutConfig       // Same structure as SimWrapper
+                             // Cards can have linkage config for coordination
 }
 
 function loadDashboard(config: DashboardConfig) {
   if (config.table) {
-    // Interactive mode
+    // Interactive mode: Initialize coordination layer
     const filterManager = new FilterManager()
     const linkageManager = new LinkageManager()
     const dataTable = await loadDataTable(config.table.dataset)
