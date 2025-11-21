@@ -1,9 +1,16 @@
 # Interactive Dashboard - Generalization Plan
 ## From Commuter Requests to Generic Dashboard Plugin
 
-**Last Updated**: 2025-11-19 (Corrected architecture - standalone plugin with internal layout)
+**Last Updated**: 2025-11-21 (Updated with latest master improvements)
 **Status**: Planning Phase - Ready to implement
 **Based on**: Existing `commuter-requests` plugin implementation + SimWrapper dashboard layout patterns
+
+**Recent Improvements from Master** (2025-11-21):
+- ✅ Multi-cluster selection for stacked/overlapping geometries
+- ✅ Improved hover handling with Set-based tracking (`hoveredClusterIds: Set<number>`)
+- ✅ Rendering order optimization (normal < hovered < selected)
+- ✅ Enhanced flow-cluster linkage with origin/destination pair tracking
+- ✅ Better visual hierarchy with opacity levels for different interaction states
 
 ---
 
