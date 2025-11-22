@@ -60,10 +60,11 @@ layout:
         column: category
         behavior: toggle
 
-  row2:
-    # Table card showing filtered data
-    - type: table
-      title: "Data Table"
-      width: 3
-      height: 6
-      source: table
+  # row2:
+    # NOTE: Table card for showing filtered centralized data is not yet implemented.
+    # Will require a new FilteredTableCard component that reads from DataTableManager
+    # - type: filtered-table
+    #   title: "Data Table"
+    #   width: 3
+    #   height: 6
+    #   source: table

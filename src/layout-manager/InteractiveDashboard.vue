@@ -78,7 +78,7 @@
                 :fileSystemConfig="fileSystemConfig"
                 :subfolder="row.subtabFolder || xsubfolder"
                 :files="fileList"
-                :yaml="card.props && card.props.configFile"
+                :yaml="(card.props && card.props.configFile) || ''"
                 :config="card.props"
                 :datamanager="datamanager"
                 :split="split"
