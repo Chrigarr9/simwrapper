@@ -1,0 +1,260 @@
+type: commuter-requests@1.0.0
+title: "Commuter Requests Analysis"
+description: "Interactive visualization of commuter ridepooling requests, rides, and clusters"
+
+files:
+  # Request data (unified files with new structure)
+  requestsTable: requests.csv                     # All request attributes + geometry_wkt
+  requestsGeometry: requests_geometries.geojson   # Unified: OD lines + origin/dest points
+
+  # Cluster data (unified files)
+  clusterStats: cluster_stats.csv                 # Statistics for all 5 cluster types
+  clusterGeometries: cluster_geometries.geojson   # Unified: boundaries + centroids + flows
+
+  # Rides data
+  ridesSample: rides_sample.csv                   # Sampled rides
+
+# Display settings
+display:
+  # Initial view settings
+  center: [11.57, 48.14]  # Munich coordinates
+  zoom: 11
+
+  # Color schemes
+  colorScheme: viridis
+
+  # Request line styling
+  requestLineWidth: 2
+  requestLineOpacity: 0.6
+
+  # Cluster styling
+  clusterBoundaryOpacity: 0.2
+  clusterBoundaryWidth: 2
+
+# Table configuration
+table:
+  # Name of the table (default: "Items" if not specified)
+  name: "Requests"
+
+  # Column visibility configuration
+  # If columns section is omitted or empty, ALL columns are shown by default
+  columns:
+    # Explicitly show only these columns (leave empty to show all)
+    show: []
+
+    # Hide specific columns (applied after show filter)
+    # Use this to exclude columns like geometry_wkt which are too large
+    hide:
+      - geometry_wkt
+      - start_x
+      - start_y
+      - end_x
+      - end_y
+
+    # Column formatting configuration
+    # Specify display type, units, and conversion for specific columns
+    formats:
+      # Time columns - display as HH:MM:SS
+      treq:
+        type: time
+        convertFrom: seconds
+
+      earliest_departure_time:
+        type: time
+        convertFrom: seconds
+
+      latest_departure_time:
+        type: time
+        convertFrom: seconds
+
+      earliest_arrival_time:
+        type: time
+        convertFrom: seconds
+
+      latest_arrival_time:
+        type: time
+        convertFrom: seconds
+
+      # Duration columns - display in minutes
+      travel_time:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 0
+
+      ttrav_base:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 0
+
+      wait_time:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 0
+
+      max_travel_time:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 0
+
+      # Distance columns - display in kilometers
+      distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+
+      traveled_distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+
+      euclidean_distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+
+      max_walking_distance:
+        type: distance
+        convertFrom: meters
+        unit: m
+        decimals: 0
+
+      # Decimal columns with specific precision
+      detour_factor:
+        type: decimal
+        decimals: 2
+
+      max_detour:
+        type: decimal
+        decimals: 2
+
+# Color-by attribute configuration
+colorBy:
+  # Default attribute for coloring request lines
+  default: main_mode
+
+  # Available attributes for color-by selector
+  # Format: { attribute: column_name, label: Display Name, type: categorical|numeric }
+  attributes:
+    # Categorical attributes
+    - attribute: main_mode
+      label: Transport Mode
+      type: categorical
+
+    - attribute: start_activity_type
+      label: Origin Activity
+      type: categorical
+
+    - attribute: end_activity_type
+      label: Destination Activity
+      type: categorical
+
+    - attribute: origin_cluster
+      label: Origin Cluster
+      type: categorical
+
+    - attribute: destination_cluster
+      label: Destination Cluster
+      type: categorical
+
+    - attribute: od_cluster
+      label: OD Cluster
+      type: categorical
+
+    - attribute: temporal_cluster
+      label: Temporal Cluster
+      type: categorical
+
+    - attribute: cluster
+      label: Final Cluster
+      type: categorical
+
+    # Numeric attributes
+    - attribute: max_cost
+      label: Max Cost
+      type: numeric
+      scale: [0, 20]
+
+    - attribute: max_detour
+      label: Max Detour Factor
+      type: numeric
+      scale: [1.0, 2.0]
+
+    - attribute: max_walking_distance
+      label: Max Walking Distance
+      type: numeric
+      scale: [0, 1000]
+
+    - attribute: travel_time
+      label: Travel Time (seconds)
+      type: numeric
+
+    - attribute: distance
+      label: Distance (meters)
+      type: numeric
+
+    - attribute: detour_factor
+      label: Detour Factor
+      type: numeric
+      scale: [1.0, 2.0]
+
+# Filter settings
+filters:
+  # Enable filtering by cluster type
+  enableClusterFilter: true
+  clusterTypes:
+    - origin
+    - destination
+    - od
+    - temporal
+    - final
+
+  # Enable filtering by time bins
+  enableTimebinFilter: true
+  timebinSize: 900  # 15 minutes in seconds
+
+  # Enable filtering by mode
+  enableModeFilter: true
+
+# Statistics panel settings
+statistics:
+  # Show comparison mode toggle
+  enableComparison: true
+
+  # Show cluster statistics
+  enableClusterStats: true
+
+  # Metrics to display
+  metrics:
+    - requests
+    - rides
+    - pooling_rate
+    - avg_detour
+    - avg_travel_time
+
+# Notes about the new unified structure
+#
+# requests.csv contains:
+#   - All request attributes
+#   - geometry_wkt column (LineString in WKT format)
+#   - Updated cluster columns: origin_cluster, destination_cluster, od_cluster, temporal_cluster, cluster
+#
+# requests_geometries.geojson contains 3 features per request:
+#   - LineString with geometry_type: 'od_line'
+#   - Point with geometry_type: 'origin', activity_type: <start_activity_type>
+#   - Point with geometry_type: 'destination', activity_type: <end_activity_type>
+#
+# cluster_stats.csv contains:
+#   - Statistics for all 5 cluster types: origin, destination, od, temporal, final
+#   - Each row has a 'type' column indicating cluster type
+#
+# cluster_geometries.geojson contains:
+#   - Unified export with cluster_type and geometry_type properties
+#   - Boundaries, centroids, and flows for all cluster types
+#   - Filter by cluster_type to get specific cluster geometries
