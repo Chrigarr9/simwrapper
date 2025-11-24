@@ -143,10 +143,10 @@ import { panelLookup } from '@/dash-panels/_allPanels'
 import DashboardDataManager from '@/js/DashboardDataManager'
 
 // NEW: Import coordination managers and wrapper component
-import { FilterManager } from '@/managers/FilterManager'
-import { LinkageManager } from '@/managers/LinkageManager'
-import { DataTableManager } from '@/managers/DataTableManager'
-import LinkableCardWrapper from '@/components/interactive/LinkableCardWrapper.vue'
+import { FilterManager } from './managers/FilterManager'
+import { LinkageManager } from './managers/LinkageManager'
+import { DataTableManager } from './managers/DataTableManager'
+import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any

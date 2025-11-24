@@ -13,9 +13,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import type { FilterManager, FilterObserver } from '@/managers/FilterManager'
-import type { LinkageManager, LinkageObserver } from '@/managers/LinkageManager'
-import type { DataTableManager } from '@/managers/DataTableManager'
+import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
+import type { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
+import type { DataTableManager } from '../../managers/DataTableManager'
 
 interface Props {
   card: any
