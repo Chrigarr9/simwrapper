@@ -1,0 +1,173 @@
+header:
+  tab: "Commuter Requests Interactive"
+  title: "Commuter Requests Analysis"
+  description: "Interactive visualization using InteractiveDashboard plugin"
+
+# Central data table (triggers InteractiveDashboard)
+table:
+  name: "Requests"
+  dataset: requests.csv
+  idColumn: request_id
+  visible: true
+  columns:
+    hide:
+      - geometry_wkt
+      - start_x
+      - start_y
+      - end_x
+      - end_y
+      - pax_id
+      - origin
+      - destination
+    formats:
+      treq:
+        type: time
+        convertFrom: seconds
+      travel_time:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 1
+      ttrav_base:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 1
+      wait_time:
+        type: duration
+        convertFrom: seconds
+        unit: min
+        decimals: 1
+      distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+      traveled_distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+      euclidean_distance:
+        type: distance
+        convertFrom: meters
+        unit: km
+        decimals: 2
+      max_detour:
+        type: decimal
+        decimals: 2
+      detour_factor:
+        type: decimal
+        decimals: 2
+      max_cost:
+        type: decimal
+        decimals: 2
+      earliest_departure_time:
+        type: time
+        convertFrom: seconds
+      latest_departure_time:
+        type: time
+        convertFrom: seconds
+      earliest_arrival_time:
+        type: time
+        convertFrom: seconds
+      latest_arrival_time:
+        type: time
+        convertFrom: seconds
+
+layout:
+  row1:
+    # Map with request lines and clusters (left side, 2/3 width)
+    - type: map
+      title: "Requests Map"
+      width: 2
+      height: 12
+      center: [11.57, 48.14]
+      zoom: 10
+      layers:
+        # Request OD lines
+        - name: request_lines
+          file: requests_geometries.geojson
+          type: line
+          visible: true
+          width: 2
+          opacity: 0.6
+          color: "#3498db"
+          filter:
+            property: geometry_type
+            value: od_line
+          linkage:
+            tableColumn: request_id
+            geoProperty: request_id
+            onHover: highlight
+            onSelect: filter
+
+        # Request destinations (points)
+        - name: request_destinations
+          file: requests_geometries.geojson
+          type: circle
+          visible: true
+          radius: 5
+          fillColor: "#e74c3c"
+          fillOpacity: 0.7
+          filter:
+            property: geometry_type
+            value: destination
+          linkage:
+            tableColumn: request_id
+            geoProperty: request_id
+            onHover: highlight
+            onSelect: filter
+
+        # Cluster boundaries (origin clusters by default)
+        - name: cluster_boundaries
+          file: cluster_geometries.geojson
+          type: fill
+          visible: true
+          fillColor: "#9b59b6"
+          fillOpacity: 0.15
+          lineColor: "#8e44ad"
+          lineWidth: 2
+          filter:
+            - property: cluster_type
+              value: origin
+            - property: geometry_type
+              value: boundary
+          linkage:
+            tableColumn: origin_cluster
+            geoProperty: cluster_id
+            onHover: highlight
+            onSelect: filter
+
+    # Active Time Distribution Histogram
+    - type: histogram
+      title: "Active Time Distribution"
+      column: treq
+      binSize: 900
+      width: 1
+      height: 6
+      linkage:
+        type: filter
+        column: treq
+        behavior: toggle
+
+    # Main Mode Pie Chart
+    - type: pie-chart
+      title: "Main Mode Share"
+      column: main_mode
+      width: 1
+      height: 6
+      linkage:
+        type: filter
+        column: main_mode
+        behavior: toggle
+
+  # row2:
+    # NOTE: Table card for showing filtered centralized data is not yet implemented.
+    # The table configuration above (visible: true) makes the data table visible.
+    # When FilteredTableCard is implemented, add here:
+    # - type: filtered-table
+    #   title: "Filtered Requests"
+    #   width: 3
+    #   height: 8
+    #   source: table
