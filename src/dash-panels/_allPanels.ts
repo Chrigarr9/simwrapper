@@ -1,4 +1,5 @@
 import { AsyncComponent, defineAsyncComponent } from 'vue'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 // add every chart type here.
 // the name of the import will be the chart "type" in YAML.
@@ -15,6 +16,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   hexagons: defineAsyncComponent(() => import('./hexagons.vue')),
   histogram: defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/HistogramCard.vue')),
   line: defineAsyncComponent(() => import('./line.vue')),
+  map: defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/MapCard.vue')),
   pie: defineAsyncComponent(() => import('./pie.vue')),
   'pie-chart': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/PieChartCard.vue')),
   plotly: defineAsyncComponent(() => import('./plotly.vue')),
@@ -30,10 +32,10 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   xml: defineAsyncComponent(() => import('./xml.vue')),
 
   // full-screen map visualizations:
+  'area-map': defineAsyncComponent(() => import('./area-map.vue')),
   carriers: defineAsyncComponent(() => import('./carriers.vue')),
   flowmap: defineAsyncComponent(() => import('./flowmap.vue')),
   links: defineAsyncComponent(() => import('./links.vue')),
-  map: defineAsyncComponent(() => import('./area-map.vue')),
   layers: defineAsyncComponent(() => import('./layermap.vue')),
   matrix: defineAsyncComponent(() => import('./matrix.vue')),
   xytime: defineAsyncComponent(() => import('./xytime.vue')),
