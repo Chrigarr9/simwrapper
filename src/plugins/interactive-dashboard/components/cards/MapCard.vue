@@ -405,38 +405,182 @@ function initDeckOverlay() {
   console.log('[MapCard] Deck.gl overlay initialized')
 }
 
+// ============================================================================
+// TASK 7: Advanced Tooltip System with Template Substitution
+// ============================================================================
+
+// Enhanced tooltip content generator
 function getTooltipContent(object: any): any {
   if (!object || !props.tooltip?.enabled) {
     return null
   }
 
   const properties = object.properties || {}
-  let html = '<div style="padding: 8px; max-width: 300px;">'
 
-  Object.entries(properties).slice(0, 10).forEach(([key, value]) => {
-    if (key.startsWith('_')) return
-    html += `<div><strong>${key}:</strong> ${value}</div>`
+  // Use custom template if provided
+  if (props.tooltip.template) {
+    const html = renderTooltipTemplate(props.tooltip.template, properties)
+    return {
+      html,
+      style: getTooltipStyle(),
+    }
+  }
+
+  // Auto-generate tooltip from all properties
+  const html = renderDefaultTooltip(properties)
+  return {
+    html,
+    style: getTooltipStyle(),
+  }
+}
+
+// Render tooltip from template string
+function renderTooltipTemplate(template: string, properties: Record<string, any>): string {
+  let html = template
+
+  // Replace {properties.xxx} placeholders
+  const regex = /\{properties\.([a-zA-Z0-9_]+)\}/g
+  html = html.replace(regex, (match, propertyName) => {
+    const value = properties[propertyName]
+    if (value === undefined || value === null) {
+      return '<em>N/A</em>'
+    }
+    return formatTooltipValue(value)
   })
+
+  // Wrap in container
+  return `<div class="mapcard-tooltip">${html}</div>`
+}
+
+// Render default tooltip showing all properties
+function renderDefaultTooltip(properties: Record<string, any>): string {
+  if (Object.keys(properties).length === 0) {
+    return '<div class="mapcard-tooltip"><em>No data</em></div>'
+  }
+
+  let html = '<div class="mapcard-tooltip">'
+
+  // Limit to first 10 properties to avoid huge tooltips
+  const entries = Object.entries(properties).slice(0, 10)
+
+  entries.forEach(([key, value]) => {
+    // Skip internal properties
+    if (key.startsWith('_')) return
+
+    const formattedKey = formatPropertyName(key)
+    const formattedValue = formatTooltipValue(value)
+
+    html += `
+      <div class="tooltip-row">
+        <span class="tooltip-key">${formattedKey}:</span>
+        <span class="tooltip-value">${formattedValue}</span>
+      </div>
+    `
+  })
+
+  if (Object.keys(properties).length > 10) {
+    html += '<div class="tooltip-row"><em>... and more</em></div>'
+  }
 
   html += '</div>'
 
+  return html
+}
+
+// Format property name for display (e.g., "main_mode" -> "Main Mode")
+function formatPropertyName(name: string): string {
+  return name
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+// Format property value for display
+function formatTooltipValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '<em>N/A</em>'
+  }
+
+  // Number formatting
+  if (typeof value === 'number') {
+    // Check if it's likely a large coordinate or timestamp
+    if (Math.abs(value) > 10000) {
+      return value.toFixed(0)
+    }
+    // Regular numbers - 2 decimal places
+    return value.toFixed(2)
+  }
+
+  // Boolean
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+
+  // String (escape HTML)
+  return String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Get tooltip style based on theme
+function getTooltipStyle(): Record<string, string> {
   return {
-    html,
-    style: {
-      backgroundColor: isDarkMode.value ? '#1f2937' : 'white',
-      color: isDarkMode.value ? '#e5e7eb' : '#111827',
-      fontSize: '12px',
-      borderRadius: '4px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      maxWidth: '300px',
-      pointerEvents: 'none',
-    },
+    backgroundColor: isDarkMode.value ? '#1f2937' : 'white',
+    color: isDarkMode.value ? '#e5e7eb' : '#111827',
+    fontSize: '12px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    lineHeight: '1.5',
+    padding: '8px 12px',
+    borderRadius: '4px',
+    boxShadow: isDarkMode.value
+      ? '0 4px 12px rgba(0, 0, 0, 0.5)'
+      : '0 2px 8px rgba(0, 0, 0, 0.15)',
+    maxWidth: '300px',
+    pointerEvents: 'none',
+    zIndex: '1000',
   }
 }
 
 // ============================================================================
 // TASKS 4-5: Layer Factories and Update System
 // ============================================================================
+
+// TASK 10: Sort layers by zIndex
+function sortLayersByZIndex(layers: any[]): any[] {
+  // Create layer info with zIndex
+  const layersWithInfo = layers.map((layer, index) => {
+    // Extract layer name from deck.gl layer id
+    const layerId = layer.id || ''
+    const layerConfig = findLayerConfigById(layerId)
+
+    return {
+      layer,
+      zIndex: layerConfig?.zIndex,
+      originalIndex: index,
+    }
+  })
+
+  // Sort: explicit zIndex first (ascending), then by original order
+  layersWithInfo.sort((a, b) => {
+    // Both have explicit zIndex
+    if (a.zIndex !== undefined && b.zIndex !== undefined) {
+      return a.zIndex - b.zIndex
+    }
+
+    // Only a has zIndex (a comes first)
+    if (a.zIndex !== undefined) {
+      return -1
+    }
+
+    // Only b has zIndex (b comes first)
+    if (b.zIndex !== undefined) {
+      return 1
+    }
+
+    // Neither has zIndex - preserve original order
+    return a.originalIndex - b.originalIndex
+  })
+
+  return layersWithInfo.map((info) => info.layer)
+}
 
 function updateLayers() {
   if (!deckOverlay.value) {
@@ -491,8 +635,12 @@ function updateLayers() {
     }
   })
 
-  deckOverlay.value.setProps({ layers })
-  console.log(`[MapCard] Updated ${layers.length} layers`)
+  // Sort layers by zIndex (if specified) or by original order
+  const sortedLayers = sortLayersByZIndex(layers)
+
+  // Update deck overlay
+  deckOverlay.value.setProps({ layers: sortedLayers })
+  console.log(`[MapCard] Updated ${sortedLayers.length} layers`)
 }
 
 // Polygon Layer Factory
@@ -586,17 +734,10 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
         return coords[coords.length - 1] as Position
       },
 
+      // Match parent line width as radius (scaled down to 80%)
       getRadius: (d: any) => {
-        const featureId = d.properties?.[layerConfig.linkage?.geoProperty || 'id']
-        const isHovered = props.hoveredIds.has(featureId)
-        const isSelected = props.selectedIds.has(featureId)
-        const isFiltered = isFeatureFiltered(d, layerConfig)
-        const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
-
-        if (isHovered) return 8
-        if (isSelected) return 5
-        if (hasActiveFilters && !isFiltered) return 2
-        return 3
+        const width = getFeatureWidth(d, layerConfig)
+        return Math.max(2, width * 0.8) // 80% of line width
       },
 
       getFillColor: (d: any) => getFeatureColor(d, layerConfig),
@@ -607,8 +748,8 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
       },
     })
   } catch (error) {
@@ -665,17 +806,10 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
 
       getPosition: (d: any) => d.geometry.coordinates[1] as Position,
 
+      // Match parent arc width as radius
       getRadius: (d: any) => {
-        const featureId = d.properties?.[layerConfig.linkage?.geoProperty || 'id']
-        const isHovered = props.hoveredIds.has(featureId)
-        const isSelected = props.selectedIds.has(featureId)
-        const isFiltered = isFeatureFiltered(d, layerConfig)
-        const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
-
-        if (isHovered) return 6
-        if (isSelected) return 5
-        if (hasActiveFilters && !isFiltered) return 2
-        return 4
+        const width = getFeatureWidth(d, layerConfig)
+        return Math.max(2, width) // Match arc width
       },
 
       getFillColor: (d: any) => getFeatureColor(d, layerConfig),
@@ -684,8 +818,8 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
       },
     })
   } catch (error) {
@@ -708,20 +842,8 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
 
       getPosition: (d: any) => d.geometry.coordinates as Position,
 
-      getRadius: (d: any) => {
-        const featureId = d.properties?.[layerConfig.linkage?.geoProperty || 'id']
-        const isHovered = props.hoveredIds.has(featureId)
-        const isSelected = props.selectedIds.has(featureId)
-        const isFiltered = isFeatureFiltered(d, layerConfig)
-        const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
-
-        const baseRadius = layerConfig.radius || 5
-
-        if (isHovered) return baseRadius * 1.5
-        if (isSelected) return baseRadius * 1.2
-        if (hasActiveFilters && !isFiltered) return baseRadius * 0.5
-        return baseRadius
-      },
+      // Use new getFeatureRadius function with attribute-based sizing support
+      getRadius: (d: any) => getFeatureRadius(d, layerConfig),
 
       getFillColor: (d: any) => getFeatureColor(d, layerConfig),
       getLineColor: [255, 255, 255, 200],
@@ -731,8 +853,8 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.radiusBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
       },
     })
   } catch (error) {
@@ -819,6 +941,76 @@ function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, n
   return [100, 100, 100, 255]
 }
 
+// ============================================================================
+// TASK 9: Attribute-Based Sizing System
+// ============================================================================
+
+// Calculate scaled width based on attribute value
+function getAttributeBasedWidth(
+  feature: any,
+  layerConfig: LayerConfig,
+  baseWidth: number
+): number {
+  if (!layerConfig.widthBy) {
+    return baseWidth
+  }
+
+  const widthBy = layerConfig.widthBy
+  const attributeValue = feature.properties?.[widthBy.attribute]
+
+  if (attributeValue === undefined || attributeValue === null || typeof attributeValue !== 'number') {
+    console.warn(`[MapCard] Invalid width attribute "${widthBy.attribute}"`, feature.properties)
+    return baseWidth
+  }
+
+  // Get min/max from data
+  const features = getLayerData(layerConfig.name)
+  const [minValue, maxValue] = calculateNumericRange(features, widthBy.attribute)
+
+  // Normalize to 0-1
+  const normalized = (attributeValue - minValue) / (maxValue - minValue)
+  const clamped = Math.max(0, Math.min(1, normalized))
+
+  // Scale to configured range
+  const [minWidth, maxWidth] = widthBy.scale
+  const scaledWidth = minWidth + clamped * (maxWidth - minWidth)
+
+  return scaledWidth
+}
+
+// Calculate scaled radius based on attribute value
+function getAttributeBasedRadius(
+  feature: any,
+  layerConfig: LayerConfig,
+  baseRadius: number
+): number {
+  if (!layerConfig.radiusBy) {
+    return baseRadius
+  }
+
+  const radiusBy = layerConfig.radiusBy
+  const attributeValue = feature.properties?.[radiusBy.attribute]
+
+  if (attributeValue === undefined || attributeValue === null || typeof attributeValue !== 'number') {
+    console.warn(`[MapCard] Invalid radius attribute "${radiusBy.attribute}"`, feature.properties)
+    return baseRadius
+  }
+
+  // Get min/max from data
+  const features = getLayerData(layerConfig.name)
+  const [minValue, maxValue] = calculateNumericRange(features, radiusBy.attribute)
+
+  // Normalize to 0-1
+  const normalized = (attributeValue - minValue) / (maxValue - minValue)
+  const clamped = Math.max(0, Math.min(1, normalized))
+
+  // Scale to configured range
+  const [minRadius, maxRadius] = radiusBy.scale
+  const scaledRadius = minRadius + clamped * (maxRadius - minRadius)
+
+  return scaledRadius
+}
+
 function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
 
@@ -831,6 +1023,7 @@ function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
   return layerConfig.lineWidth || 2
 }
 
+// Get feature width with attribute-based sizing support
 function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
   const isHovered = props.hoveredIds.has(featureId)
@@ -838,12 +1031,48 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
-  const baseWidth = layerConfig.width || 2
+  // Base width (static or attribute-based)
+  let baseWidth: number
+  if (layerConfig.widthBy) {
+    // Attribute-based sizing
+    const staticBase = layerConfig.width || 2
+    baseWidth = getAttributeBasedWidth(feature, layerConfig, staticBase)
+  } else {
+    // Static sizing
+    baseWidth = layerConfig.width || 2
+  }
 
+  // State-based scaling
   if (isHovered) return baseWidth * 3
   if (isSelected) return baseWidth * 2
-  if (hasActiveFilters && !isFiltered) return 1
+  if (hasActiveFilters && !isFiltered) return 1 // Always 1px when dimmed
   return baseWidth
+}
+
+// Get feature radius with attribute-based sizing support
+function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
+  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const isHovered = props.hoveredIds.has(featureId)
+  const isSelected = props.selectedIds.has(featureId)
+  const isFiltered = isFeatureFiltered(feature, layerConfig)
+  const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+
+  // Base radius (static or attribute-based)
+  let baseRadius: number
+  if (layerConfig.radiusBy) {
+    // Attribute-based sizing
+    const staticBase = layerConfig.radius || 5
+    baseRadius = getAttributeBasedRadius(feature, layerConfig, staticBase)
+  } else {
+    // Static sizing
+    baseRadius = layerConfig.radius || 5
+  }
+
+  // State-based scaling
+  if (isHovered) return baseRadius * 1.5
+  if (isSelected) return baseRadius * 1.2
+  if (hasActiveFilters && !isFiltered) return baseRadius * 0.5 // Smaller when dimmed
+  return baseRadius
 }
 
 function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
@@ -876,11 +1105,175 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
+// ============================================================================
+// TASK 8: Dynamic Color Management System
+// ============================================================================
+
+// Default categorical color schemes
+const DEFAULT_CATEGORICAL_COLORS: Record<string, Record<string, string>> = {
+  mode: {
+    car: '#e74c3c',
+    pt: '#3498db',
+    bike: '#2ecc71',
+    walk: '#f39c12',
+    drt: '#9b59b6',
+    ride: '#1abc9c',
+    default: '#95a5a6',
+  },
+  activity: {
+    home: '#4477ff',
+    work: '#ff4477',
+    education: '#44ff77',
+    shopping: '#ff7744',
+    leisure: '#aa44ff',
+    other: '#777777',
+  },
+}
+
+// Get categorical color for a value
+function getCategoricalColor(
+  value: any,
+  colorMap?: Record<string, string>,
+  attribute?: string
+): [number, number, number] {
+  // Use custom color map if provided
+  if (colorMap && colorMap[value]) {
+    return hexToRgb(colorMap[value])
+  }
+
+  // Try default schemes based on attribute name
+  if (attribute) {
+    const schemeName = attribute.toLowerCase().includes('mode') ? 'mode' :
+                      attribute.toLowerCase().includes('activity') ? 'activity' : null
+
+    if (schemeName && DEFAULT_CATEGORICAL_COLORS[schemeName]) {
+      const scheme = DEFAULT_CATEGORICAL_COLORS[schemeName]
+      if (scheme[value]) {
+        return hexToRgb(scheme[value])
+      }
+      if (scheme.default) {
+        return hexToRgb(scheme.default)
+      }
+    }
+  }
+
+  // Fallback: generate color from hash
+  return generateColorFromHash(String(value))
+}
+
+// Generate color from string hash (for dynamic categories)
+function generateColorFromHash(value: string): [number, number, number] {
+  // Simple hash function
+  let hash = 0
+  for (let i = 0; i < value.length; i++) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash)
+    hash = hash & hash // Convert to 32-bit integer
+  }
+
+  // Generate RGB from hash
+  const r = (hash & 0xff0000) >> 16
+  const g = (hash & 0x00ff00) >> 8
+  const b = hash & 0x0000ff
+
+  // Ensure colors are not too dark
+  return [
+    Math.max(r, 80),
+    Math.max(g, 80),
+    Math.max(b, 80),
+  ]
+}
+
+// Get numeric color using Viridis gradient
+function getNumericColor(
+  value: number,
+  scale?: [number, number],
+  minValue?: number,
+  maxValue?: number
+): [number, number, number] {
+  // Determine scale
+  let min = scale ? scale[0] : minValue || 0
+  let max = scale ? scale[1] : maxValue || 100
+
+  // Normalize value to 0-1
+  let t = (value - min) / (max - min)
+  t = Math.max(0, Math.min(1, t)) // Clamp to [0, 1]
+
+  // Viridis color approximation
+  return viridisColorRGB(t)
+}
+
+// Viridis gradient (polynomial approximation)
+function viridisColorRGB(t: number): [number, number, number] {
+  // Clamp t to [0, 1]
+  t = Math.max(0, Math.min(1, t))
+
+  // Polynomial approximation for Viridis
+  // Purple → Blue → Green → Yellow
+  const r = Math.max(0, Math.min(255, Math.round(255 * (0.267004 + t * (2.077963 * t - 2.141950)))))
+  const g = Math.max(0, Math.min(255, Math.round(255 * (0.004874 + t * (1.385520 - 0.790116 * t)))))
+  const b = Math.max(0, Math.min(255, Math.round(255 * (0.329415 + t * (1.100124 - 1.470975 * t)))))
+
+  return [r, g, b]
+}
+
+// Calculate min/max for numeric attribute from data
+function calculateNumericRange(features: any[], attribute: string): [number, number] {
+  let min = Infinity
+  let max = -Infinity
+
+  features.forEach((feature) => {
+    const value = feature.properties?.[attribute]
+    if (typeof value === 'number') {
+      min = Math.min(min, value)
+      max = Math.max(max, value)
+    }
+  })
+
+  // Fallback if no valid values
+  if (!isFinite(min) || !isFinite(max)) {
+    return [0, 100]
+  }
+
+  return [min, max]
+}
+
+// Enhanced getBaseColor with dynamic coloring support
 function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, number] {
+  // Check if colorBy is configured
+  if (layerConfig.colorBy) {
+    const colorBy = layerConfig.colorBy
+    const attributeValue = feature.properties?.[colorBy.attribute]
+
+    if (attributeValue === undefined || attributeValue === null) {
+      console.warn(`[MapCard] Missing attribute "${colorBy.attribute}" for feature`, feature.properties)
+      return [128, 128, 128] // Gray fallback
+    }
+
+    if (colorBy.type === 'categorical') {
+      // Categorical coloring
+      return getCategoricalColor(attributeValue, colorBy.colors, colorBy.attribute)
+
+    } else if (colorBy.type === 'numeric') {
+      // Numeric coloring
+      const features = getLayerData(layerConfig.name)
+
+      // Calculate or use provided scale
+      const scale = colorBy.scale || calculateNumericRange(features, colorBy.attribute)
+
+      return getNumericColor(attributeValue, scale)
+    }
+  }
+
+  // Static color from config
   if (layerConfig.color) {
     return hexToRgb(layerConfig.color)
   }
 
+  if (layerConfig.fillColor) {
+    return hexToRgb(layerConfig.fillColor)
+  }
+
+  // Default blue
   return [52, 152, 219]
 }
 
@@ -1083,5 +1476,26 @@ function cleanup() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Tooltip styles (injected via getTooltip) */
+:global(.mapcard-tooltip) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(.tooltip-row) {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+:global(.tooltip-key) {
+  font-weight: 600;
+  min-width: 80px;
+}
+
+:global(.tooltip-value) {
+  flex: 1;
 }
 </style>
