@@ -105,7 +105,7 @@
             :fileSystemConfig="fileSystemConfig"
             :subfolder="row.subtabFolder || xsubfolder"
             :files="fileList"
-            :yaml="card.props && card.props.configFile"
+            :yaml="(card.props && card.props.configFile) || ''"
             :config="card.props"
             :datamanager="datamanager"
             :split="split"
@@ -121,6 +121,18 @@
           .error-text(v-if="card.errors.length")
             span.clear-error(@click="card.errors=[]") &times;
             p(v-for="err,i in card.errors" :key="i") {{ err }}
+
+    //- Data Table (if visible in config)
+    .data-table-container(v-if="yaml.table && yaml.table.visible && dataTableManager")
+      h3.table-title {{ yaml.table.name || 'Data Table' }}
+      .table-wrapper
+        table.data-table
+          thead
+            tr
+              th(v-for="col in visibleColumns" :key="col") {{ col }}
+          tbody
+            tr(v-for="(row, idx) in displayData" :key="idx")
+              td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
 
 </template>
 
@@ -227,6 +239,21 @@ export default defineComponent({
       )
       return indexOfPathInFavorites > -1
     },
+    
+    // NEW: Table data computed properties
+    displayData(): any[] {
+      if (!this.dataTableManager) return []
+      const allData = this.dataTableManager.getData()
+      // Limit to first 100 rows for now to avoid performance issues
+      return allData.slice(0, 100)
+    },
+    
+    visibleColumns(): string[] {
+      if (!this.dataTableManager || this.displayData.length === 0) return []
+      const allColumns = Object.keys(this.displayData[0])
+      const hiddenColumns = this.yaml.table?.columns?.hide || []
+      return allColumns.filter(col => !hiddenColumns.includes(col))
+    },
   },
 
   watch: {
@@ -240,6 +267,40 @@ export default defineComponent({
   },
 
   methods: {
+    // NEW: Format table cell values based on column config
+    formatCellValue(value: any, column: string): string {
+      if (value === null || value === undefined) return ''
+      
+      const format = this.yaml.table?.columns?.formats?.[column]
+      if (!format) return String(value)
+      
+      // Handle different format types
+      if (format.type === 'time') {
+        // Convert seconds to time string
+        const seconds = format.convertFrom === 'seconds' ? value : value
+        const hours = Math.floor(seconds / 3600)
+        const mins = Math.floor((seconds % 3600) / 60)
+        const secs = Math.floor(seconds % 60)
+        return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+      }
+      
+      if (format.type === 'duration') {
+        const value_in_unit = format.convertFrom === 'seconds' ? value / 60 : value
+        return `${value_in_unit.toFixed(format.decimals || 1)} ${format.unit || 'min'}`
+      }
+      
+      if (format.type === 'distance') {
+        const value_in_unit = format.convertFrom === 'meters' ? value / 1000 : value
+        return `${value_in_unit.toFixed(format.decimals || 2)} ${format.unit || 'km'}`
+      }
+      
+      if (format.type === 'decimal') {
+        return Number(value).toFixed(format.decimals || 2)
+      }
+      
+      return String(value)
+    },
+    
     clickedFavorite() {
       let hint = `${this.root}/${this.xsubfolder}`
       let finalFolder = this.xsubfolder || this.root
@@ -318,9 +379,17 @@ export default defineComponent({
       return files
     },
 
-    getCardComponent(card: { type: string; title: string }) {
+    getCardComponent(card: any) {
       // console.log(1, card)
-      if (card.type === 'table' || card.type === 'topsheet') return 'TopSheet'
+      // TopSheet requires a config file - don't render if missing
+      if (card.type === 'table' || card.type === 'topsheet') {
+        const hasConfigFile = card.props && card.props.configFile
+        if (!hasConfigFile) {
+          console.warn(`TopSheet card "${card.title}" missing configFile, skipping render`)
+          return undefined
+        }
+        return 'TopSheet'
+      }
 
       // load the plugin
       if (panelLookup[card.type]) {
@@ -462,6 +531,10 @@ export default defineComponent({
         const yaml = await this.fileApi.getFileText(`${this.xsubfolder}/dashboard.yaml`)
         this.yaml = YAML.parse(yaml)
       }
+
+      // NEW: Initialize coordination layer immediately after loading YAML
+      // This ensures managers are available when cards are created
+      await this.initializeCoordinationLayer()
 
       // set header
       this.updateThemeAndLabels()
@@ -729,22 +802,33 @@ export default defineComponent({
       this.filterManager = new FilterManager()
       this.linkageManager = new LinkageManager()
 
-      // Initialize DataTableManager with a minimal config
-      // In a full implementation, this would come from YAML config
-      const tableConfig = {
-        name: 'centralizedData',
-        dataset: this.yaml.data || '',
-        idColumn: this.yaml.idColumn || 'id',
-        visible: true,
+      // Check if table config exists in YAML
+      if (!this.yaml.table) {
+        console.warn('[InteractiveDashboard] No table configuration found in YAML')
+        return
       }
+
+      // Initialize DataTableManager with config from YAML
+      const tableConfig = {
+        name: this.yaml.table.name || 'centralizedData',
+        dataset: this.yaml.table.dataset || '',
+        idColumn: this.yaml.table.idColumn || 'id',
+        visible: this.yaml.table.visible !== false,
+        columns: this.yaml.table.columns || {},
+      }
+      
+      console.log('[InteractiveDashboard] Initializing DataTableManager with config:', tableConfig)
       this.dataTableManager = new DataTableManager(tableConfig)
 
-      // Load centralized data if specified in YAML config
-      if (this.yaml.data) {
+      // Load centralized data
+      if (tableConfig.dataset) {
         try {
+          console.log('[InteractiveDashboard] Loading dataset:', tableConfig.dataset)
           await this.dataTableManager.loadData(this.fileApi, this.xsubfolder)
+          console.log('[InteractiveDashboard] Data loaded successfully')
         } catch (e) {
-          console.warn('Failed to load centralized data:', e)
+          console.error('[InteractiveDashboard] Failed to load centralized data:', e)
+          this.$emit('error', `Failed to load data: ${e}`)
         }
       }
     },
@@ -768,9 +852,6 @@ export default defineComponent({
 
     try {
       await this.setupDashboard()
-
-      // NEW: Initialize coordination layer after dashboard setup
-      await this.initializeCoordinationLayer()
 
       // await this.$nextTick()
       this.resizeAllCards()
@@ -1031,5 +1112,62 @@ li.is-not-active b a {
 
 .favorite-icon:hover {
   cursor: pointer;
+}
+
+// NEW: Data table styles
+.data-table-container {
+  margin: 2rem 1rem;
+  padding: 1rem;
+  background: var(--bgPanel);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  
+  thead {
+    position: sticky;
+    top: 0;
+    background: var(--bgPanel);
+    z-index: 10;
+    
+    th {
+      padding: 0.75rem;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid var(--borderColor);
+      color: var(--text);
+    }
+  }
+  
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--borderColor);
+      
+      &:hover {
+        background: var(--bgHover);
+      }
+      
+      td {
+        padding: 0.5rem 0.75rem;
+        color: var(--text);
+      }
+    }
+  }
 }
 </style>

@@ -32,7 +32,7 @@ export class DataTableManager {
     const filepath = subfolder + '/' + this.config.dataset
 
     return new Promise((resolve, reject) => {
-      fileService.fetchFileAsBlob(filepath).then((blob: Blob) => {
+      fileService.getFileBlob(filepath).then((blob: Blob) => {
         Papa.parse(blob, {
           header: true,
           dynamicTyping: true,
