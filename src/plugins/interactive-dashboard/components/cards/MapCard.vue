@@ -8,6 +8,19 @@
       <div class="spinner"></div>
       <div>Loading map...</div>
     </div>
+
+    <!-- Color Legend -->
+    <color-legend
+      v-if="showLegend && legendData"
+      :title="legendData.title"
+      :legend-items="legendData.type === 'categorical' ? legendData.items : []"
+      :is-numeric="legendData.type === 'numeric'"
+      :min-value="legendData.type === 'numeric' ? legendData.minValue : undefined"
+      :max-value="legendData.type === 'numeric' ? legendData.maxValue : undefined"
+      :clickable="props.legend?.clickToFilter !== false"
+      :is-dark-mode="isDarkMode"
+      @item-clicked="handleLegendItemClick"
+    />
   </div>
 </template>
 
@@ -19,6 +32,7 @@ import { PolygonLayer, LineLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/la
 import type { Position } from '@deck.gl/core'
 import { fileSystemConfig } from '@/Globals'
 import globalStore from '@/store'
+import ColorLegend from './ColorLegend.vue'
 
 // Types
 interface LayerConfig {
@@ -601,6 +615,14 @@ function updateLayers() {
       return
     }
 
+    // TASK 12: Create baseline layer if comparison mode enabled
+    if (props.showComparison && props.baselineData && props.baselineData.length > 0) {
+      const baselineLayer = createBaselineLayer(layerConfig, features)
+      if (baselineLayer) {
+        layers.push(baselineLayer)
+      }
+    }
+
     let layer: any = null
 
     switch (layerConfig.type) {
@@ -640,7 +662,91 @@ function updateLayers() {
 
   // Update deck overlay
   deckOverlay.value.setProps({ layers: sortedLayers })
-  console.log(`[MapCard] Updated ${sortedLayers.length} layers`)
+  console.log(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
+}
+
+// TASK 12: Create baseline layer (gray, dimmed) for comparison mode
+function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
+  const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // 30% gray
+
+  switch (layerConfig.type) {
+    case 'polygon':
+      return new PolygonLayer({
+        id: `baseline-polygon-${layerConfig.name}`,
+        data: features,
+        pickable: false, // Baseline not interactive
+        stroked: true,
+        filled: true,
+        wireframe: true,
+        lineWidthMinPixels: 1,
+
+        getPolygon: (d: any) => {
+          const coords = d.geometry.coordinates
+          if (d.geometry.type === 'Polygon') {
+            return coords[0]
+          } else if (d.geometry.type === 'MultiPolygon') {
+            return coords[0][0]
+          }
+          return []
+        },
+
+        getFillColor: baselineColor,
+        getLineColor: [160, 160, 160, 100],
+        getLineWidth: 1,
+      })
+
+    case 'line':
+      return new LineLayer({
+        id: `baseline-line-${layerConfig.name}`,
+        data: features,
+        pickable: false,
+
+        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
+        getTargetPosition: (d: any) => {
+          const coords = d.geometry.coordinates
+          return coords[coords.length - 1] as Position
+        },
+
+        getWidth: 1,
+        getColor: baselineColor,
+      })
+
+    case 'arc':
+      return new ArcLayer({
+        id: `baseline-arc-${layerConfig.name}`,
+        data: features,
+        pickable: false,
+        greatCircle: false,
+
+        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
+        getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+
+        getWidth: 2,
+        getSourceColor: baselineColor,
+        getTargetColor: baselineColor,
+
+        getTilt: () => layerConfig.arcTilt || 25,
+        getHeight: () => layerConfig.arcHeight || 0.2,
+      })
+
+    case 'scatterplot':
+      return new ScatterplotLayer({
+        id: `baseline-scatterplot-${layerConfig.name}`,
+        data: features,
+        pickable: false,
+        radiusMinPixels: 2,
+        radiusMaxPixels: 10,
+
+        getPosition: (d: any) => d.geometry.coordinates as Position,
+        getRadius: layerConfig.radius || 4,
+        getFillColor: baselineColor,
+        getLineColor: [160, 160, 160, 100],
+        lineWidthMinPixels: 1,
+      })
+
+    default:
+      return null
+  }
 }
 
 // Polygon Layer Factory
@@ -1403,6 +1509,122 @@ function findLayerConfigById(layerId: string | undefined): LayerConfig | null {
   return null
 }
 
+// ============================================================================
+// TASK 11: ColorLegend Integration
+// ============================================================================
+
+// Check if legend should be shown
+const showLegend = computed(() => {
+  return props.legend?.enabled !== false
+})
+
+// Build legend data from layers
+const legendData = computed(() => {
+  // Find the first layer with colorBy configuration
+  const colorByLayer = props.layers.find((layer) => layer.colorBy)
+
+  if (!colorByLayer || !colorByLayer.colorBy) {
+    return null
+  }
+
+  const colorBy = colorByLayer.colorBy
+
+  if (colorBy.type === 'categorical') {
+    return {
+      type: 'categorical' as const,
+      title: formatPropertyName(colorBy.attribute),
+      items: buildCategoricalLegendItems(colorByLayer, colorBy),
+    }
+  } else if (colorBy.type === 'numeric') {
+    const features = getLayerData(colorByLayer.name)
+    const [min, max] = colorBy.scale || calculateNumericRange(features, colorBy.attribute)
+
+    return {
+      type: 'numeric' as const,
+      title: formatPropertyName(colorBy.attribute),
+      minValue: min,
+      maxValue: max,
+    }
+  }
+
+  return null
+})
+
+// Build categorical legend items
+function buildCategoricalLegendItems(
+  layerConfig: LayerConfig,
+  colorBy: any
+): { label: string; color: string }[] {
+  const items: { label: string; color: string }[] = []
+
+  // If custom colors provided, use those
+  if (colorBy.colors) {
+    Object.entries(colorBy.colors).forEach(([value, color]) => {
+      items.push({
+        label: String(value),
+        color: String(color),
+      })
+    })
+    return items
+  }
+
+  // Otherwise, get unique values from data and generate colors
+  const features = getLayerData(layerConfig.name)
+  const uniqueValues = new Set<any>()
+
+  features.forEach((feature) => {
+    const value = feature.properties?.[colorBy.attribute]
+    if (value !== undefined && value !== null) {
+      uniqueValues.add(value)
+    }
+  })
+
+  uniqueValues.forEach((value) => {
+    const rgb = getCategoricalColor(value, colorBy.colors, colorBy.attribute)
+    const hexColor = rgbToHex(rgb)
+
+    items.push({
+      label: String(value),
+      color: hexColor,
+    })
+  })
+
+  return items
+}
+
+// Handle legend item click (categorical only)
+function handleLegendItemClick(label: string) {
+  if (!props.legend?.clickToFilter) {
+    return
+  }
+
+  // Find the layer with colorBy configuration
+  const colorByLayer = props.layers.find((layer) => layer.colorBy)
+
+  if (!colorByLayer || !colorByLayer.linkage) {
+    console.warn('[MapCard] Legend click-to-filter requires linkage configuration')
+    return
+  }
+
+  // Emit filter for this category
+  const filterId = `map-legend-${colorByLayer.name}`
+  const column = colorByLayer.linkage.tableColumn
+  const values = new Set([label])
+
+  emit('filter', filterId, column, values)
+
+  console.log(`[MapCard] Legend filter: ${column} = ${label}`)
+}
+
+// RGB to Hex converter
+function rgbToHex(rgb: [number, number, number]): string {
+  const toHex = (n: number) => {
+    const hex = Math.max(0, Math.min(255, n)).toString(16)
+    return hex.length === 1 ? '0' + hex : hex
+  }
+  return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`
+}
+
 // Watch for data changes to trigger layer updates
 watch(
   [() => props.filteredData, () => props.hoveredIds, () => props.selectedIds],
@@ -1410,6 +1632,15 @@ watch(
     updateLayers()
   },
   { deep: true }
+)
+
+// Watch for comparison mode changes
+watch(
+  () => props.showComparison,
+  () => {
+    console.log('[MapCard] Comparison mode changed:', props.showComparison)
+    updateLayers()
+  }
 )
 
 // ============================================================================

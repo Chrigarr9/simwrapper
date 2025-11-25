@@ -1,0 +1,176 @@
+header:
+  tab: "MapCard Demo"
+  title: "Interactive Map Card Examples"
+  description: "Comprehensive demonstration of MapCard features"
+
+# Central data table (triggers InteractiveDashboard)
+table:
+  name: "Requests"
+  dataset: sample-requests.csv
+  idColumn: request_id
+  visible: true
+
+layout:
+  row1:
+    # Full-featured map with all layer types
+    - type: map
+      title: "All Features Demo"
+      width: 2
+      height: 12
+      center: [11.57, 48.14]
+      zoom: 11
+      mapStyle: "auto"  # auto | light | dark
+
+      layers:
+        # Polygon layer with categorical coloring
+        - name: clusters
+          file: cluster_boundaries.geojson
+          type: polygon
+          visible: true
+          zIndex: 1
+
+          # Property filter
+          filter:
+            property: cluster_type
+            value: origin
+
+          # Categorical coloring
+          colorBy:
+            attribute: cluster_type
+            type: categorical
+            colors:
+              origin: "#3498db"
+              destination: "#e74c3c"
+              spatial: "#9b59b6"
+
+          # Styling
+          fillOpacity: 0.2
+          lineWidth: 2
+
+          # Linkage to table
+          linkage:
+            tableColumn: origin_cluster
+            geoProperty: cluster_id
+            onHover: highlight
+            onSelect: filter
+
+        # Arc layer with numeric coloring and attribute-based width
+        - name: cluster_flows
+          file: cluster_flows.geojson
+          type: arc
+          visible: true
+          zIndex: 3
+
+          # Arc styling
+          arcTilt: 25
+          arcHeight: 0.2
+
+          # Numeric coloring
+          colorBy:
+            attribute: num_requests
+            type: numeric
+            scale: [0, 50]
+
+          # Attribute-based width
+          widthBy:
+            attribute: num_requests
+            scale: [4, 14]
+
+          linkage:
+            tableColumn: flow_id
+            geoProperty: flow_id
+            onHover: highlight
+            onSelect: filter
+
+        # Line layer with categorical coloring (automatic destination markers)
+        - name: request_lines
+          file: request_geometries.geojson
+          type: line
+          visible: true
+          zIndex: 2
+
+          # Property filters (multiple)
+          filter:
+            - property: geometry_type
+              value: od_line
+
+          # Categorical coloring by mode
+          colorBy:
+            attribute: main_mode
+            type: categorical
+            colors:
+              car: "#e74c3c"
+              pt: "#3498db"
+              bike: "#2ecc71"
+              walk: "#f39c12"
+
+          opacity: 0.7
+          width: 2
+
+          linkage:
+            tableColumn: request_id
+            geoProperty: request_id
+            onHover: highlight
+            onSelect: filter
+
+        # Scatterplot layer with attribute-based radius
+        - name: stops
+          file: stops.geojson
+          type: scatterplot
+          visible: true
+          zIndex: 4
+
+          # Attribute-based sizing
+          radiusBy:
+            attribute: num_boardings
+            scale: [3, 12]
+
+          # Static color
+          color: "#f39c12"
+          opacity: 0.8
+
+          linkage:
+            tableColumn: stop_id
+            geoProperty: stop_id
+            onHover: highlight
+            onSelect: filter
+
+      # Tooltip configuration
+      tooltip:
+        enabled: true
+        template: |
+          <div>
+            <b>Request {properties.request_id}</b><br/>
+            Mode: {properties.main_mode}<br/>
+            Travel Time: {properties.travel_time} min<br/>
+            Distance: {properties.distance} km
+          </div>
+
+      # Color legend
+      legend:
+        enabled: true
+        position: "bottom-right"
+        clickToFilter: true
+
+    # Histogram for filtering
+    - type: histogram
+      title: "Travel Time Distribution"
+      column: travel_time
+      binSize: 5
+      width: 1
+      height: 6
+      linkage:
+        type: filter
+        column: travel_time
+        behavior: toggle
+
+    # Pie chart for mode filtering
+    - type: pie-chart
+      title: "Main Mode Share"
+      column: main_mode
+      width: 1
+      height: 6
+      linkage:
+        type: filter
+        column: main_mode
+        behavior: toggle

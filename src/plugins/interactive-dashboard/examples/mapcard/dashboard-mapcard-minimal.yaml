@@ -1,0 +1,26 @@
+header:
+  tab: "Minimal Map"
+  title: "Minimal MapCard Example"
+
+table:
+  name: "Data"
+  dataset: data.csv
+  idColumn: id
+  visible: true
+
+layout:
+  row1:
+    - type: map
+      width: 3
+      height: 10
+      layers:
+        - name: points
+          file: points.geojson
+          type: scatterplot
+          color: "#3498db"
+          radius: 5
+          linkage:
+            tableColumn: id
+            geoProperty: id
+            onHover: highlight
+            onSelect: filter
