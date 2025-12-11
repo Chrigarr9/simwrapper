@@ -1,8 +1,25 @@
 <template>
   <div class="map-card">
-    <div v-if="title" class="map-card-title">
-      {{ title }}
+    <!-- Map Controls (geometry type and color-by selectors) -->
+    <div v-if="hasMapControls" class="map-controls">
+      <div v-if="mapControlsConfig?.geometryType" class="control-item">
+        <label class="control-label">Geometry</label>
+        <select class="control-select" :value="geometryType" @change="onGeometryTypeChange">
+          <option v-for="opt in geometryTypeOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
+      <div v-if="mapControlsConfig?.colorBy && colorByOptions.length > 0" class="control-item">
+        <label class="control-label">Color by</label>
+        <select class="control-select" :value="colorByAttribute" @change="onColorByChange">
+          <option v-for="opt in colorByOptions" :key="opt.attribute" :value="opt.attribute">
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
     </div>
+
     <div :id="mapId" class="map-container"></div>
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
@@ -30,7 +47,8 @@ import maplibregl from 'maplibre-gl'
 import { MapboxOverlay } from '@deck.gl/mapbox'
 import { PolygonLayer, LineLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers'
 import type { Position } from '@deck.gl/core'
-import { fileSystemConfig } from '@/Globals'
+import { FileSystemConfig } from '@/Globals'
+import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 
@@ -60,8 +78,8 @@ interface LayerConfig {
   // Scatterplot styling
   radius?: number
 
-  // Dynamic coloring
-  colorBy?: {
+  // Dynamic coloring - can be a simple attribute name or full config object
+  colorBy?: string | {
     attribute: string
     type: 'categorical' | 'numeric'
     colors?: Record<string, string>
@@ -97,17 +115,17 @@ interface LayerConfig {
 }
 
 interface Props {
-  // From LinkableCardWrapper slot
-  filteredData: any[]
-  hoveredIds: Set<any>
-  selectedIds: Set<any>
+  // From LinkableCardWrapper slot (optional - only provided when using linkage)
+  filteredData?: any[]
+  hoveredIds?: Set<any>
+  selectedIds?: Set<any>
 
   // From YAML config
   title?: string
   center?: [number, number]
   zoom?: number
   mapStyle?: 'light' | 'dark' | 'auto'
-  layers: LayerConfig[]
+  layers?: LayerConfig[]
   tooltip?: {
     enabled: boolean
     template?: string
@@ -132,6 +150,18 @@ interface Props {
   // Comparison mode (future)
   showComparison?: boolean
   baselineData?: any[]
+
+  // Map control selections (from dashboard)
+  geometryType?: string
+  colorByAttribute?: string
+
+  // Map controls configuration (from YAML)
+  mapControlsConfig?: {
+    geometryType?: boolean
+    colorBy?: boolean
+  }
+  geometryTypeOptions?: Array<{ value: string; label: string }>
+  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -139,6 +169,14 @@ const props = withDefaults(defineProps<Props>(), {
   zoom: 10,
   mapStyle: 'auto',
   showComparison: false,
+  layers: () => [],
+  filteredData: () => [],
+  hoveredIds: () => new Set(),
+  selectedIds: () => new Set(),
+  geometryType: 'all',
+  colorByAttribute: '',
+  geometryTypeOptions: () => [],
+  colorByOptions: () => [],
 })
 
 // Emits
@@ -146,6 +184,8 @@ const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>]
   hover: [ids: Set<any>]
   select: [ids: Set<any>]
+  'update:geometry-type': [value: string]
+  'update:color-by-attribute': [value: string]
 }>()
 
 // Component state
@@ -164,9 +204,37 @@ const selectedFeatureIds = ref<Set<any>>(new Set())
 // Dark mode access from global store (Critical Fix #2)
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
+// Map controls computed
+const hasMapControls = computed(() => {
+  return !!props.mapControlsConfig?.geometryType || !!props.mapControlsConfig?.colorBy
+})
+
+// Event handlers for map controls
+function onGeometryTypeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  console.log('[MapCard] Geometry type changed to:', value)
+  emit('update:geometry-type', value)
+}
+
+function onColorByChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  console.log('[MapCard] Color by changed to:', value)
+  emit('update:color-by-attribute', value)
+}
+
 // File API access
 const fileApi = computed(() => {
-  return props.fileSystemConfig || fileSystemConfig
+  if (props.fileSystemConfig) {
+    return new HTTPFileSystem(props.fileSystemConfig)
+  }
+  // Fallback: create a basic HTTPFileSystem with minimal config
+  const defaultConfig: FileSystemConfig = {
+    name: 'default',
+    slug: 'default',
+    description: 'Default file system',
+    baseURL: window.location.origin,
+  }
+  return new HTTPFileSystem(defaultConfig)
 })
 
 // ============================================================================
@@ -183,6 +251,34 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cleanup()
+})
+
+// Watch for linkage prop changes and update layers
+watch(() => props.filteredData, () => {
+  console.log('[MapCard] filteredData changed, updating layers')
+  updateLayers()
+}, { deep: true })
+
+watch(() => props.hoveredIds, () => {
+  console.log('[MapCard] hoveredIds changed:', props.hoveredIds)
+  updateLayers()
+}, { deep: true })
+
+watch(() => props.selectedIds, () => {
+  console.log('[MapCard] selectedIds changed:', props.selectedIds)
+  updateLayers()
+}, { deep: true })
+
+// Watch for layers prop changes (triggered by geometry type changes in parent)
+watch(() => props.layers, () => {
+  console.log('[MapCard] layers prop changed, reloading layer data')
+  loadLayerData().then(() => updateLayers())
+}, { deep: true })
+
+// Watch for colorByAttribute changes to update layer colors
+watch(() => props.colorByAttribute, (newVal, oldVal) => {
+  console.log('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
+  updateLayers()
 })
 
 // ============================================================================
@@ -602,6 +698,11 @@ function updateLayers() {
     return
   }
 
+  if (!props.layers || props.layers.length === 0) {
+    deckOverlay.value.setProps({ layers: [] })
+    return
+  }
+
   const layers: any[] = []
 
   props.layers.forEach((layerConfig) => {
@@ -615,6 +716,8 @@ function updateLayers() {
       return
     }
 
+    console.log(`[MapCard] Creating layer "${layerConfig.name}" (type: ${layerConfig.type}, linkage: ${!!layerConfig.linkage}, features: ${features.length})`)
+
     // TASK 12: Create baseline layer if comparison mode enabled
     if (props.showComparison && props.baselineData && props.baselineData.length > 0) {
       const baselineLayer = createBaselineLayer(layerConfig, features)
@@ -627,6 +730,7 @@ function updateLayers() {
 
     switch (layerConfig.type) {
       case 'polygon':
+      case 'fill':  // Alias for polygon
         layer = createPolygonLayer(layerConfig, features)
         break
 
@@ -645,6 +749,8 @@ function updateLayers() {
         return
 
       case 'scatterplot':
+      case 'circle':  // Alias for scatterplot
+      case 'point':   // Alias for scatterplot
         layer = createScatterplotLayer(layerConfig, features)
         break
 
@@ -663,6 +769,7 @@ function updateLayers() {
   // Update deck overlay
   deckOverlay.value.setProps({ layers: sortedLayers })
   console.log(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
+  console.log(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
 }
 
 // TASK 12: Create baseline layer (gray, dimmed) for comparison mode
@@ -982,15 +1089,18 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
     const aId = a.properties?.[layerConfig.linkage!.geoProperty]
     const bId = b.properties?.[layerConfig.linkage!.geoProperty]
 
-    const aSelected = props.selectedIds.has(aId)
-    const bSelected = props.selectedIds.has(bId)
-    const aHovered = props.hoveredIds.has(aId)
-    const bHovered = props.hoveredIds.has(bId)
+    // Use loose comparison for type mismatches (string "45" vs number 45)
+    const aSelected = setHasLoose(props.selectedIds, aId)
+    const bSelected = setHasLoose(props.selectedIds, bId)
+    const aHovered = setHasLoose(props.hoveredIds, aId)
+    const bHovered = setHasLoose(props.hoveredIds, bId)
 
-    if (aSelected && !bSelected) return 1
-    if (!aSelected && bSelected) return -1
+    // Priority: hovered on top, then selected, then normal
+    // Higher return value = rendered later = on top
     if (aHovered && !bHovered) return 1
     if (!aHovered && bHovered) return -1
+    if (aSelected && !bSelected) return 1
+    if (!aSelected && bSelected) return -1
 
     return 0
   })
@@ -999,8 +1109,9 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
 function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
 
-  const isSelected = props.selectedIds.has(featureId)
-  const isHovered = props.hoveredIds.has(featureId)
+  // Use loose comparison for type mismatches (string "45" vs number 45)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
@@ -1028,8 +1139,8 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
 function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
 
-  const isSelected = props.selectedIds.has(featureId)
-  const isHovered = props.hoveredIds.has(featureId)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) {
     return [59, 130, 246, 255]
@@ -1120,8 +1231,8 @@ function getAttributeBasedRadius(
 function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
 
-  const isSelected = props.selectedIds.has(featureId)
-  const isHovered = props.hoveredIds.has(featureId)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) return 4
   if (isHovered) return 3
@@ -1132,8 +1243,8 @@ function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
 // Get feature width with attribute-based sizing support
 function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
-  const isHovered = props.hoveredIds.has(featureId)
-  const isSelected = props.selectedIds.has(featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
@@ -1158,8 +1269,8 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
 // Get feature radius with attribute-based sizing support
 function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
-  const isHovered = props.hoveredIds.has(featureId)
-  const isSelected = props.selectedIds.has(featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
@@ -1183,8 +1294,8 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
 
 function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
   const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
-  const isSelected = props.selectedIds.has(featureId)
-  const isHovered = props.hoveredIds.has(featureId)
+  const isSelected = setHasLoose(props.selectedIds, featureId)
+  const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
@@ -1347,7 +1458,10 @@ function calculateNumericRange(features: any[], attribute: string): [number, num
 function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, number] {
   // Check if colorBy is configured
   if (layerConfig.colorBy) {
-    const colorBy = layerConfig.colorBy
+    // Normalize colorBy to object form (support both string and object syntax)
+    const colorBy = typeof layerConfig.colorBy === 'string'
+      ? { attribute: layerConfig.colorBy, type: 'categorical' as const }
+      : layerConfig.colorBy
     const attributeValue = feature.properties?.[colorBy.attribute]
 
     if (attributeValue === undefined || attributeValue === null) {
@@ -1383,13 +1497,26 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
   return [52, 152, 219]
 }
 
+// Helper function for loose Set membership check (handles string "45" vs number 45)
+function setHasLoose(set: Set<any>, value: any): boolean {
+  if (set.has(value)) return true
+  // Try loose comparison for type mismatches
+  for (const item of set) {
+    // eslint-disable-next-line eqeqeq
+    if (item == value) return true
+  }
+  return false
+}
+
 function isFeatureFiltered(feature: any, layerConfig: LayerConfig): boolean {
   if (!layerConfig.linkage) return true
 
   const featureId = feature.properties?.[layerConfig.linkage.geoProperty]
   const tableColumn = layerConfig.linkage.tableColumn
 
-  return props.filteredData.some((row) => row[tableColumn] === featureId)
+  // Use loose comparison to handle type mismatches (string "45" vs number 45)
+  // eslint-disable-next-line eqeqeq
+  return props.filteredData.some((row) => row[tableColumn] == featureId)
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -1404,6 +1531,8 @@ function hexToRgb(hex: string): [number, number, number] {
 // ============================================================================
 
 function handleClick(info: any) {
+  console.log('[MapCard] handleClick called', info.object ? 'with object' : 'without object')
+
   if (!info.object) {
     if (props.linkage?.onSelect === 'filter') {
       emit('select', new Set())
@@ -1413,6 +1542,8 @@ function handleClick(info: any) {
 
   const layerId = info.layer?.id
   const layerConfig = findLayerConfigById(layerId)
+
+  console.log('[MapCard] layerConfig:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
 
   if (!layerConfig || !layerConfig.linkage) {
     return
@@ -1428,6 +1559,14 @@ function handleClick(info: any) {
     .map((p) => p.object?.properties?.[layerConfig.linkage!.geoProperty])
     .filter((id) => id !== undefined && id !== null)
 
+  // Debug: log what we're getting from the GeoJSON
+  if (picked.length > 0) {
+    const firstFeature = picked[0].object
+    console.log('[MapCard] Click - geoProperty:', layerConfig.linkage!.geoProperty,
+      'extracted IDs:', featureIds,
+      'first feature properties:', firstFeature?.properties)
+  }
+
   if (featureIds.length === 0) {
     return
   }
@@ -1436,10 +1575,14 @@ function handleClick(info: any) {
     const idSet = new Set(featureIds)
     emit('select', idSet)
 
-    if (props.linkage?.type === 'filter') {
-      const filterId = `map-${layerConfig.name}`
-      emit('filter', filterId, layerConfig.linkage.tableColumn, idSet)
-    }
+    // Emit filter based on LAYER linkage (not card linkage)
+    const filterId = `map-${layerConfig.name}`
+    emit('filter', filterId, layerConfig.linkage.tableColumn, idSet)
+    console.log(`[MapCard] Emitting filter:`, filterId, layerConfig.linkage.tableColumn, idSet)
+  } else if (layerConfig.linkage.onSelect === 'highlight') {
+    // Just emit select for highlighting without filtering
+    const idSet = new Set(featureIds)
+    emit('select', idSet)
   }
 
   console.log(`[MapCard] Clicked features:`, featureIds)
@@ -1453,6 +1596,8 @@ function handleHover(info: any) {
 
   const layerId = info.layer?.id
   const layerConfig = findLayerConfigById(layerId)
+
+  console.log('[MapCard] handleHover:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
 
   if (!layerConfig || !layerConfig.linkage) {
     emit('hover', new Set())
@@ -1498,7 +1643,7 @@ function pickMultipleFeatures(info: any, layerConfig: LayerConfig): any[] {
 }
 
 function findLayerConfigById(layerId: string | undefined): LayerConfig | null {
-  if (!layerId) return null
+  if (!layerId || !props.layers) return null
 
   for (const layerConfig of props.layers) {
     if (layerId.includes(layerConfig.name)) {
@@ -1520,6 +1665,11 @@ const showLegend = computed(() => {
 
 // Build legend data from layers
 const legendData = computed(() => {
+  // Check if layers exist
+  if (!props.layers || props.layers.length === 0) {
+    return null
+  }
+
   // Find the first layer with colorBy configuration
   const colorByLayer = props.layers.find((layer) => layer.colorBy)
 
@@ -1527,7 +1677,10 @@ const legendData = computed(() => {
     return null
   }
 
-  const colorBy = colorByLayer.colorBy
+  // Normalize colorBy to object form (support both string and object syntax)
+  const colorBy = typeof colorByLayer.colorBy === 'string'
+    ? { attribute: colorByLayer.colorBy, type: 'categorical' as const }
+    : colorByLayer.colorBy
 
   if (colorBy.type === 'categorical') {
     return {
@@ -1594,7 +1747,7 @@ function buildCategoricalLegendItems(
 
 // Handle legend item click (categorical only)
 function handleLegendItemClick(label: string) {
-  if (!props.legend?.clickToFilter) {
+  if (!props.legend?.clickToFilter || !props.layers) {
     return
   }
 
@@ -1668,11 +1821,47 @@ function cleanup() {
   flex-direction: column;
 }
 
-.map-card-title {
-  padding: 0.5rem 1rem;
-  font-size: 1.125rem;
-  font-weight: 600;
-  border-bottom: 1px solid #e5e7eb;
+.map-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bgPanel, #f8f9fa);
+  border-bottom: 1px solid var(--borderColor, #e5e7eb);
+}
+
+.control-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.control-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text, #374151);
+  opacity: 0.8;
+}
+
+.control-select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--borderColor, #d1d5db);
+  border-radius: 4px;
+  background: var(--bgCream, white);
+  color: var(--text, #374151);
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.control-select:hover {
+  border-color: var(--link, #3b82f6);
+}
+
+.control-select:focus {
+  outline: none;
+  border-color: var(--link, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .map-container {

@@ -66,13 +66,14 @@
           :class="{'is-loaded': card.isLoaded}"
         )
           //- NEW: Wrap cards that have linkage (only if managers are initialized)
-          linkable-card-wrapper(v-if="card.linkage && filterManager && linkageManager && dataTableManager"
+          //- Also wrap map cards that have layers with linkage
+          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card)) && filterManager && linkageManager && dataTableManager"
             :card="card"
             :filter-manager="filterManager"
             :linkage-manager="linkageManager"
             :data-table-manager="dataTableManager"
           )
-            template(v-slot="{ filteredData, hoveredIds, selectedIds }")
+            template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
               component.dash-card(v-if="card.visible"
                 :is="getCardComponent(card)"
                 :fileSystemConfig="fileSystemConfig"
@@ -93,6 +94,22 @@
                 :hovered-ids="hoveredIds"
                 :selected-ids="selectedIds"
                 :linkage="card.linkage"
+                :layers="getCardLayers(card)"
+                :center="card.center"
+                :zoom="card.zoom"
+                :map-style="card.mapStyle"
+                :legend="card.legend"
+                :tooltip="card.tooltip"
+                :geometry-type="geometryType"
+                :color-by-attribute="colorByAttribute"
+                :map-controls-config="yaml.map?.controls"
+                :geometry-type-options="geometryTypeOptions"
+                :color-by-options="colorByOptions"
+                @update:geometry-type="geometryType = $event"
+                @update:color-by-attribute="colorByAttribute = $event"
+                @filter="handleFilter"
+                @hover="handleHover"
+                @select="handleSelect"
                 @isLoaded="handleCardIsLoaded(card)"
                 @dimension-resizer="setDimensionResizer"
                 @titles="setCardTitles(card, $event)"
@@ -113,6 +130,22 @@
             :cardId="card.id"
             :cardTitle="card.title"
             :allConfigFiles="allConfigFiles"
+            :column="card.column"
+            :bin-size="card.binSize"
+            :title="card.title"
+            :layers="getCardLayers(card)"
+            :center="card.center"
+            :zoom="card.zoom"
+            :map-style="card.mapStyle"
+            :legend="card.legend"
+            :tooltip="card.tooltip"
+            :geometry-type="geometryType"
+            :color-by-attribute="colorByAttribute"
+            :map-controls-config="yaml.map?.controls"
+            :geometry-type-options="geometryTypeOptions"
+            :color-by-options="colorByOptions"
+            @update:geometry-type="geometryType = $event"
+            @update:color-by-attribute="colorByAttribute = $event"
             @isLoaded="handleCardIsLoaded(card)"
             @dimension-resizer="setDimensionResizer"
             @titles="setCardTitles(card, $event)"
@@ -122,17 +155,63 @@
             span.clear-error(@click="card.errors=[]") &times;
             p(v-for="err,i in card.errors" :key="i") {{ err }}
 
-    //- Data Table (if visible in config)
-    .data-table-container(v-if="yaml.table && yaml.table.visible && dataTableManager")
-      h3.table-title {{ yaml.table.name || 'Data Table' }}
-      .table-wrapper
-        table.data-table
-          thead
-            tr
-              th(v-for="col in visibleColumns" :key="col") {{ col }}
-          tbody
-            tr(v-for="(row, idx) in displayData" :key="idx")
-              td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
+    //- Data Table (if visible in config) - styled as a dashboard card
+    .dash-row(v-if="yaml.table && yaml.table.visible && dataTableManager" :style="tableFullScreen ? tableFullScreenStyle : {}")
+      .dash-card-frame.table-card-frame(
+        :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen': tableFullScreen}"
+      )
+        //- card header/title
+        .dash-card-headers
+          .header-labels
+            h3 {{ yaml.table.name || 'Data Table' }}
+            p(v-if="yaml.table.description") {{ yaml.table.description }}
+          .header-buttons
+            //- Auto-scroll toggle
+            label.scroll-toggle(title="Auto-scroll to hovered row")
+              input(type="checkbox" v-model="enableScrollOnHover")
+              span.scroll-label Scroll
+
+            //- Filter reset button
+            button.button.is-small.is-white(
+              v-if="filterManager && filterManager.hasActiveFilters()"
+              @click="handleClearAllFilters"
+              title="Clear all filters"
+            )
+              i.fa.fa-times-circle
+              span.reset-label  Reset
+
+            //- Fullscreen toggle
+            button.button.is-small.is-white(
+              @click="toggleTableFullScreen"
+              :title="tableFullScreen ? 'Restore' : 'Enlarge'"
+            )
+              i.fa(:class="tableFullScreen ? 'fa-compress' : 'fa-expand'")
+
+        //- table contents
+        .table-wrapper(ref="tableWrapper")
+          table.data-table
+            thead
+              tr
+                th(
+                  v-for="col in visibleColumns"
+                  :key="col"
+                  @click="sortByColumn(col)"
+                  :class="{ sortable: true, sorted: sortColumn === col }"
+                )
+                  .header-cell
+                    span {{ col }}
+                    span.sort-icon(v-if="sortColumn === col") {{ sortDirection === 'asc' ? '↑' : '↓' }}
+            tbody
+              tr(
+                v-for="(row, idx) in sortedDisplayData"
+                :key="getRowId(row)"
+                :data-row-id="getRowId(row)"
+                :class="getRowClasses(row)"
+                @mouseenter="handleTableRowHover(row)"
+                @mouseleave="handleTableRowLeave"
+                @click="handleTableRowClick(row)"
+              )
+                td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
 
 </template>
 
@@ -213,6 +292,19 @@ export default defineComponent({
       filterManager: null as FilterManager | null,
       linkageManager: null as LinkageManager | null,
       dataTableManager: null as DataTableManager | null,
+      filterVersion: 0, // Increment this when filters change to trigger reactivity
+      // Table interaction state
+      tableHoveredIds: new Set<any>() as Set<any>,
+      tableSelectedIds: new Set<any>() as Set<any>,
+      // Table features
+      sortColumn: '' as string,
+      sortDirection: 'asc' as 'asc' | 'desc',
+      enableScrollOnHover: true,
+      isHoverFromTable: false,
+      tableFullScreen: false,
+      // Map controls
+      geometryType: 'all' as string,  // 'origin', 'destination', 'all', or custom values
+      colorByAttribute: '' as string,  // Will be initialized from YAML default
     }
   },
 
@@ -243,16 +335,104 @@ export default defineComponent({
     // NEW: Table data computed properties
     displayData(): any[] {
       if (!this.dataTableManager) return []
-      const allData = this.dataTableManager.getData()
-      // Limit to first 100 rows for now to avoid performance issues
-      return allData.slice(0, 100)
+      // Access filterVersion to make this computed property reactive to filter changes
+      const _version = this.filterVersion
+      return this.dataTableManager.getData()
     },
-    
+
+    // Get filtered row IDs for highlighting
+    filteredRowIds(): Set<any> {
+      if (!this.filterManager || !this.displayData.length) return new Set()
+      const filtered = this.filterManager.applyFilters(this.displayData)
+      const idColumn = this.yaml.table?.idColumn || 'id'
+      return new Set(filtered.map(row => row[idColumn]))
+    },
+
+    // Sort and arrange data: filtered rows on top, then unfiltered
+    sortedDisplayData(): any[] {
+      if (!this.displayData.length) return []
+
+      const hasFilters = this.filterManager && this.filterManager.hasActiveFilters()
+      const idColumn = this.yaml.table?.idColumn || 'id'
+
+      // Separate filtered and unfiltered rows
+      let filtered: any[] = []
+      let unfiltered: any[] = []
+
+      if (hasFilters) {
+        for (const row of this.displayData) {
+          if (this.filteredRowIds.has(row[idColumn])) {
+            filtered.push(row)
+          } else {
+            unfiltered.push(row)
+          }
+        }
+      } else {
+        // No filters - all rows go to filtered (will be sorted together)
+        filtered = [...this.displayData]
+      }
+
+      // Sort function
+      const sortFn = (a: any, b: any) => {
+        if (!this.sortColumn) return 0
+
+        const aVal = a[this.sortColumn]
+        const bVal = b[this.sortColumn]
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        let comparison = 0
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          comparison = aVal - bVal
+        } else {
+          comparison = String(aVal).localeCompare(String(bVal))
+        }
+
+        return this.sortDirection === 'asc' ? comparison : -comparison
+      }
+
+      // Sort each group
+      filtered.sort(sortFn)
+      unfiltered.sort(sortFn)
+
+      // Filtered on top, then unfiltered (limit total to 200 for performance)
+      const combined = [...filtered, ...unfiltered]
+      return combined.slice(0, 200)
+    },
+
     visibleColumns(): string[] {
       if (!this.dataTableManager || this.displayData.length === 0) return []
       const allColumns = Object.keys(this.displayData[0])
       const hiddenColumns = this.yaml.table?.columns?.hide || []
       return allColumns.filter(col => !hiddenColumns.includes(col))
+    },
+
+    tableFullScreenStyle(): any {
+      return {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        right: '0',
+        bottom: '0',
+        zIndex: '9999',
+        margin: '0',
+        padding: '1rem',
+        backgroundColor: 'var(--bgBold)',
+      }
+    },
+
+    // Map control options from YAML
+    geometryTypeOptions(): Array<{ value: string; label: string }> {
+      return this.yaml.map?.geometryTypes || [
+        { value: 'all', label: 'All Geometries' },
+        { value: 'origin', label: 'Origin' },
+        { value: 'destination', label: 'Destination' },
+      ]
+    },
+
+    colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
+      return this.yaml.map?.colorBy?.attributes || []
     },
   },
 
@@ -263,6 +443,24 @@ export default defineComponent({
     },
     '$store.state.locale'() {
       this.updateThemeAndLabels()
+    },
+    // Scroll to row when hover comes from map (not from table itself)
+    tableHoveredIds(newVal: Set<any>) {
+      if (newVal.size === 0) return
+      if (!this.enableScrollOnHover) return
+      if (this.isHoverFromTable) return
+
+      // Get the first hovered ID
+      const hoveredId = Array.from(newVal)[0]
+      this.$nextTick(() => {
+        const tableWrapper = this.$refs.tableWrapper as HTMLElement
+        if (!tableWrapper) return
+
+        const row = tableWrapper.querySelector(`tr[data-row-id="${hoveredId}"]`) as HTMLElement
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      })
     },
   },
 
@@ -300,7 +498,140 @@ export default defineComponent({
       
       return String(value)
     },
-    
+
+    // Check if a card has any layers with linkage defined
+    hasLayerLinkage(card: any): boolean {
+      return card.layers?.some((layer: any) => layer.linkage) || false
+    },
+
+    // Get layers for a card, filtering by geometry type if applicable
+    getCardLayers(card: any): any[] {
+      if (!card.layers) return []
+
+      // Filter layers based on geometry type selector
+      // Layers can specify which geometry types they belong to via `geometryType` property
+      return card.layers.filter((layer: any) => {
+        // If geometry type is 'all', include all layers
+        if (this.geometryType === 'all') return true
+        // If layer doesn't specify geometryType, always include it
+        if (!layer.geometryType) return true
+        // If layer specifies geometryType, only include if it matches current selection
+        return layer.geometryType === this.geometryType
+      }).map((layer: any) => {
+        // Apply colorBy attribute from selector if configured and attribute is selected
+        // BUT only if the layer doesn't already have a color or colorBy property defined
+        // This allows layers (like flow arcs) to keep their own static colors
+        if (this.colorByAttribute && this.yaml.map?.controls?.colorBy && !layer.color && !layer.colorBy) {
+          const colorByConfig = this.colorByOptions.find((opt: any) => opt.attribute === this.colorByAttribute)
+          if (colorByConfig) {
+            return {
+              ...layer,
+              colorBy: {
+                attribute: this.colorByAttribute,
+                type: colorByConfig.type || 'categorical',
+              },
+            }
+          }
+        }
+        return layer
+      })
+    },
+
+    // Table row interaction methods
+    getRowId(row: any): any {
+      const idColumn = this.yaml.table?.idColumn || 'id'
+      return row[idColumn]
+    },
+
+    // Loose comparison helper for Set membership (handles string "45" vs number 45)
+    setHasLoose(set: Set<any>, value: any): boolean {
+      if (set.has(value)) return true
+      for (const item of set) {
+        // eslint-disable-next-line eqeqeq
+        if (item == value) return true
+      }
+      return false
+    },
+
+    isRowHovered(row: any): boolean {
+      const rowId = this.getRowId(row)
+      return this.setHasLoose(this.tableHoveredIds, rowId)
+    },
+
+    isRowSelected(row: any): boolean {
+      const rowId = this.getRowId(row)
+      return this.setHasLoose(this.tableSelectedIds, rowId)
+    },
+
+    handleTableRowHover(row: any) {
+      // Mark that hover originated from table to prevent scroll feedback loop
+      this.isHoverFromTable = true
+      const rowId = this.getRowId(row)
+      if (this.linkageManager) {
+        this.linkageManager.setHoveredIds(new Set([rowId]))
+      }
+      // Reset flag after a short delay
+      setTimeout(() => {
+        this.isHoverFromTable = false
+      }, 100)
+    },
+
+    handleTableRowLeave() {
+      if (this.linkageManager) {
+        this.linkageManager.setHoveredIds(new Set())
+      }
+    },
+
+    // Check if row is in filtered set (for highlighting)
+    isRowFiltered(row: any): boolean {
+      const rowId = this.getRowId(row)
+      return this.setHasLoose(this.filteredRowIds, rowId)
+    },
+
+    // Get row CSS classes
+    getRowClasses(row: any): Record<string, boolean> {
+      const hasFilters = this.filterManager && this.filterManager.hasActiveFilters()
+      return {
+        'is-hovered': this.isRowHovered(row),
+        'is-selected': this.isRowSelected(row),
+        'is-filtered': hasFilters && this.isRowFiltered(row),
+        'is-dimmed': hasFilters && !this.isRowFiltered(row),
+      }
+    },
+
+    // Sort by column
+    sortByColumn(column: string) {
+      if (this.sortColumn === column) {
+        // Toggle direction if same column clicked
+        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc'
+      } else {
+        // Switch to new column, default to ascending
+        this.sortColumn = column
+        this.sortDirection = 'asc'
+      }
+    },
+
+    // Toggle table fullscreen
+    toggleTableFullScreen() {
+      this.tableFullScreen = !this.tableFullScreen
+    },
+
+    handleTableRowClick(row: any) {
+      const rowId = this.getRowId(row)
+      if (this.linkageManager) {
+        this.linkageManager.toggleSelectedIds(new Set([rowId]))
+      }
+    },
+
+    handleClearAllFilters() {
+      if (this.filterManager) {
+        this.filterManager.clearAllFilters()
+      }
+      if (this.linkageManager) {
+        this.linkageManager.setSelectedIds(new Set())
+      }
+    },
+
     clickedFavorite() {
       let hint = `${this.root}/${this.xsubfolder}`
       let finalFolder = this.xsubfolder || this.root
@@ -535,6 +866,18 @@ export default defineComponent({
       // NEW: Initialize coordination layer immediately after loading YAML
       // This ensures managers are available when cards are created
       await this.initializeCoordinationLayer()
+
+      // Initialize map control defaults from YAML
+      if (this.yaml.map?.colorBy?.default) {
+        this.colorByAttribute = this.yaml.map.colorBy.default
+      } else if (this.yaml.map?.colorBy?.attributes?.length > 0) {
+        this.colorByAttribute = this.yaml.map.colorBy.attributes[0].attribute
+      }
+      if (this.yaml.map?.geometryTypes?.length > 0) {
+        // Default to first geometry type if 'all' is not in the options
+        const hasAll = this.yaml.map.geometryTypes.some((gt: any) => gt.value === 'all')
+        this.geometryType = hasAll ? 'all' : this.yaml.map.geometryTypes[0].value
+      }
 
       // set header
       this.updateThemeAndLabels()
@@ -802,6 +1145,24 @@ export default defineComponent({
       this.filterManager = new FilterManager()
       this.linkageManager = new LinkageManager()
 
+      // Add observer to increment filterVersion when filters change (triggers table reactivity)
+      this.filterManager.addObserver({
+        onFilterChange: () => {
+          this.filterVersion++
+          console.log('[InteractiveDashboard] Filters changed, version:', this.filterVersion)
+        }
+      })
+
+      // Add observer for linkage manager to update table hover/select state
+      this.linkageManager.addObserver({
+        onHoveredIdsChange: (ids: Set<any>) => {
+          this.tableHoveredIds = new Set(ids)
+        },
+        onSelectedIdsChange: (ids: Set<any>) => {
+          this.tableSelectedIds = new Set(ids)
+        }
+      })
+
       // Check if table config exists in YAML
       if (!this.yaml.table) {
         console.warn('[InteractiveDashboard] No table configuration found in YAML')
@@ -915,9 +1276,16 @@ export default defineComponent({
   }
 }
 
-// .dashboard-header.wiide {
-//   // margin-right: 3rem;
-// }
+// Map controls (cluster type, color-by selectors)
+.map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0 0 1rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--bgCardFrame);
+  border-radius: 6px;
+}
 
 .dash-row {
   display: flex;
@@ -1114,57 +1482,138 @@ li.is-not-active b a {
   cursor: pointer;
 }
 
-// NEW: Data table styles
-.data-table-container {
-  margin: 2rem 1rem;
-  padding: 1rem;
-  background: var(--bgPanel);
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
+// Data table card styles
+.table-card-frame {
+  flex: 1;
+  min-height: 300px;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
 
-.table-title {
-  margin: 0 0 1rem 0;
-  font-size: 1.2rem;
-  color: var(--text);
+  &.is-fullscreen {
+    max-height: none;
+    height: 100%;
+  }
+
+  .reset-label,
+  .scroll-label {
+    margin-left: 0.25rem;
+  }
+
+  .scroll-toggle {
+    display: flex;
+    align-items: center;
+    margin-right: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    cursor: pointer;
+    opacity: 0.7;
+
+    input {
+      margin-right: 0.25rem;
+    }
+
+    &:hover {
+      opacity: 1;
+    }
+  }
 }
 
 .table-wrapper {
+  flex: 1;
   overflow-x: auto;
-  max-height: 500px;
   overflow-y: auto;
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
-  
+  font-size: 0.85rem;
+
   thead {
     position: sticky;
     top: 0;
-    background: var(--bgPanel);
+    background: var(--bgCardFrame);
     z-index: 10;
-    
+
     th {
-      padding: 0.75rem;
+      padding: 0.5rem 0.75rem;
       text-align: left;
       font-weight: 600;
       border-bottom: 2px solid var(--borderColor);
       color: var(--text);
-    }
-  }
-  
-  tbody {
-    tr {
-      border-bottom: 1px solid var(--borderColor);
-      
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+
       &:hover {
         background: var(--bgHover);
       }
-      
+
+      &.sorted {
+        color: var(--link);
+      }
+
+      .header-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .sort-icon {
+        font-size: 0.75rem;
+        opacity: 0.8;
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--borderColor);
+      cursor: pointer;
+      transition: all 0.1s ease;
+
+      &:hover {
+        background: var(--bgHover);
+      }
+
+      // Filtered rows (matching current filters) - highlighted
+      &.is-filtered {
+        background-color: rgba(59, 130, 246, 0.1);
+        border-left: 3px solid #3b82f6;
+        font-weight: 500;
+      }
+
+      // Dimmed rows (not matching current filters)
+      &.is-dimmed {
+        opacity: 0.5;
+      }
+
+      // Hovered from map/other component
+      &.is-hovered {
+        background: rgba(52, 152, 219, 0.25);
+        transform: scale(1.001);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 1;
+      }
+
+      // Selected (clicked) rows
+      &.is-selected {
+        background: rgba(231, 76, 60, 0.25);
+      }
+
+      // Combined states
+      &.is-filtered.is-hovered {
+        background: rgba(59, 130, 246, 0.25);
+        border-left: 3px solid #2563eb;
+      }
+
+      &.is-hovered.is-selected {
+        background: rgba(155, 89, 182, 0.35);
+      }
+
       td {
-        padding: 0.5rem 0.75rem;
+        padding: 0.4rem 0.75rem;
         color: var(--text);
       }
     }

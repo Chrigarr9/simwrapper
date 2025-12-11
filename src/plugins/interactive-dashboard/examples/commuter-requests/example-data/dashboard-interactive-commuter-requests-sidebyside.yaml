@@ -1,7 +1,7 @@
 header:
-  tab: "Commuter Requests Interactive"
+  tab: "Commuter Requests (Side-by-Side)"
   title: "Commuter Requests Analysis"
-  description: "Interactive visualization using InteractiveDashboard plugin"
+  description: "Interactive visualization with map and table side-by-side"
 
 # Map controls configuration
 map:
@@ -115,11 +115,11 @@ table:
 
 layout:
   row1:
-    # Map with request lines and clusters (2/3 width)
+    # Map (left half, 6x12)
     - type: map
       title: "Requests Map"
       width: 2
-      height: 8
+      height: 12
       center: [11.57, 48.14]
       zoom: 10
       legend:
@@ -168,7 +168,7 @@ layout:
           file: cluster_geometries.geojson
           type: fill
           visible: true
-          geometryType: origin  # Only shown when "Origin Clusters" is selected
+          geometryType: origin
           fillColor: "#9b59b6"
           fillOpacity: 0.15
           lineColor: "#8e44ad"
@@ -189,7 +189,7 @@ layout:
           file: cluster_geometries.geojson
           type: fill
           visible: true
-          geometryType: destination  # Only shown when "Destination Clusters" is selected
+          geometryType: destination
           fillColor: "#27ae60"
           fillOpacity: 0.15
           lineColor: "#1e8449"
@@ -205,13 +205,12 @@ layout:
             onHover: highlight
             onSelect: filter
 
-        # OD view: Origin cluster boundaries (shown in OD mode)
-        # These use cluster_type=od with hull_type=origin, and share cluster_id with flow arcs
+        # OD view: Origin cluster boundaries
         - name: od_origin_boundaries
           file: cluster_geometries.geojson
           type: fill
           visible: true
-          geometryType: od  # Only shown when "Origin-Destination (Flows)" is selected
+          geometryType: od
           fillColor: "#3498db"
           fillOpacity: 0.15
           lineColor: "#2980b9"
@@ -229,13 +228,12 @@ layout:
             onHover: highlight
             onSelect: filter
 
-        # OD view: Destination cluster boundaries (shown in OD mode)
-        # These use cluster_type=od with hull_type=destination, and share cluster_id with flow arcs
+        # OD view: Destination cluster boundaries
         - name: od_destination_boundaries
           file: cluster_geometries.geojson
           type: fill
           visible: true
-          geometryType: od  # Only shown when "Origin-Destination (Flows)" is selected
+          geometryType: od
           fillColor: "#e74c3c"
           fillOpacity: 0.15
           lineColor: "#c0392b"
@@ -253,13 +251,12 @@ layout:
             onHover: highlight
             onSelect: filter
 
-        # OD flow arcs (arrows from origin to destination clusters)
-        # All three OD layers share the same cluster_id, enabling cross-layer hover highlighting
+        # OD flow arcs
         - name: od_flow_arcs
           file: cluster_geometries.geojson
           type: arc
           visible: true
-          geometryType: od  # Only shown when "Origin-Destination (Flows)" is selected
+          geometryType: od
           color: "#9b59b6"
           opacity: 0.7
           arcHeight: 0.2
@@ -278,13 +275,20 @@ layout:
             onHover: highlight
             onSelect: filter
 
+    # Table (right half, 6x12)
+    - type: table
+      title: "Requests Data"
+      width: 1
+      height: 12
+
+  row2:
     # Active Time Distribution Histogram
     - type: histogram
       title: "Active Time Distribution"
       column: treq
       binSize: 3600
-      width: 1
-      height: 2
+      width: 2
+      height: 4
       linkage:
         type: filter
         column: treq
@@ -295,15 +299,8 @@ layout:
       title: "Main Mode Share"
       column: main_mode
       width: 1
-      height: 2
+      height: 1
       linkage:
         type: filter
         column: main_mode
         behavior: toggle
-
-  row2:
-    # Table spans full width
-    - type: table
-      title: "Requests Data"
-      width: 1
-      height: 6

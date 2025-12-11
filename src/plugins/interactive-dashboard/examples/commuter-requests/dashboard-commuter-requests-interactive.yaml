@@ -112,8 +112,8 @@ layout:
         - type: histogram
           title: "Active Time Distribution"
           column: treq
-          binSize: 900  # 15 minutes in seconds
-          height: 4
+          binSize: 3600  # 1 hour in seconds
+          height: 2
           linkage:
             type: filter
             column: treq
