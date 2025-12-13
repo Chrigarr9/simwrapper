@@ -67,7 +67,8 @@
         )
           //- NEW: Wrap cards that have linkage (only if managers are initialized)
           //- Also wrap map cards that have layers with linkage
-          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card)) && filterManager && linkageManager && dataTableManager"
+          //- Data-table cards always have linkage
+          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
             :card="card"
             :filter-manager="filterManager"
             :linkage-manager="linkageManager"
@@ -105,6 +106,10 @@
                 :map-controls-config="yaml.map?.controls"
                 :geometry-type-options="geometryTypeOptions"
                 :color-by-options="colorByOptions"
+                :table-config="yaml.table"
+                :data-table-manager="dataTableManager"
+                :filter-manager="filterManager"
+                :linkage-manager="linkageManager"
                 @update:geometry-type="geometryType = $event"
                 @update:color-by-attribute="colorByAttribute = $event"
                 @filter="handleFilter"
@@ -155,8 +160,9 @@
             span.clear-error(@click="card.errors=[]") &times;
             p(v-for="err,i in card.errors" :key="i") {{ err }}
 
-    //- Data Table (if visible in config) - styled as a dashboard card
-    .dash-row(v-if="yaml.table && yaml.table.visible && dataTableManager" :style="tableFullScreen ? tableFullScreenStyle : {}")
+    //- Data Table (if visible in config AND not placed in layout) - styled as a dashboard card
+    //- When table.position === 'layout', the table is rendered via a data-table card in the layout
+    .dash-row(v-if="yaml.table && yaml.table.visible && yaml.table.position !== 'layout' && dataTableManager" :style="tableFullScreen ? tableFullScreenStyle : {}")
       .dash-card-frame.table-card-frame(
         :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen': tableFullScreen}"
       )
@@ -238,6 +244,7 @@ import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
+import DataTableCard from './components/cards/DataTableCard.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -252,7 +259,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -396,9 +403,8 @@ export default defineComponent({
       filtered.sort(sortFn)
       unfiltered.sort(sortFn)
 
-      // Filtered on top, then unfiltered (limit total to 200 for performance)
-      const combined = [...filtered, ...unfiltered]
-      return combined.slice(0, 200)
+      // Filtered on top, then unfiltered
+      return [...filtered, ...unfiltered]
     },
 
     visibleColumns(): string[] {
@@ -712,6 +718,11 @@ export default defineComponent({
 
     getCardComponent(card: any) {
       // console.log(1, card)
+      // Data table card - uses the centralized DataTableManager
+      if (card.type === 'data-table') {
+        return 'DataTableCard'
+      }
+
       // TopSheet requires a config file - don't render if missing
       if (card.type === 'table' || card.type === 'topsheet') {
         const hasConfigFile = card.props && card.props.configFile
@@ -781,6 +792,8 @@ export default defineComponent({
 
       if (height && !this.isFullScreenDashboard) {
         style.minHeight = `${height}px`
+        style.maxHeight = `${height}px`
+        style.height = `${height}px`
       }
 
       // if there is only a single card on this panel, shrink its margin
@@ -1320,7 +1333,7 @@ export default defineComponent({
   background-color: var(--bgCardFrame);
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
-  overflow-x: auto;
+  overflow: hidden;
 
   .dash-card-headers {
     display: flex;
@@ -1370,6 +1383,8 @@ export default defineComponent({
   .spinner-box {
     grid-row: 3 / 4;
     position: relative;
+    height: 100%;
+    min-height: 0;
     background: url('../assets/simwrapper-logo/SW_logo_icon_anim.gif');
     background-size: 8rem;
     background-repeat: no-repeat;
@@ -1390,6 +1405,8 @@ export default defineComponent({
   overflow-x: hidden;
   overflow-y: hidden;
   border-radius: 2px;
+  height: 100%;
+  width: 100%;
 }
 
 // Observe for narrowness instead of a media-query

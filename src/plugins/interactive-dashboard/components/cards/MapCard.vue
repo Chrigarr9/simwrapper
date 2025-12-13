@@ -888,8 +888,8 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
         getLineWidth: [props.hoveredIds, props.selectedIds],
       },
     })
@@ -923,7 +923,7 @@ function createLineLayer(layerConfig: LayerConfig, features: any[]): LineLayer |
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
       },
     })
   } catch (error) {
@@ -962,7 +962,7 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
       },
     })
   } catch (error) {
@@ -997,8 +997,8 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
       },
     })
   } catch (error) {
@@ -1032,7 +1032,7 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
       },
     })
   } catch (error) {
@@ -1067,7 +1067,7 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.radiusBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
       },
     })
   } catch (error) {
@@ -1456,7 +1456,27 @@ function calculateNumericRange(features: any[], attribute: string): [number, num
 
 // Enhanced getBaseColor with dynamic coloring support
 function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, number] {
-  // Check if colorBy is configured
+  // Priority 1: Use dashboard-level colorByAttribute if set (from "Color by" selector)
+  // This allows the global selector to override per-layer static colors
+  if (props.colorByAttribute && feature.properties?.[props.colorByAttribute] !== undefined) {
+    const attributeValue = feature.properties[props.colorByAttribute]
+
+    // Look up the attribute config from colorByOptions to determine type
+    const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+    const attrType = attrConfig?.type || 'categorical'
+
+    if (attrType === 'numeric') {
+      // Numeric coloring - calculate range from layer data
+      const features = getLayerData(layerConfig.name)
+      const scale = calculateNumericRange(features, props.colorByAttribute)
+      return getNumericColor(attributeValue, scale)
+    } else {
+      // Categorical coloring
+      return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+    }
+  }
+
+  // Priority 2: Use per-layer colorBy if configured
   if (layerConfig.colorBy) {
     // Normalize colorBy to object form (support both string and object syntax)
     const colorBy = typeof layerConfig.colorBy === 'string'
@@ -1484,7 +1504,7 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
     }
   }
 
-  // Static color from config
+  // Priority 3: Static color from config
   if (layerConfig.color) {
     return hexToRgb(layerConfig.color)
   }

@@ -9,6 +9,19 @@ import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import globalStore from '@/store'
 
+interface ColumnFormat {
+  type: 'time' | 'duration' | 'distance' | 'decimal'
+  convertFrom?: string
+  unit?: string
+  decimals?: number
+}
+
+interface TableConfig {
+  columns?: {
+    formats?: Record<string, ColumnFormat>
+  }
+}
+
 interface Props {
   title?: string
   column: string
@@ -19,6 +32,7 @@ interface Props {
     column: string
     behavior: 'toggle'
   }
+  tableConfig?: TableConfig   // From InteractiveDashboard - contains column formats
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -34,6 +48,57 @@ const isDarkMode = computed(() => globalStore.state.isDarkMode)
 const plotContainer = ref<HTMLElement>()
 const selectedBins = ref<Set<number>>(new Set())
 const previousFilteredDataLength = ref(0)
+
+// Get format config for this column
+const columnFormat = computed((): ColumnFormat | undefined => {
+  const format = props.tableConfig?.columns?.formats?.[props.column]
+  console.log('[HistogramCard] Column:', props.column, 'Format:', format, 'TableConfig:', props.tableConfig)
+  return format
+})
+
+// Format a tick value based on column format
+function formatTickValue(value: number): string {
+  const format = columnFormat.value
+  if (!format) {
+    return String(value)
+  }
+
+  switch (format.type) {
+    case 'time': {
+      // Convert seconds to HH:MM format for axis labels
+      if (format.convertFrom === 'seconds') {
+        const hours = Math.floor(value / 3600)
+        const minutes = Math.floor((value % 3600) / 60)
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+      }
+      return String(value)
+    }
+    case 'duration': {
+      if (format.convertFrom === 'seconds') {
+        if (format.unit === 'min') {
+          return `${(value / 60).toFixed(0)} min`
+        }
+        return `${value.toFixed(0)} s`
+      }
+      return String(value)
+    }
+    case 'distance': {
+      if (format.convertFrom === 'meters') {
+        if (format.unit === 'km') {
+          return `${(value / 1000).toFixed(1)} km`
+        }
+        return `${value.toFixed(0)} m`
+      }
+      return String(value)
+    }
+    case 'decimal': {
+      const decimals = format.decimals ?? 2
+      return value.toFixed(decimals)
+    }
+    default:
+      return String(value)
+  }
+}
 
 const histogramData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
@@ -71,6 +136,10 @@ const renderChart = () => {
   const barColor = isDarkMode.value ? '#60a5fa' : '#3b82f6'
   const selectedColor = isDarkMode.value ? '#f87171' : '#ef4444'
 
+  // Format tick values if column format is defined
+  const tickvals = histogramData.value.map(d => d.bin)
+  const ticktext = tickvals.map(v => formatTickValue(v))
+
   const trace = {
     x: histogramData.value.map(d => d.bin),
     y: histogramData.value.map(d => d.count),
@@ -86,18 +155,28 @@ const renderChart = () => {
     },
   }
 
+  // Build xaxis config with optional tick formatting
+  const xaxisConfig: any = {
+    title: { text: '', font: { color: textColor, size: 11 } },
+    tickfont: { color: textColor, size: 10 },
+    gridcolor: gridColor,
+    linecolor: gridColor,
+    zerolinecolor: gridColor,
+  }
+
+  // Apply custom tick labels if we have a column format
+  if (columnFormat.value) {
+    xaxisConfig.tickmode = 'array'
+    xaxisConfig.tickvals = tickvals
+    xaxisConfig.ticktext = ticktext
+  }
+
   const layout = {
     title: {
       text: '',  // Title is shown in card header
       font: { color: textColor, size: 14 },
     },
-    xaxis: {
-      title: { text: '', font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
-      gridcolor: gridColor,
-      linecolor: gridColor,
-      zerolinecolor: gridColor,
-    },
+    xaxis: xaxisConfig,
     yaxis: {
       title: { text: 'Count', font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
