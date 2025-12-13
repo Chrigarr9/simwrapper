@@ -16,6 +16,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
+import { debugLog } from '../../utils/debug'
 
 interface Props {
   card: any
@@ -32,7 +33,7 @@ const filteredData = ref<any[]>([])
 
 const filterObserver: FilterObserver = {
   onFilterChange: (filters) => {
-    console.log('[LinkableCardWrapper] Filter changed for card:', props.card.title || props.card.type, 'filters:', filters)
+    debugLog('[LinkableCardWrapper] Filter changed for card:', props.card.title || props.card.type, 'filters:', filters)
     updateFilteredData()
   },
 }
@@ -68,19 +69,19 @@ const handleFilter = (filterId: string, column: string, values: Set<any>, filter
         // Remove these values from the filter
         const newValues = new Set(currentFilter.values)
         values.forEach(v => newValues.delete(v))
-        console.log('[LinkableCardWrapper] Toggle filter OFF:', filterId, column, 'remaining:', newValues)
+        debugLog('[LinkableCardWrapper] Toggle filter OFF:', filterId, column, 'remaining:', newValues)
         props.filterManager.setFilter(filterId, column, newValues, type, binSize)
         return
       }
     }
   }
 
-  console.log('[LinkableCardWrapper] Filter event:', filterId, column, values, 'type:', type, 'binSize:', binSize)
+  debugLog('[LinkableCardWrapper] Filter event:', filterId, column, values, 'type:', type, 'binSize:', binSize)
   props.filterManager.setFilter(filterId, column, values, type, binSize)
 }
 
 const handleHover = (ids: Set<any>) => {
-  console.log('[LinkableCardWrapper] Hover event:', ids)
+  debugLog('[LinkableCardWrapper] Hover event:', ids)
   props.linkageManager.setHoveredIds(ids)
 }
 
@@ -97,7 +98,7 @@ const handleSelect = (ids: Set<any>) => {
     }
   }
 
-  console.log('[LinkableCardWrapper] Select event:', ids, 'behavior:', behavior)
+  debugLog('[LinkableCardWrapper] Select event:', ids, 'behavior:', behavior)
 
   if (behavior === 'toggle') {
     props.linkageManager.toggleSelectedIds(ids)
@@ -109,7 +110,7 @@ const handleSelect = (ids: Set<any>) => {
 const updateFilteredData = () => {
   const allData = props.dataTableManager.getData()
   const filtered = props.filterManager.applyFilters(allData)
-  console.log('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
+  debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
     '- all:', allData.length, 'filtered:', filtered.length)
   filteredData.value = filtered
 }
@@ -130,5 +131,8 @@ onUnmounted(() => {
 .linkable-card-wrapper {
   height: 100%;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;  /* Contain the child but let it scroll internally */
 }
 </style>

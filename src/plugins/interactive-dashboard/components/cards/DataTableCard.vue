@@ -51,15 +51,18 @@
         </thead>
         <tbody>
           <tr
-            v-for="row in sortedDisplayData"
-            :key="getRowId(row)"
+            v-for="(row, rowIndex) in sortedDisplayData"
+            :key="getUniqueRowKey(row, rowIndex)"
             :data-row-id="getRowId(row)"
             :class="getRowClasses(row)"
             @mouseenter="handleRowHover(row)"
             @mouseleave="handleRowLeave"
             @click="handleRowClick(row)"
           >
-            <td v-for="col in visibleColumns" :key="col">
+            <td
+              v-for="col in visibleColumns"
+              :key="col"
+            >
               {{ formatCellValue(row[col], col) }}
             </td>
           </tr>
@@ -74,6 +77,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
+import { debugLog } from '../../utils/debug'
 
 interface Props {
   // From LinkableCardWrapper
@@ -87,6 +91,8 @@ interface Props {
     idColumn?: string
     columns?: {
       hide?: string[]
+      show?: string[]  // If set, ONLY show these columns (takes precedence over hide)
+      maxColumns?: number  // Maximum columns to display (default: 50)
       formats?: Record<string, any>
     }
   }
@@ -119,7 +125,7 @@ const filterVersion = ref(0)
 // Filter observer to track filter changes
 const filterObserver: FilterObserver = {
   onFilterChange: () => {
-    console.log('[DataTableCard] Filter changed, incrementing version')
+    debugLog('[DataTableCard] Filter changed, incrementing version')
     filterVersion.value++
   },
 }
@@ -144,16 +150,35 @@ const filteredRowIds = computed(() => {
   if (!props.filterManager || displayData.value.length === 0) return new Set()
   const filtered = props.filterManager.applyFilters(displayData.value)
   const idColumn = props.tableConfig?.idColumn || 'id'
-  console.log('[DataTableCard] filteredRowIds recomputed - filtered count:', filtered.length, 'version:', filterVersion.value)
+  debugLog('[DataTableCard] filteredRowIds recomputed - filtered count:', filtered.length, 'version:', filterVersion.value)
   return new Set(filtered.map((row: any) => row[idColumn]))
 })
 
-// Visible columns (exclude hidden ones)
+// Visible columns (respect show list, exclude hidden ones, limit by maxColumns)
 const visibleColumns = computed(() => {
   if (!props.dataTableManager || displayData.value.length === 0) return []
   const allColumns = Object.keys(displayData.value[0])
-  const hiddenColumns = props.tableConfig?.columns?.hide || []
-  return allColumns.filter(col => !hiddenColumns.includes(col))
+  const columnsConfig = props.tableConfig?.columns
+  
+  // If 'show' is specified, only show those columns (in that order)
+  if (columnsConfig?.show && columnsConfig.show.length > 0) {
+    const showList = columnsConfig.show.filter(col => allColumns.includes(col))
+    debugLog('[DataTableCard] Using explicit show list:', showList.length, 'columns')
+    return showList
+  }
+  
+  // Otherwise, filter out hidden columns
+  const hiddenColumns = columnsConfig?.hide || []
+  let filtered = allColumns.filter(col => !hiddenColumns.includes(col))
+  
+  // Apply maxColumns limit (default: 50 for performance)
+  const maxColumns = columnsConfig?.maxColumns ?? 50
+  if (filtered.length > maxColumns) {
+    debugLog('[DataTableCard] Limiting columns from', filtered.length, 'to', maxColumns)
+    filtered = filtered.slice(0, maxColumns)
+  }
+  
+  return filtered
 })
 
 // Sort and arrange data: filtered rows on top, then unfiltered
@@ -163,7 +188,7 @@ const sortedDisplayData = computed(() => {
   const hasFilters = props.filterManager && props.filterManager.hasActiveFilters()
   const idColumn = props.tableConfig?.idColumn || 'id'
 
-  console.log('[DataTableCard] sortedDisplayData - hasFilters:', hasFilters,
+  debugLog('[DataTableCard] sortedDisplayData - hasFilters:', hasFilters,
     'filteredRowIds count:', filteredRowIds.value.size,
     'total rows:', displayData.value.length)
 
@@ -215,6 +240,12 @@ const sortedDisplayData = computed(() => {
 function getRowId(row: any): any {
   const idColumn = props.tableConfig?.idColumn || 'id'
   return row[idColumn]
+}
+
+// Get unique row key for Vue v-for (handles duplicate IDs)
+function getUniqueRowKey(row: any, index: number): string {
+  const rowId = getRowId(row)
+  return `${index}-${rowId}`
 }
 
 // Get row CSS classes
@@ -350,7 +381,7 @@ watch(() => props.hoveredIds, async (newVal) => {
 // Register filter observer on mount
 onMounted(() => {
   if (props.filterManager) {
-    console.log('[DataTableCard] Registering filter observer')
+    debugLog('[DataTableCard] Registering filter observer')
     props.filterManager.addObserver(filterObserver)
   }
 })
@@ -358,7 +389,7 @@ onMounted(() => {
 // Unregister filter observer on unmount
 onUnmounted(() => {
   if (props.filterManager) {
-    console.log('[DataTableCard] Unregistering filter observer')
+    debugLog('[DataTableCard] Unregistering filter observer')
     props.filterManager.removeObserver(filterObserver)
   }
 })
@@ -369,8 +400,7 @@ emit('isLoaded')
 
 <style scoped>
 .data-table-card {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -384,17 +414,35 @@ emit('isLoaded')
   bottom: 0;
   z-index: 9999;
   background-color: var(--bgBold);
-  padding: 1rem;
+}
+
+/* Adjust absolute children in fullscreen mode to add margin */
+.data-table-card.is-fullscreen .table-controls {
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+}
+
+.data-table-card.is-fullscreen .table-wrapper {
+  top: calc(1rem + 28px);
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
 }
 
 .table-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   gap: 0.5rem;
   align-items: center;
   padding: 0.25rem 0.5rem;
   background: var(--bgBold);
   border-bottom: 1px solid var(--borderFaint);
-  flex-shrink: 0;
+  z-index: 2;
+  height: 28px;
 }
 
 .scroll-toggle {
@@ -416,13 +464,48 @@ emit('isLoaded')
 }
 
 .table-wrapper {
-  flex: 1;
-  overflow: auto;
-  min-height: 0;
+  position: absolute;
+  top: 28px;  /* Height of controls */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: scroll;   /* Always show scrollbars */
+}
+
+/* Custom scrollbar styling for better visibility */
+.table-wrapper::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: var(--bgPanel);
+  border-radius: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--textFaint);
+  border-radius: 6px;
+  border: 2px solid var(--bgPanel);
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--text);
+}
+
+.table-wrapper::-webkit-scrollbar-corner {
+  background: var(--bgPanel);
+}
+
+/* Firefox scrollbar */
+.table-wrapper {
+  scrollbar-width: auto;
+  scrollbar-color: var(--textFaint) var(--bgPanel);
 }
 
 .data-table {
-  width: 100%;
+  width: max-content;  /* Allow table to be wider than container for horizontal scroll */
+  min-width: 100%;     /* But at minimum fill the container */
   border-collapse: collapse;
   font-size: 0.8rem;
 }

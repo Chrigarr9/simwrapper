@@ -51,6 +51,7 @@ import { FileSystemConfig } from '@/Globals'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
+import { debugLog } from '../../utils/debug'
 
 // Types
 interface LayerConfig {
@@ -212,13 +213,13 @@ const hasMapControls = computed(() => {
 // Event handlers for map controls
 function onGeometryTypeChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
-  console.log('[MapCard] Geometry type changed to:', value)
+  debugLog('[MapCard] Geometry type changed to:', value)
   emit('update:geometry-type', value)
 }
 
 function onColorByChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
-  console.log('[MapCard] Color by changed to:', value)
+  debugLog('[MapCard] Color by changed to:', value)
   emit('update:color-by-attribute', value)
 }
 
@@ -255,29 +256,29 @@ onUnmounted(() => {
 
 // Watch for linkage prop changes and update layers
 watch(() => props.filteredData, () => {
-  console.log('[MapCard] filteredData changed, updating layers')
+  debugLog('[MapCard] filteredData changed, updating layers')
   updateLayers()
 }, { deep: true })
 
 watch(() => props.hoveredIds, () => {
-  console.log('[MapCard] hoveredIds changed:', props.hoveredIds)
+  debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
   updateLayers()
 }, { deep: true })
 
 watch(() => props.selectedIds, () => {
-  console.log('[MapCard] selectedIds changed:', props.selectedIds)
+  debugLog('[MapCard] selectedIds changed:', props.selectedIds)
   updateLayers()
 }, { deep: true })
 
 // Watch for layers prop changes (triggered by geometry type changes in parent)
 watch(() => props.layers, () => {
-  console.log('[MapCard] layers prop changed, reloading layer data')
+  debugLog('[MapCard] layers prop changed, reloading layer data')
   loadLayerData().then(() => updateLayers())
 }, { deep: true })
 
 // Watch for colorByAttribute changes to update layer colors
 watch(() => props.colorByAttribute, (newVal, oldVal) => {
-  console.log('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
+  debugLog('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
   updateLayers()
 })
 
@@ -311,7 +312,7 @@ async function initMap(): Promise<void> {
       })
     })
 
-    console.log('[MapCard] MapLibre initialized')
+    debugLog('[MapCard] MapLibre initialized')
   } catch (error) {
     console.error('[MapCard] Failed to initialize map:', error)
     isLoading.value = false
@@ -407,7 +408,7 @@ function extractCoordinates(geometry: any): [number, number][] {
 
 async function loadLayerData(): Promise<void> {
   if (!props.layers || props.layers.length === 0) {
-    console.log('[MapCard] No layers to load')
+    debugLog('[MapCard] No layers to load')
     return
   }
 
@@ -428,7 +429,7 @@ async function loadLayerData(): Promise<void> {
         // Store in layer data map
         layerData.value.set(layerConfig.name, filteredFeatures)
 
-        console.log(`[MapCard] Loaded layer "${layerConfig.name}": ${filteredFeatures.length} features`)
+        debugLog(`[MapCard] Loaded layer "${layerConfig.name}": ${filteredFeatures.length} features`)
       } catch (error) {
         console.error(`[MapCard] Failed to load layer "${layerConfig.name}":`, error)
         // Store empty array on failure so layer system doesn't crash
@@ -438,7 +439,7 @@ async function loadLayerData(): Promise<void> {
 
     await Promise.all(loadPromises)
 
-    console.log('[MapCard] All layers loaded')
+    debugLog('[MapCard] All layers loaded')
   } catch (error) {
     console.error('[MapCard] Error loading layer data:', error)
   }
@@ -512,7 +513,7 @@ function initDeckOverlay() {
   })
 
   map.value.addControl(deckOverlay.value as any)
-  console.log('[MapCard] Deck.gl overlay initialized')
+  debugLog('[MapCard] Deck.gl overlay initialized')
 }
 
 // ============================================================================
@@ -716,7 +717,7 @@ function updateLayers() {
       return
     }
 
-    console.log(`[MapCard] Creating layer "${layerConfig.name}" (type: ${layerConfig.type}, linkage: ${!!layerConfig.linkage}, features: ${features.length})`)
+    debugLog(`[MapCard] Creating layer "${layerConfig.name}" (type: ${layerConfig.type}, linkage: ${!!layerConfig.linkage}, features: ${features.length})`)
 
     // TASK 12: Create baseline layer if comparison mode enabled
     if (props.showComparison && props.baselineData && props.baselineData.length > 0) {
@@ -768,8 +769,8 @@ function updateLayers() {
 
   // Update deck overlay
   deckOverlay.value.setProps({ layers: sortedLayers })
-  console.log(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
-  console.log(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
+  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
+  debugLog(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
 }
 
 // TASK 12: Create baseline layer (gray, dimmed) for comparison mode
@@ -1551,7 +1552,7 @@ function hexToRgb(hex: string): [number, number, number] {
 // ============================================================================
 
 function handleClick(info: any) {
-  console.log('[MapCard] handleClick called', info.object ? 'with object' : 'without object')
+  debugLog('[MapCard] handleClick called', info.object ? 'with object' : 'without object')
 
   if (!info.object) {
     if (props.linkage?.onSelect === 'filter') {
@@ -1563,7 +1564,7 @@ function handleClick(info: any) {
   const layerId = info.layer?.id
   const layerConfig = findLayerConfigById(layerId)
 
-  console.log('[MapCard] layerConfig:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
+  debugLog('[MapCard] layerConfig:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
 
   if (!layerConfig || !layerConfig.linkage) {
     return
@@ -1582,7 +1583,7 @@ function handleClick(info: any) {
   // Debug: log what we're getting from the GeoJSON
   if (picked.length > 0) {
     const firstFeature = picked[0].object
-    console.log('[MapCard] Click - geoProperty:', layerConfig.linkage!.geoProperty,
+    debugLog('[MapCard] Click - geoProperty:', layerConfig.linkage!.geoProperty,
       'extracted IDs:', featureIds,
       'first feature properties:', firstFeature?.properties)
   }
@@ -1598,14 +1599,14 @@ function handleClick(info: any) {
     // Emit filter based on LAYER linkage (not card linkage)
     const filterId = `map-${layerConfig.name}`
     emit('filter', filterId, layerConfig.linkage.tableColumn, idSet)
-    console.log(`[MapCard] Emitting filter:`, filterId, layerConfig.linkage.tableColumn, idSet)
+    debugLog(`[MapCard] Emitting filter:`, filterId, layerConfig.linkage.tableColumn, idSet)
   } else if (layerConfig.linkage.onSelect === 'highlight') {
     // Just emit select for highlighting without filtering
     const idSet = new Set(featureIds)
     emit('select', idSet)
   }
 
-  console.log(`[MapCard] Clicked features:`, featureIds)
+  debugLog(`[MapCard] Clicked features:`, featureIds)
 }
 
 function handleHover(info: any) {
@@ -1617,7 +1618,7 @@ function handleHover(info: any) {
   const layerId = info.layer?.id
   const layerConfig = findLayerConfigById(layerId)
 
-  console.log('[MapCard] handleHover:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
+  debugLog('[MapCard] handleHover:', layerConfig?.name, 'has linkage:', !!layerConfig?.linkage)
 
   if (!layerConfig || !layerConfig.linkage) {
     emit('hover', new Set())
@@ -1786,7 +1787,7 @@ function handleLegendItemClick(label: string) {
 
   emit('filter', filterId, column, values)
 
-  console.log(`[MapCard] Legend filter: ${column} = ${label}`)
+  debugLog(`[MapCard] Legend filter: ${column} = ${label}`)
 }
 
 // RGB to Hex converter
@@ -1811,7 +1812,7 @@ watch(
 watch(
   () => props.showComparison,
   () => {
-    console.log('[MapCard] Comparison mode changed:', props.showComparison)
+    debugLog('[MapCard] Comparison mode changed:', props.showComparison)
     updateLayers()
   }
 )

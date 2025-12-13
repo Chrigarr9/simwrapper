@@ -1,3 +1,5 @@
+import { debugLog } from '../utils/debug'
+
 export type FilterType = 'categorical' | 'range' | 'time' | 'binned'
 
 export interface Filter {
@@ -28,10 +30,10 @@ export class FilterManager {
   setFilter(filterId: string, column: string, values: Set<any>, type: FilterType, binSize?: number): void {
     // If values is empty, remove the filter instead of creating an empty one
     if (values.size === 0) {
-      console.log('[FilterManager] Removing filter:', filterId)
+      debugLog('[FilterManager] Removing filter:', filterId)
       this.filters.delete(filterId)
     } else {
-      console.log('[FilterManager] Setting filter:', filterId, 'column:', column, 'type:', type, 'values:', Array.from(values), 'binSize:', binSize)
+      debugLog('[FilterManager] Setting filter:', filterId, 'column:', column, 'type:', type, 'values:', Array.from(values), 'binSize:', binSize)
       this.filters.set(filterId, { id: filterId, column, type, values, behavior: 'toggle', binSize })
     }
     this.notifyObservers()
@@ -81,7 +83,7 @@ export class FilterManager {
     if (data.length > 0) {
       const firstRow = data[0]
       for (const filter of this.filters.values()) {
-        console.log('[FilterManager] applyFilters - column:', filter.column,
+        debugLog('[FilterManager] applyFilters - column:', filter.column,
           'filter values:', Array.from(filter.values),
           'first row value:', firstRow[filter.column],
           'first row keys:', Object.keys(firstRow).slice(0, 10))

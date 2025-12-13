@@ -9,6 +9,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { getCategoryColor, buildColorMap } from '../../utils/colorSchemes'
 import globalStore from '@/store'
+import { debugLog } from '../../utils/debug'
 
 interface Props {
   title?: string
@@ -41,11 +42,11 @@ const previousFilteredDataLength = ref(0)
 const pieData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
   if (!props.filteredData || props.filteredData.length === 0) {
-    console.log('[PieChartCard] No filtered data available')
+    debugLog('[PieChartCard] No filtered data available')
     return []
   }
 
-  console.log('[PieChartCard] Computing pie chart from', props.filteredData.length, 'rows')
+  debugLog('[PieChartCard] Computing pie chart from', props.filteredData.length, 'rows')
 
   const counts = new Map<string, number>()
   props.filteredData.forEach(row => {
@@ -157,7 +158,7 @@ const renderChart = () => {
 watch(() => props.filteredData, (newData, oldData) => {
   // If filteredData has grown significantly (filters were removed), clear selection
   if (oldData && newData.length > previousFilteredDataLength.value && selectedCategories.value.size > 0) {
-    console.log('[PieChartCard] Filters cleared, resetting selection')
+    debugLog('[PieChartCard] Filters cleared, resetting selection')
     selectedCategories.value.clear()
   }
   previousFilteredDataLength.value = newData.length

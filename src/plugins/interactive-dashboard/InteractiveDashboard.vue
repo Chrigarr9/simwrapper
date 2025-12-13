@@ -77,6 +77,7 @@
             template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
               component.dash-card(v-if="card.visible"
                 :is="getCardComponent(card)"
+                :class="{'is-data-table': card.type === 'data-table'}"
                 :fileSystemConfig="fileSystemConfig"
                 :subfolder="row.subtabFolder || xsubfolder"
                 :files="fileList"
@@ -243,6 +244,7 @@ import DashboardDataManager from '@/js/DashboardDataManager'
 import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
+import { debugLog } from './utils/debug'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
 
@@ -717,7 +719,7 @@ export default defineComponent({
     },
 
     getCardComponent(card: any) {
-      // console.log(1, card)
+      // debugLog(1, card)
       // Data table card - uses the centralized DataTableManager
       if (card.type === 'data-table') {
         return 'DataTableCard'
@@ -1162,7 +1164,7 @@ export default defineComponent({
       this.filterManager.addObserver({
         onFilterChange: () => {
           this.filterVersion++
-          console.log('[InteractiveDashboard] Filters changed, version:', this.filterVersion)
+          debugLog('[InteractiveDashboard] Filters changed, version:', this.filterVersion)
         }
       })
 
@@ -1191,15 +1193,15 @@ export default defineComponent({
         columns: this.yaml.table.columns || {},
       }
       
-      console.log('[InteractiveDashboard] Initializing DataTableManager with config:', tableConfig)
+      debugLog('[InteractiveDashboard] Initializing DataTableManager with config:', tableConfig)
       this.dataTableManager = new DataTableManager(tableConfig)
 
       // Load centralized data
       if (tableConfig.dataset) {
         try {
-          console.log('[InteractiveDashboard] Loading dataset:', tableConfig.dataset)
+          debugLog('[InteractiveDashboard] Loading dataset:', tableConfig.dataset)
           await this.dataTableManager.loadData(this.fileApi, this.xsubfolder)
-          console.log('[InteractiveDashboard] Data loaded successfully')
+          debugLog('[InteractiveDashboard] Data loaded successfully')
         } catch (e) {
           console.error('[InteractiveDashboard] Failed to load centralized data:', e)
           this.$emit('error', `Failed to load data: ${e}`)
@@ -1385,6 +1387,8 @@ export default defineComponent({
     position: relative;
     height: 100%;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     background: url('../assets/simwrapper-logo/SW_logo_icon_anim.gif');
     background-size: 8rem;
     background-repeat: no-repeat;
@@ -1407,6 +1411,13 @@ export default defineComponent({
   border-radius: 2px;
   height: 100%;
   width: 100%;
+}
+
+// Allow data-table cards to contain their scrollable content
+.dash-card.is-data-table {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 // Observe for narrowness instead of a media-query

@@ -8,6 +8,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import globalStore from '@/store'
+import { debugLog } from '../../utils/debug'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal'
@@ -52,7 +53,7 @@ const previousFilteredDataLength = ref(0)
 // Get format config for this column
 const columnFormat = computed((): ColumnFormat | undefined => {
   const format = props.tableConfig?.columns?.formats?.[props.column]
-  console.log('[HistogramCard] Column:', props.column, 'Format:', format, 'TableConfig:', props.tableConfig)
+  debugLog('[HistogramCard] Column:', props.column, 'Format:', format, 'TableConfig:', props.tableConfig)
   return format
 })
 
@@ -103,11 +104,11 @@ function formatTickValue(value: number): string {
 const histogramData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
   if (!props.filteredData || props.filteredData.length === 0) {
-    console.log('[HistogramCard] No filtered data available')
+    debugLog('[HistogramCard] No filtered data available')
     return []
   }
 
-  console.log('[HistogramCard] Computing histogram from', props.filteredData.length, 'rows')
+  debugLog('[HistogramCard] Computing histogram from', props.filteredData.length, 'rows')
 
   const values = props.filteredData.map(row => row[props.column])
   const binSize = props.binSize || 1
@@ -221,7 +222,7 @@ const renderChart = () => {
 watch(() => props.filteredData, (newData, oldData) => {
   // If filteredData has grown significantly (filters were removed), clear selection
   if (oldData && newData.length > previousFilteredDataLength.value && selectedBins.value.size > 0) {
-    console.log('[HistogramCard] Filters cleared, resetting selection')
+    debugLog('[HistogramCard] Filters cleared, resetting selection')
     selectedBins.value.clear()
   }
   previousFilteredDataLength.value = newData.length
