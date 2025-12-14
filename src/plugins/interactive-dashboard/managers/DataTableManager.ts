@@ -55,6 +55,13 @@ export class DataTableManager {
   }
 
   /**
+   * Set data directly (used when data is preloaded/prefiltered)
+   */
+  setData(data: DataRow[]): void {
+    this.data = data
+  }
+
+  /**
    * Get row by ID
    */
   getRowById(id: any): DataRow | undefined {

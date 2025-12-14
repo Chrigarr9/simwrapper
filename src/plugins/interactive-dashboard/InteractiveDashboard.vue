@@ -92,6 +92,12 @@
                 :column="card.column"
                 :bin-size="card.binSize"
                 :title="card.title"
+                :x-column="card.xColumn"
+                :y-column="card.yColumn"
+                :color-column="card.colorColumn"
+                :size-column="card.sizeColumn"
+                :marker-size="card.markerSize"
+                :id-column="yaml.table?.idColumn"
                 :filtered-data="filteredData"
                 :hovered-ids="hoveredIds"
                 :selected-ids="selectedIds"
@@ -139,6 +145,12 @@
             :column="card.column"
             :bin-size="card.binSize"
             :title="card.title"
+            :x-column="card.xColumn"
+            :y-column="card.yColumn"
+            :color-column="card.colorColumn"
+            :size-column="card.sizeColumn"
+            :marker-size="card.markerSize"
+            :id-column="yaml.table?.idColumn"
             :layers="getCardLayers(card)"
             :center="card.center"
             :zoom="card.zoom"
@@ -220,6 +232,39 @@
               )
                 td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
 
+    //- NEW: Sub-Dashboards Section (shown when parent has selection)
+    .sub-dashboards-section(v-if="yaml.subDashboards?.length && parentSelectedValue && !embedded")
+      sub-dashboard(
+        v-for="(subConfig, idx) in yaml.subDashboards"
+        :key="`sub-${idx}-${parentSelectedValue}`"
+        :config="subConfig"
+        :parent-filter-column="subConfig.table?.linkColumn || 'trial_id'"
+        :parent-filter-value="parentSelectedValue"
+        :all-data="subDashboardData[subConfig.table?.dataset] || []"
+        :file-system-config="fileSystemConfig"
+        :subfolder="xsubfolder"
+        :root="root"
+        :all-config-files="allConfigFiles"
+        :datamanager="datamanager"
+        :split="split"
+        :initial-collapsed="false"
+      )
+
+    //- Legacy: Linked Tables Section (simpler table+map pairs)
+    .linked-tables-section(v-if="linkedTableManagers.length > 0 && tableSelectedIds.size > 0 && !yaml.subDashboards?.length")
+      linked-table-card(
+        v-for="(manager, idx) in linkedTableManagers"
+        :key="idx"
+        :title="getLinkedTableConfig(idx).name || 'Linked Table'"
+        :table-manager="manager"
+        :id-column="manager.getIdColumn()"
+        :columns="getLinkedTableConfig(idx).columns"
+        :map-config="getLinkedTableConfig(idx).map"
+        :file-system-config="fileSystemConfig"
+        :subfolder="xsubfolder"
+        :initial-collapsed="false"
+      )
+
 </template>
 
 <script lang="ts">
@@ -244,8 +289,11 @@ import DashboardDataManager from '@/js/DashboardDataManager'
 import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
+import { LinkedTableManager } from './managers/LinkedTableManager'
 import { debugLog } from './utils/debug'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
+import LinkedTableCard from './components/cards/LinkedTableCard.vue'
+import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
 
 // append a prefix so the html template is legal
@@ -261,7 +309,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -271,6 +319,12 @@ export default defineComponent({
     gist: Object as any,
     config: Object as any,
     zoomed: Boolean,
+    // NEW: Props for embedded sub-dashboard usage
+    embedded: { type: Boolean, default: false },  // True when used as a sub-dashboard
+    embeddedYaml: { type: Object, default: null },  // YAML config when embedded
+    parentFilterColumn: { type: String, default: '' },  // Column to filter by (e.g., 'trial_id')
+    parentFilterValue: { type: String, default: '' },   // Value to filter for
+    preloadedData: { type: Object, default: null },     // Pre-loaded datasets { 'file.csv': [...] }
   },
   data: () => {
     return {
@@ -301,6 +355,11 @@ export default defineComponent({
       filterManager: null as FilterManager | null,
       linkageManager: null as LinkageManager | null,
       dataTableManager: null as DataTableManager | null,
+      linkedTableManagers: [] as LinkedTableManager[],
+      // NEW: Sub-dashboard data (pre-loaded for SubDashboard components)
+      subDashboardData: {} as Record<string, any[]>,
+      // Selected value from parent table (used to filter sub-dashboards)
+      parentSelectedValue: null as string | null,
       filterVersion: 0, // Increment this when filters change to trigger reactivity
       // Table interaction state
       tableHoveredIds: new Set<any>() as Set<any>,
@@ -626,9 +685,34 @@ export default defineComponent({
 
     handleTableRowClick(row: any) {
       const rowId = this.getRowId(row)
+      console.log('[InteractiveDashboard] Row clicked, rowId:', rowId, 'row:', row)
+      
       if (this.linkageManager) {
         this.linkageManager.toggleSelectedIds(new Set([rowId]))
       }
+      
+      // NEW: Update parent selected value for sub-dashboards
+      // If clicking the same row again, deselect it
+      if (this.parentSelectedValue === String(rowId)) {
+        this.parentSelectedValue = null
+      } else {
+        this.parentSelectedValue = String(rowId)
+      }
+      console.log('[InteractiveDashboard] Parent selection updated:', this.parentSelectedValue)
+      console.log('[InteractiveDashboard] subDashboards count:', this.yaml.subDashboards?.length || 0)
+      console.log('[InteractiveDashboard] subDashboardData:', Object.keys(this.subDashboardData))
+      debugLog('[InteractiveDashboard] Parent selection:', this.parentSelectedValue)
+      
+      // Legacy: Update linked tables when parent selection changes
+      this.handleParentTableSelect(this.tableSelectedIds)
+    },
+
+    // NEW: Get linked table config from YAML by index
+    getLinkedTableConfig(index: number): any {
+      if (!this.yaml.linkedTables || index >= this.yaml.linkedTables.length) {
+        return {}
+      }
+      return this.yaml.linkedTables[index]
     },
 
     handleClearAllFilters() {
@@ -868,8 +952,16 @@ export default defineComponent({
     },
 
     async setupDashboard() {
+      const instanceId = Math.random().toString(36).substring(7)
+      console.log(`[InteractiveDashboard:${instanceId}] setupDashboard starting, embedded: ${this.embedded}`)
+      
       // Do we have config already or do we need to fetch it from the yaml file?
-      if (this.config) {
+      if (this.embedded && this.embeddedYaml) {
+        // NEW: Embedded mode - use provided YAML config directly
+        this.yaml = this.embeddedYaml
+        console.log(`[InteractiveDashboard:${instanceId}] Embedded mode with YAML:`, this.yaml.header?.title || 'Sub-Dashboard')
+        console.log(`[InteractiveDashboard:${instanceId}] Embedded YAML full:`, JSON.stringify(this.yaml, null, 2))
+      } else if (this.config) {
         this.yaml = this.config
       } else if (this.gist) {
         this.yaml = this.gist
@@ -999,13 +1091,19 @@ export default defineComponent({
 
     selectTabLayout() {
       // Choose subtab or full layout
+      console.log('[InteractiveDashboard] selectTabLayout called')
+      console.log('[InteractiveDashboard] subtabs:', this.subtabs.length, 'activeTab:', this.activeTab)
+      console.log('[InteractiveDashboard] yaml.layout:', this.yaml.layout)
 
       if (this.subtabs.length && this.activeTab > -1) {
         const subtab = this.subtabs[this.activeTab]
+        console.log('[InteractiveDashboard] Using subtab layout:', subtab.title)
         this.setupRows(subtab.layout, subtab.subtabFolder)
       } else if (this.yaml.layout) {
+        console.log('[InteractiveDashboard] Using main layout')
         this.setupRows(this.yaml.layout)
       } else {
+        console.error('[InteractiveDashboard] No layout found in YAML!')
         this.$store.commit(
           'error',
           `Dashboard YAML: could not find current subtab ${this.activeTab}`
@@ -1014,6 +1112,10 @@ export default defineComponent({
     },
 
     setupRows(layout: any, subtabFolder?: string) {
+      console.log('[InteractiveDashboard] setupRows called with layout:', layout)
+      console.log('[InteractiveDashboard] layout keys:', layout ? Object.keys(layout) : 'null')
+      console.log('[InteractiveDashboard] embedded mode:', this.embedded, 'title:', this.yaml?.header?.title)
+      console.log('[InteractiveDashboard] current rows before setup:', this.rows.length)
       let numCard = 1
 
       for (const rowId of Object.keys(layout)) {
@@ -1175,6 +1277,19 @@ export default defineComponent({
         },
         onSelectedIdsChange: (ids: Set<any>) => {
           this.tableSelectedIds = new Set(ids)
+          
+          // UPDATE: Also set parentSelectedValue for sub-dashboards
+          // When a single row is selected, use it as the parent filter value
+          if (ids.size === 1) {
+            const selectedId = Array.from(ids)[0]
+            this.parentSelectedValue = String(selectedId)
+            console.log('[InteractiveDashboard] parentSelectedValue updated from linkage:', this.parentSelectedValue)
+          } else if (ids.size === 0) {
+            this.parentSelectedValue = null
+            console.log('[InteractiveDashboard] parentSelectedValue cleared (no selection)')
+          }
+          // If multiple rows selected, keep the first one for sub-dashboard filtering
+          // (or could clear it - depending on UX preference)
         }
       })
 
@@ -1199,14 +1314,163 @@ export default defineComponent({
       // Load centralized data
       if (tableConfig.dataset) {
         try {
-          debugLog('[InteractiveDashboard] Loading dataset:', tableConfig.dataset)
-          await this.dataTableManager.loadData(this.fileApi, this.xsubfolder)
-          debugLog('[InteractiveDashboard] Data loaded successfully')
+          // NEW: Check if we have preloaded data for this dataset
+          if (this.preloadedData && this.preloadedData[tableConfig.dataset]) {
+            let data = this.preloadedData[tableConfig.dataset]
+            
+            // Apply parent filter if in embedded mode
+            if (this.embedded && this.parentFilterColumn && this.parentFilterValue) {
+              console.log('[InteractiveDashboard] Embedded mode: filtering by', this.parentFilterColumn, '=', this.parentFilterValue)
+              data = data.filter((row: any) => String(row[this.parentFilterColumn]) === String(this.parentFilterValue))
+              console.log('[InteractiveDashboard] Filtered data count:', data.length)
+            }
+            
+            this.dataTableManager.setData(data)
+            debugLog('[InteractiveDashboard] Using preloaded data:', data.length, 'rows')
+          } else {
+            debugLog('[InteractiveDashboard] Loading dataset:', tableConfig.dataset)
+            await this.dataTableManager.loadData(this.fileApi, this.xsubfolder)
+            debugLog('[InteractiveDashboard] Data loaded successfully')
+          }
         } catch (e) {
           console.error('[InteractiveDashboard] Failed to load centralized data:', e)
           this.$emit('error', `Failed to load data: ${e}`)
         }
       }
+
+      // NEW: Initialize linked tables if configured
+      await this.initializeLinkedTables()
+
+      // NEW: Initialize sub-dashboards if configured
+      await this.initializeSubDashboards()
+    },
+
+    // NEW: Initialize sub-dashboards - load their data
+    async initializeSubDashboards() {
+      console.log('[InteractiveDashboard] initializeSubDashboards called')
+      console.log('[InteractiveDashboard] yaml.subDashboards:', this.yaml.subDashboards)
+      
+      if (!this.yaml.subDashboards || !Array.isArray(this.yaml.subDashboards)) {
+        console.log('[InteractiveDashboard] No subDashboards configuration found')
+        debugLog('[InteractiveDashboard] No subDashboards configuration found')
+        return
+      }
+      
+      console.log('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
+
+      for (const subConfig of this.yaml.subDashboards) {
+        const dataset = subConfig.table?.dataset
+        console.log('[InteractiveDashboard] Processing subDashboard:', subConfig.title, 'dataset:', dataset)
+        
+        if (!dataset) {
+          console.warn('[InteractiveDashboard] SubDashboard missing table.dataset:', subConfig.title)
+          continue
+        }
+
+        // Skip if already loaded (multiple sub-dashboards might share the same dataset)
+        if (this.subDashboardData[dataset]) {
+          console.log('[InteractiveDashboard] Dataset already loaded:', dataset)
+          debugLog('[InteractiveDashboard] Dataset already loaded:', dataset)
+          continue
+        }
+
+        try {
+          console.log('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
+          debugLog('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
+          const filePath = `${this.xsubfolder}/${dataset}`
+          console.log('[InteractiveDashboard] Full file path:', filePath)
+          const text = await this.fileApi.getFileText(filePath)
+          
+          // Parse CSV
+          const lines = text.trim().split('\n')
+          const headers = lines[0].split(',')
+          const data: any[] = []
+          
+          for (let i = 1; i < lines.length; i++) {
+            const values = this.parseCSVLine(lines[i])
+            if (values.length !== headers.length) continue
+            
+            const row: any = {}
+            headers.forEach((header, idx) => {
+              const val = values[idx]
+              // Try to convert to number if possible
+              const num = Number(val)
+              row[header.trim()] = isNaN(num) || val === '' ? val : num
+            })
+            data.push(row)
+          }
+          
+          this.subDashboardData[dataset] = data
+          console.log('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
+          debugLog('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
+        } catch (e) {
+          console.error('[InteractiveDashboard] Failed to load sub-dashboard dataset:', dataset, e)
+          this.subDashboardData[dataset] = []
+        }
+      }
+      
+      console.log('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
+    },
+
+    // Helper to parse CSV line (handles quoted values with commas)
+    parseCSVLine(line: string): string[] {
+      const result: string[] = []
+      let current = ''
+      let inQuotes = false
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        if (char === '"') {
+          inQuotes = !inQuotes
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim())
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      result.push(current.trim())
+      return result
+    },
+
+    // NEW: Initialize secondary linked tables
+    async initializeLinkedTables() {
+      if (!this.yaml.linkedTables || !Array.isArray(this.yaml.linkedTables)) {
+        debugLog('[InteractiveDashboard] No linkedTables configuration found')
+        return
+      }
+
+      const parentIdColumn = this.yaml.table?.idColumn || 'id'
+
+      for (const linkedConfig of this.yaml.linkedTables) {
+        try {
+          const config = {
+            name: linkedConfig.name || linkedConfig.dataset,
+            dataset: linkedConfig.dataset,
+            idColumn: linkedConfig.idColumn || 'id',
+            linkColumn: linkedConfig.linkColumn || parentIdColumn,
+            visible: linkedConfig.visible !== false,
+            columns: linkedConfig.columns || {},
+          }
+
+          debugLog('[InteractiveDashboard] Initializing LinkedTableManager:', config.name)
+          const manager = new LinkedTableManager(config)
+          await manager.loadData(this.fileApi, this.xsubfolder)
+          
+          this.linkedTableManagers.push(manager)
+          debugLog('[InteractiveDashboard] Linked table loaded:', config.name, manager.getAllData().length, 'rows')
+        } catch (e) {
+          console.error('[InteractiveDashboard] Failed to load linked table:', linkedConfig.name, e)
+        }
+      }
+    },
+
+    // NEW: Handle parent table selection to filter linked tables
+    handleParentTableSelect(selectedIds: Set<any>) {
+      debugLog('[InteractiveDashboard] Parent selection changed:', selectedIds.size, 'ids')
+      this.linkedTableManagers.forEach(manager => {
+        manager.setParentSelection(selectedIds)
+      })
     },
   },
   async mounted() {
@@ -1247,6 +1511,7 @@ export default defineComponent({
     this.filterManager = null
     this.linkageManager = null
     this.dataTableManager = null
+    this.linkedTableManagers = []
   },
 })
 </script>
@@ -1645,6 +1910,20 @@ li.is-not-active b a {
         color: var(--text);
       }
     }
+  }
+}
+
+// Linked tables section styles
+.linked-tables-section {
+  padding: 1rem 0;
+  margin-top: 1rem;
+  border-top: 2px solid var(--bgBold);
+  
+  h4 {
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+    color: var(--textFancy);
+    font-weight: 600;
   }
 }
 </style>

@@ -22,6 +22,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   plotly: defineAsyncComponent(() => import('./plotly.vue')),
   sankey: defineAsyncComponent(() => import('./sankey.vue')),
   scatter: defineAsyncComponent(() => import('./scatter.vue')),
+  'scatter-plot': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/ScatterCard.vue')),
   slideshow: defineAsyncComponent(() => import('./slideshow.vue')),
   text: defineAsyncComponent(() => import('./text.vue')),
   tile: defineAsyncComponent(() => import('./tile.vue')),

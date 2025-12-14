@@ -74,6 +74,18 @@ export interface PieChartCardConfig extends CardConfig {
 }
 
 /**
+ * Scatter plot card configuration
+ */
+export interface ScatterCardConfig extends CardConfig {
+  type: 'scatter-plot'
+  xColumn: string  // Column for X axis
+  yColumn: string  // Column for Y axis
+  colorColumn?: string  // Optional column for point colors (categorical)
+  sizeColumn?: string  // Optional column for point sizes (numeric)
+  markerSize?: number  // Default marker size (default: 8)
+}
+
+/**
  * Map card configuration
  */
 export interface MapCardConfig extends CardConfig {
