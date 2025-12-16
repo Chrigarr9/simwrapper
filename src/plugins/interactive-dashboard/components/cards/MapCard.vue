@@ -112,6 +112,7 @@ interface LayerConfig {
     geoProperty: string
     onHover?: 'highlight' | 'none'
     onSelect?: 'filter' | 'highlight' | 'none'
+    hideOthersOnSelect?: boolean  // When true, hide non-filtered features completely instead of dimming
   }
 }
 
@@ -1125,6 +1126,10 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   }
 
   if (hasActiveFilters && !isFiltered) {
+    // If hideOthersOnSelect is true, make fully transparent (hidden)
+    if (layerConfig.linkage?.hideOthersOnSelect) {
+      return [0, 0, 0, 0]
+    }
     return [180, 180, 180, 80]
   }
 
@@ -1263,7 +1268,11 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   // State-based scaling
   if (isHovered) return baseWidth * 3
   if (isSelected) return baseWidth * 2
-  if (hasActiveFilters && !isFiltered) return 1 // Always 1px when dimmed
+  if (hasActiveFilters && !isFiltered) {
+    // If hideOthersOnSelect is true, make invisible (0 width)
+    if (layerConfig.linkage?.hideOthersOnSelect) return 0
+    return 1 // Always 1px when dimmed
+  }
   return baseWidth
 }
 
@@ -1289,7 +1298,11 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
   // State-based scaling
   if (isHovered) return baseRadius * 1.5
   if (isSelected) return baseRadius * 1.2
-  if (hasActiveFilters && !isFiltered) return baseRadius * 0.5 // Smaller when dimmed
+  if (hasActiveFilters && !isFiltered) {
+    // If hideOthersOnSelect is true, make invisible (0 radius)
+    if (layerConfig.linkage?.hideOthersOnSelect) return 0
+    return baseRadius * 0.5 // Smaller when dimmed
+  }
   return baseRadius
 }
 
@@ -1309,6 +1322,10 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   }
 
   if (hasActiveFilters && !isFiltered) {
+    // If hideOthersOnSelect is true, make fully transparent (hidden)
+    if (layerConfig.linkage?.hideOthersOnSelect) {
+      return [0, 0, 0, 0]
+    }
     const baseColor = getBaseColor(feature, layerConfig)
     const dimmed: [number, number, number] = [
       Math.round((baseColor[0] + 180) / 2),

@@ -1345,7 +1345,7 @@ export default defineComponent({
       await this.initializeSubDashboards()
     },
 
-    // NEW: Initialize sub-dashboards - load their data
+    // NEW: Initialize sub-dashboards - resolve file references and load their data
     async initializeSubDashboards() {
       console.log('[InteractiveDashboard] initializeSubDashboards called')
       console.log('[InteractiveDashboard] yaml.subDashboards:', this.yaml.subDashboards)
@@ -1358,6 +1358,32 @@ export default defineComponent({
       
       console.log('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
 
+      // First pass: resolve file references
+      const resolvedSubDashboards: any[] = []
+      for (let i = 0; i < this.yaml.subDashboards.length; i++) {
+        const subConfig = this.yaml.subDashboards[i]
+        
+        if (subConfig.file) {
+          // Load sub-dashboard from external YAML file
+          try {
+            const resolvedConfig = await this.loadSubDashboardFile(subConfig.file, subConfig)
+            if (resolvedConfig) {
+              resolvedSubDashboards.push(resolvedConfig)
+            }
+          } catch (e) {
+            console.error('[InteractiveDashboard] Failed to load sub-dashboard file:', subConfig.file, e)
+          }
+        } else {
+          // Inline sub-dashboard config
+          resolvedSubDashboards.push(subConfig)
+        }
+      }
+      
+      // Replace with resolved configs
+      this.yaml.subDashboards = resolvedSubDashboards
+      console.log('[InteractiveDashboard] Resolved', resolvedSubDashboards.length, 'subDashboards')
+
+      // Second pass: load data for each sub-dashboard
       for (const subConfig of this.yaml.subDashboards) {
         const dataset = subConfig.table?.dataset
         console.log('[InteractiveDashboard] Processing subDashboard:', subConfig.title, 'dataset:', dataset)
@@ -1410,6 +1436,63 @@ export default defineComponent({
       }
       
       console.log('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
+    },
+
+    // NEW: Load sub-dashboard config from external YAML file
+    async loadSubDashboardFile(filename: string, overrides: any): Promise<any> {
+      console.log('[InteractiveDashboard] Loading sub-dashboard file:', filename)
+      
+      try {
+        // Load the YAML file (relative to current dashboard folder)
+        const filePath = `${this.xsubfolder}/${filename}`
+        const yamlText = await this.fileApi.getFileText(filePath)
+        const fileConfig = YAML.parse(yamlText)
+        
+        console.log('[InteractiveDashboard] Loaded sub-dashboard file:', filename, 'title:', fileConfig.header?.title || fileConfig.title)
+        
+        // Build the sub-dashboard config from the file
+        // Use header.title or header.tab as the title, or fall back to filename
+        const baseConfig = {
+          title: fileConfig.header?.title || fileConfig.header?.tab || filename.replace('.yaml', ''),
+          table: fileConfig.table,
+          layout: fileConfig.layout,
+          map: fileConfig.map,
+        }
+        
+        // Deep merge with overrides (overrides take precedence)
+        const mergedConfig = this.deepMerge(baseConfig, overrides)
+        
+        // Remove the 'file' property from the merged config
+        delete mergedConfig.file
+        
+        console.log('[InteractiveDashboard] Merged sub-dashboard config:', mergedConfig.title)
+        return mergedConfig
+      } catch (e) {
+        console.error('[InteractiveDashboard] Failed to load sub-dashboard file:', filename, e)
+        return null
+      }
+    },
+
+    // Helper: Deep merge two objects (target properties override source)
+    deepMerge(source: any, target: any): any {
+      if (!target || typeof target !== 'object') return source
+      if (!source || typeof source !== 'object') return target
+      
+      const result = { ...source }
+      
+      for (const key of Object.keys(target)) {
+        if (key === 'file') continue // Skip 'file' property
+        
+        if (target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+          // Recursively merge objects
+          result[key] = this.deepMerge(source[key] || {}, target[key])
+        } else if (target[key] !== undefined) {
+          // Override with target value
+          result[key] = target[key]
+        }
+      }
+      
+      return result
     },
 
     // Helper to parse CSV line (handles quoted values with commas)

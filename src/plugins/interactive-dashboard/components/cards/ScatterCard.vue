@@ -208,38 +208,114 @@ const renderChart = () => {
   const highlightColor = isDarkMode.value ? '#fbbf24' : '#f59e0b'
   const selectedColor = isDarkMode.value ? '#f87171' : '#ef4444'
 
-  // Determine marker colors based on hover/selection state
-  const markerColors = scatterData.value.ids.map((id, i) => {
-    if (id && selectedPoints.value.has(id)) return selectedColor
-    if (id && props.selectedIds?.has(id)) return selectedColor
-    if (id && props.hoveredIds?.has(id)) return highlightColor
-    return scatterData.value.colors[i] || defaultColor
-  })
+  // Build traces - one per category for proper legend, or single trace if no categories
+  const traces: any[] = []
+  const categories = scatterData.value.categories
+  const hasCategories = props.colorColumn && categories.length > 0
 
-  // Determine marker line widths for highlighting
-  const lineWidths = scatterData.value.ids.map((id) => {
-    if (id && (props.hoveredIds?.has(id) || props.selectedIds?.has(id) || selectedPoints.value.has(id))) {
-      return 2
-    }
-    return 0.5
-  })
+  if (hasCategories) {
+    // Create separate traces for each category (enables proper legend)
+    const categoryColors = generateCategoryColors(categories)
+    
+    categories.forEach((category) => {
+      const categoryIndices: number[] = []
+      const categoryX: number[] = []
+      const categoryY: number[] = []
+      const categoryText: string[] = []
+      const categorySizes: number[] = []
+      const categoryMarkerColors: string[] = []
+      const categoryLineWidths: number[] = []
 
-  const trace = {
-    x: scatterData.value.x,
-    y: scatterData.value.y,
-    mode: 'markers',
-    type: 'scatter',
-    text: scatterData.value.text,
-    hoverinfo: 'text',
-    marker: {
-      color: markerColors,
-      size: scatterData.value.sizes,
-      line: {
-        color: isDarkMode.value ? '#ffffff' : '#1e293b',
-        width: lineWidths,
+      // Find all points belonging to this category
+      props.filteredData?.forEach((row, i) => {
+        if (String(row[props.colorColumn!]) === category) {
+          const xVal = row[props.xColumn]
+          const yVal = row[props.yColumn]
+          if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+            const id = props.idColumn ? row[props.idColumn] : null
+            categoryIndices.push(i)
+            categoryX.push(xVal)
+            categoryY.push(yVal)
+            categoryText.push(scatterData.value.text[scatterData.value.ids.indexOf(id)] || '')
+            categorySizes.push(scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize)
+            
+            // Color based on selection state
+            if (id && selectedPoints.value.has(id)) {
+              categoryMarkerColors.push(selectedColor)
+            } else if (id && props.selectedIds?.has(id)) {
+              categoryMarkerColors.push(selectedColor)
+            } else if (id && props.hoveredIds?.has(id)) {
+              categoryMarkerColors.push(highlightColor)
+            } else {
+              categoryMarkerColors.push(categoryColors[category])
+            }
+            
+            // Line width for highlighting
+            if (id && (props.hoveredIds?.has(id) || props.selectedIds?.has(id) || selectedPoints.value.has(id))) {
+              categoryLineWidths.push(2)
+            } else {
+              categoryLineWidths.push(0.5)
+            }
+          }
+        }
+      })
+
+      if (categoryX.length > 0) {
+        traces.push({
+          x: categoryX,
+          y: categoryY,
+          mode: 'markers',
+          type: 'scatter',
+          name: category,
+          text: categoryText,
+          hoverinfo: 'text',
+          marker: {
+            color: categoryMarkerColors,
+            size: categorySizes,
+            line: {
+              color: isDarkMode.value ? '#ffffff' : '#1e293b',
+              width: categoryLineWidths,
+            },
+            opacity: 0.8,
+          },
+          // Store original color for legend
+          legendgroup: category,
+        })
+      }
+    })
+  } else {
+    // Single trace - no categories
+    const markerColors = scatterData.value.ids.map((id, i) => {
+      if (id && selectedPoints.value.has(id)) return selectedColor
+      if (id && props.selectedIds?.has(id)) return selectedColor
+      if (id && props.hoveredIds?.has(id)) return highlightColor
+      return scatterData.value.colors[i] || defaultColor
+    })
+
+    const lineWidths = scatterData.value.ids.map((id) => {
+      if (id && (props.hoveredIds?.has(id) || props.selectedIds?.has(id) || selectedPoints.value.has(id))) {
+        return 2
+      }
+      return 0.5
+    })
+
+    traces.push({
+      x: scatterData.value.x,
+      y: scatterData.value.y,
+      mode: 'markers',
+      type: 'scatter',
+      text: scatterData.value.text,
+      hoverinfo: 'text',
+      marker: {
+        color: markerColors,
+        size: scatterData.value.sizes,
+        line: {
+          color: isDarkMode.value ? '#ffffff' : '#1e293b',
+          width: lineWidths,
+        },
+        opacity: 0.8,
       },
-      opacity: 0.8,
-    },
+    })
   }
 
   const layout = {
@@ -257,15 +333,24 @@ const renderChart = () => {
       linecolor: gridColor,
       zerolinecolor: gridColor,
     },
-    margin: { l: 60, r: 15, t: 10, b: 45 },
+    margin: { l: 60, r: hasCategories ? 100 : 15, t: 10, b: 45 },
     autosize: true,
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     hovermode: 'closest',
-    showlegend: false,
+    showlegend: hasCategories,
+    legend: hasCategories ? {
+      x: 1.02,
+      y: 1,
+      xanchor: 'left',
+      yanchor: 'top',
+      font: { color: textColor, size: 10 },
+      bgcolor: 'rgba(0,0,0,0)',
+      borderwidth: 0,
+    } : undefined,
   }
 
-  Plotly.newPlot(plotContainer.value, [trace], layout, {
+  Plotly.newPlot(plotContainer.value, traces, layout, {
     displayModeBar: false,
     responsive: true,
   })
