@@ -5,53 +5,56 @@
 ## Test Framework
 
 **Runner:**
-- Vitest (unit tests) - `vitest@^4.0.12`
-- Playwright (E2E tests) - `@playwright/test@^1.56.1`
-- Config: `vite.config.mts` (vitest), `playwright.config.ts` (E2E)
+- Vitest 4.x (configured inline in `vite.config.mts`)
+- E2E: Playwright 1.56+
 
 **Assertion Library:**
-- Vitest built-in assertions (`expect`)
-- Playwright assertions for E2E
+- Vitest built-in (`expect`)
+- `@vue/test-utils` for component mounting
 
 **Run Commands:**
 ```bash
-npm run test:run          # Run vitest unit tests once
-npm run test:ui           # Run vitest with interactive UI
-npm run test              # Run Playwright E2E tests
+npm run test:run          # Run all unit tests (vitest)
+npm run test:ui           # Run tests with Vitest UI
+npm run test              # Run E2E tests (playwright)
 ```
 
 ## Test File Organization
 
 **Location:**
-- Unit tests: `src/**/__tests__/*.test.ts` (co-located with source)
-- Legacy unit tests: `tests/unit/*.test.ts` and `tests/unit/*.spec.ts`
-- E2E tests: `tests/e2e/*.spec.ts`
+- Unit tests: Co-located in `__tests__/` directories adjacent to source
+- E2E tests: Separate in `tests/e2e/`
+- Legacy unit tests: `tests/unit/`
 
 **Naming:**
-- Unit tests: `*.test.ts` (newer pattern) or `*.spec.ts` (older pattern)
-- E2E tests: `*.spec.ts`
+- Unit tests: `{SourceFileName}.test.ts`
+- E2E tests: `{feature-name}.spec.ts`
+- Legacy: `{ComponentName}.spec.ts`
 
 **Structure:**
 ```
-src/
-├── plugins/
-│   └── interactive-dashboard/
-│       ├── managers/
-│       │   ├── FilterManager.ts
-│       │   └── __tests__/
-│       │       └── FilterManager.test.ts
-│       └── components/
-│           └── cards/
-│               └── __tests__/
-│                   └── MapCard.test.ts
+src/plugins/interactive-dashboard/
+├── managers/
+│   ├── FilterManager.ts
+│   ├── LinkageManager.ts
+│   ├── DataTableManager.ts
+│   └── __tests__/
+│       ├── FilterManager.test.ts
+│       ├── LinkageManager.test.ts
+│       └── DataTableManager.test.ts
+├── components/cards/
+│   ├── MapCard.vue
+│   └── __tests__/
+│       └── MapCard.test.ts
+
 tests/
 ├── e2e/
 │   ├── atlantis.spec.ts
-│   ├── carrier-viewer.spec.ts
-│   └── ...
+│   ├── flow-map.spec.ts
+│   └── ... (plugin-specific E2E tests)
 └── unit/
-    ├── BlankComponent.spec.ts
-    └── tile.test.ts
+    ├── tile.test.ts
+    └── BlankComponent.spec.ts
 ```
 
 ## Test Structure
@@ -87,66 +90,60 @@ describe('FilterManager', () => {
 ```
 
 **Patterns:**
-- `describe()` blocks for grouping related tests
-- `beforeEach()` for test setup/reset
-- `test()` or `it()` for individual test cases
-- Single assertion per test when possible
-- Descriptive test names explaining expected behavior
+- Use `describe()` blocks to group related tests
+- Use `beforeEach()` for common setup (create fresh instance)
+- Use descriptive test names that explain the behavior being tested
+- Prefer `test()` over `it()` (both work, project uses both)
 
 ## Mocking
 
-**Framework:** Vitest `vi` utilities
+**Framework:** Vitest `vi` module
 
 **Patterns:**
 ```typescript
 import { vi } from 'vitest'
 
-// Mock function
-const observer = { onFilterChange: vi.fn() }
-fm.addObserver(observer)
-expect(observer.onFilterChange).toHaveBeenCalled()
+// Mock functions
+const observer = {
+  onFilterChange: vi.fn(),
+  onHoveredIdsChange: vi.fn(),
+  onSelectedIdsChange: vi.fn(),
+}
 
-// Mock resolved value
+// Verify mock was called
+expect(observer.onFilterChange).toHaveBeenCalled()
+expect(observer.onHoveredIdsChange).toHaveBeenCalledWith(new Set([1, 2, 3]))
+expect(observer.onFilterChange).not.toHaveBeenCalled()
+
+// Mock async functions
 const mockFileService = {
   fetchFileAsBlob: vi.fn().mockResolvedValue(blob),
+  getFileBlob: vi.fn().mockRejectedValue(new Error('File not found')),
 }
 
-// Mock rejected value
-const mockFileService = {
-  fetchFileAsBlob: vi.fn().mockRejectedValue(new Error('File not found')),
-}
-
-// Global fetch mock
+// Global mocks (for fetch, etc.)
 global.fetch = vi.fn().mockResolvedValue({
   status: 200,
-  text: () => new Promise(resolve => { resolve(csvText) }),
-  blob: () => new Promise(resolve => { resolve(blob) }),
+  text: () => Promise.resolve(csvText),
+  blob: () => Promise.resolve(blob),
 })
 ```
 
 **What to Mock:**
-- External API calls (fetch)
-- File system operations
-- Service dependencies passed via props/injection
+- External services (file system, network)
+- Observer callbacks
 - Browser APIs not available in jsdom
 
 **What NOT to Mock:**
-- Core class logic being tested
-- Simple utility functions
-- Internal state management
+- The class/component being tested
+- Pure functions with no side effects
+- Internal logic of the unit under test
 
 ## Fixtures and Factories
 
 **Test Data:**
 ```typescript
-// Inline test data
-const data = [
-  { id: 1, name: 'Alice', mode: 'car' },
-  { id: 2, name: 'Bob', mode: 'bike' },
-  { id: 3, name: 'Charlie', mode: 'car' },
-]
-
-// Mock config objects
+// Inline test data for simple cases
 const mockConfig = {
   name: 'Test',
   dataset: 'test.csv',
@@ -154,70 +151,57 @@ const mockConfig = {
   visible: true,
 }
 
-// CSV content as string
+const data = [
+  { id: 1, name: 'Alice', mode: 'car' },
+  { id: 2, name: 'Bob', mode: 'bike' },
+  { id: 3, name: 'Charlie', mode: 'car' },
+]
+
+// CSV text for loading tests
 const csvData = 'id,name,mode\n1,Alice,car\n2,Bob,bike'
 const blob = new Blob([csvData], { type: 'text/csv' })
+
+// Direct data injection for bypassing file loading
+beforeEach(() => {
+  dtm = new DataTableManager(mockConfig)
+  // Directly set data for testing (skip actual file loading)
+  ;(dtm as any).data = data
+})
 ```
 
 **Location:**
-- Fixtures defined inline within test files
-- Complex fixtures imported from shared test utilities when needed
+- Inline in test files for small datasets
+- For larger fixtures, consider `__fixtures__/` directory (not currently used)
 
 ## Coverage
 
-**Requirements:** None enforced
-
-**Coverage tool:** `@vitest/coverage-v8`
+**Requirements:** None enforced (no coverage thresholds configured)
 
 **View Coverage:**
 ```bash
-# Coverage is generated in ./coverage directory
-# Open ./coverage/index.html in browser
+npm run test:run -- --coverage
 ```
+
+**Coverage Tool:** `@vitest/coverage-v8` (installed in devDependencies)
 
 ## Test Types
 
 **Unit Tests:**
-- Manager classes (`FilterManager`, `DataTableManager`, `LinkageManager`)
-- Utility functions
-- Focus on business logic, not Vue component rendering
-- Located in `__tests__/` directories next to source
+- Test individual classes and functions in isolation
+- Focus on manager classes: `FilterManager`, `LinkageManager`, `DataTableManager`
+- Test observer pattern: add/remove observers, notification on state change
+- Test data filtering logic: AND/OR logic, toggle behavior
 
-**Component Tests:**
-- Vue component mounting with `@vue/test-utils`
-- Props validation and basic rendering
-- Limited in scope (WebGL components difficult to test)
+**Integration Tests:**
+- Component mounting with `@vue/test-utils`
+- Test component props interface
+- Test event emission
 
 **E2E Tests:**
-- Playwright browser automation
-- Full page loads and interactions
-- Canvas/WebGL visualization validation
-- Cross-browser testing (Chromium, Firefox, WebKit)
-
-## E2E Test Patterns
-
-**Structure:**
-```typescript
-import { test, expect } from '@playwright/test'
-
-test('atlantis network loads', async ({ page }) => {
-  page.on('dialog', async dialog => {
-    await dialog.dismiss()
-  })
-
-  await page.goto('e2e-tests/atlantis/minibus/input/network.xml')
-  await page.waitForSelector('canvas')
-  await expect(page.locator('canvas')).toBeVisible()
-})
-```
-
-**Configuration (`playwright.config.ts`):**
-- Test directory: `./tests/e2e`
-- Base URL: `http://localhost:5173/`
-- Dev server: Auto-started via `npm run dev`
-- Browsers: Chromium, Firefox, WebKit
-- Device emulation: Desktop Chrome, Pixel 5, iPad Pro
-- Timeouts: 60s for actions and navigation
+- Playwright-based
+- Test full plugin visualization workflows
+- Located in `tests/e2e/`
+- Use `page.goto()`, `page.waitForSelector()`, assertions on DOM state
 
 ## Common Patterns
 
@@ -225,6 +209,7 @@ test('atlantis network loads', async ({ page }) => {
 ```typescript
 test('loads data from CSV file', async () => {
   const newDtm = new DataTableManager(mockConfig)
+  const csvData = 'id,name,mode\n1,Alice,car\n2,Bob,bike'
   const blob = new Blob([csvData], { type: 'text/csv' })
 
   const mockFileService = {
@@ -236,12 +221,8 @@ test('loads data from CSV file', async () => {
   expect(mockFileService.fetchFileAsBlob).toHaveBeenCalledWith('/data/test.csv')
   expect(newDtm.getData()).toHaveLength(2)
 })
-```
 
-**Error Testing:**
-```typescript
 test('rejects on file service error', async () => {
-  const newDtm = new DataTableManager(mockConfig)
   const mockFileService = {
     fetchFileAsBlob: vi.fn().mockRejectedValue(new Error('File not found')),
   }
@@ -250,64 +231,246 @@ test('rejects on file service error', async () => {
 })
 ```
 
-**Observer/Callback Testing:**
+**Error Testing:**
 ```typescript
-test('notifies observers on selection change', () => {
-  const observer = {
-    onHoveredIdsChange: vi.fn(),
-    onSelectedIdsChange: vi.fn(),
+test('rejects on file service error', async () => {
+  const mockFileService = {
+    fetchFileAsBlob: vi.fn().mockRejectedValue(new Error('File not found')),
   }
-  lm.addObserver(observer)
 
-  lm.setSelectedIds(new Set([1, 2]))
-  expect(observer.onSelectedIdsChange).toHaveBeenCalledWith(new Set([1, 2]))
+  await expect(newDtm.loadData(mockFileService, '/data')).rejects.toThrow('File not found')
 })
 ```
 
-**Vue Component Testing:**
+**Component Mounting:**
 ```typescript
 import { mount } from '@vue/test-utils'
-import Component from '@/components/BlankComponent.vue'
+import MapCard from '../MapCard.vue'
 
-describe('BlankComponent.vue', () => {
-  it('should display header text', () => {
-    const msg = 'Hello'
-    const wrapper = mount(Component, { props: {} })
-    expect(wrapper.find('h1').text()).toEqual(msg)
+describe('MapCard.vue', () => {
+  let props: any
+
+  beforeEach(() => {
+    props = {
+      filteredData: [],
+      hoveredIds: new Set(),
+      selectedIds: new Set(),
+      center: [11.57, 48.14],
+      zoom: 10,
+      layers: [],
+    }
+  })
+
+  it('renders without errors', () => {
+    const wrapper = mount(MapCard, { props })
+    expect(wrapper.exists()).toBe(true)
+  })
+
+  it('displays title when provided', () => {
+    props.title = 'Test Map'
+    const wrapper = mount(MapCard, { props })
+    expect(wrapper.text()).toContain('Test Map')
+  })
+
+  it('shows loading state initially', () => {
+    const wrapper = mount(MapCard, { props })
+    expect(wrapper.find('.loading-overlay').exists()).toBe(true)
   })
 })
 ```
 
-## Test Environment
+**Testing Immutability (Preventing External Mutations):**
+```typescript
+test('creates new Set instances to prevent external mutations', () => {
+  const ids = new Set([1, 2])
+  lm.setSelectedIds(ids)
 
-**Vitest Configuration (in `vite.config.mts`):**
+  ids.add(3)  // Mutate original
+
+  // LinkageManager should not be affected
+  expect(lm.getSelectedIds().size).toBe(2)
+})
+```
+
+## Interactive Dashboard Test Patterns
+
+### Testing FilterManager
+
+```typescript
+describe('FilterManager', () => {
+  let fm: FilterManager
+
+  beforeEach(() => {
+    fm = new FilterManager()
+  })
+
+  test('applies OR logic within filter values', () => {
+    const data = [{ mode: 'car' }, { mode: 'bike' }, { mode: 'walk' }]
+    fm.setFilter('mode', 'mode', new Set(['car', 'bike']), 'categorical')
+
+    const filtered = fm.applyFilters(data)
+    expect(filtered).toHaveLength(2)
+  })
+
+  test('applies AND logic between different filters', () => {
+    const data = [
+      { mode: 'car', age: 25 },
+      { mode: 'bike', age: 25 },
+      { mode: 'car', age: 30 },
+    ]
+
+    fm.setFilter('mode', 'mode', new Set(['car']), 'categorical')
+    fm.setFilter('age', 'age', new Set([25]), 'categorical')
+
+    const filtered = fm.applyFilters(data)
+    expect(filtered).toEqual([{ mode: 'car', age: 25 }])
+  })
+
+  test('toggles filter values', () => {
+    fm.setFilter('mode', 'mode', new Set(['car']), 'categorical')
+    fm.toggleFilterValue('mode', 'bike')
+
+    let filter = fm.getFilters().get('mode')
+    expect(filter?.values.has('bike')).toBe(true)
+
+    fm.toggleFilterValue('mode', 'bike')
+    filter = fm.getFilters().get('mode')
+    expect(filter?.values.has('bike')).toBe(false)
+  })
+
+  test('removes filter when all values toggled off', () => {
+    fm.setFilter('mode', 'mode', new Set(['car']), 'categorical')
+    fm.toggleFilterValue('mode', 'car')
+
+    expect(fm.getFilters().size).toBe(0)
+  })
+})
+```
+
+### Testing LinkageManager
+
+```typescript
+describe('LinkageManager', () => {
+  let lm: LinkageManager
+
+  beforeEach(() => {
+    lm = new LinkageManager()
+  })
+
+  test('notifies observers on hover change', () => {
+    const observer = {
+      onHoveredIdsChange: vi.fn(),
+      onSelectedIdsChange: vi.fn(),
+    }
+    lm.addObserver(observer)
+
+    lm.setHoveredIds(new Set([1, 2, 3]))
+    expect(observer.onHoveredIdsChange).toHaveBeenCalledWith(new Set([1, 2, 3]))
+  })
+
+  test('toggles selection - deselects all when all selected', () => {
+    lm.setSelectedIds(new Set([1, 2]))
+    lm.toggleSelectedIds(new Set([1, 2]))
+    expect(lm.getSelectedIds().size).toBe(0)
+  })
+
+  test('toggles selection - selects all when partially selected', () => {
+    lm.setSelectedIds(new Set([1]))
+    lm.toggleSelectedIds(new Set([1, 2]))
+    expect(lm.getSelectedIds().size).toBe(2)
+  })
+
+  test('removes observer', () => {
+    const observer = {
+      onHoveredIdsChange: vi.fn(),
+      onSelectedIdsChange: vi.fn(),
+    }
+    lm.addObserver(observer)
+    lm.removeObserver(observer)
+
+    lm.setHoveredIds(new Set([1]))
+    expect(observer.onHoveredIdsChange).not.toHaveBeenCalled()
+  })
+})
+```
+
+### Testing DataTableManager
+
+```typescript
+describe('DataTableManager', () => {
+  const mockConfig = {
+    name: 'Test',
+    dataset: 'test.csv',
+    idColumn: 'id',
+    visible: true,
+  }
+
+  let dtm: DataTableManager
+
+  beforeEach(() => {
+    dtm = new DataTableManager(mockConfig)
+    ;(dtm as any).data = [
+      { id: 1, name: 'Alice', mode: 'car' },
+      { id: 2, name: 'Bob', mode: 'bike' },
+      { id: 3, name: 'Charlie', mode: 'car' },
+    ]
+  })
+
+  test('gets row by ID', () => {
+    const row = dtm.getRowById(2)
+    expect(row).toEqual({ id: 2, name: 'Bob', mode: 'bike' })
+  })
+
+  test('returns undefined for non-existent ID', () => {
+    const row = dtm.getRowById(999)
+    expect(row).toBeUndefined()
+  })
+
+  test('gets multiple rows by IDs', () => {
+    const rows = dtm.getRowsByIds(new Set([1, 3]))
+    expect(rows).toHaveLength(2)
+    expect(rows.map(r => r.name)).toEqual(['Alice', 'Charlie'])
+  })
+
+  test('gets unique column values', () => {
+    const values = dtm.getColumnValues('mode')
+    expect(values).toEqual(['car', 'bike'])
+  })
+})
+```
+
+## Test Configuration
+
+**Vitest Config (in `vite.config.mts`):**
 ```typescript
 test: {
-  globals: true,        // Allow describe/test/expect without imports
-  environment: 'jsdom', // Browser-like environment
+  globals: true,        // Use global test functions (no imports needed)
+  environment: 'jsdom', // DOM environment for Vue components
+},
+```
+
+**TypeScript Config (in `tsconfig.json`):**
+```json
+{
+  "compilerOptions": {
+    "types": ["vite/client", "@types/jest", "vitest/globals"]
+  }
 }
 ```
 
-**TypeScript Types:**
-```json
-// tsconfig.json
-"types": ["vite/client", "@types/jest", "vitest/globals"]
-```
+## Current Test Coverage
 
-## Known Limitations
+**Well-Tested Areas:**
+- `FilterManager` - Filter logic, observer pattern, toggle behavior
+- `LinkageManager` - Hover/select state, observer pattern, toggle behavior
+- `DataTableManager` - Data access, ID lookups, file loading
 
-**WebGL/Canvas:**
-- WebGL visualizations (deck.gl, Three.js) difficult to unit test
-- E2E tests verify canvas presence but not visual correctness
-- Component tests limited to non-WebGL functionality
-
-**Vue 2 Testing:**
-- Using `@vue/test-utils` for Vue 2.7
-- Some limitations with Composition API testing
-
-**Broken Tests:**
-- Some E2E tests marked with `.BROKEN.ts` suffix (e.g., `aggregate-od.BROKEN.ts`, `video-player.BROKEN.ts`)
-- These are excluded from test runs
+**Needs More Tests (TODO markers in MapCard.test.ts):**
+- Layer creation
+- Color management
+- Event emission
+- State-based styling
+- Legend rendering
 
 ---
 

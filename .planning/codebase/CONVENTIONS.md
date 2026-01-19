@@ -5,230 +5,275 @@
 ## Naming Patterns
 
 **Files:**
-- Vue components: PascalCase (e.g., `MapCard.vue`, `BlankComponent.vue`, `InteractiveDashboard.vue`)
-- TypeScript utilities: camelCase or PascalCase (e.g., `util.ts`, `HTTPFileSystem.ts`, `FilterManager.ts`)
-- Worker files: `*.worker.ts` suffix (e.g., `DataFetcher.worker.ts`, `TransitSupplyHelper.worker.ts`)
-- Test files: `*.test.ts` or `*.spec.ts` in `__tests__/` directories or `tests/` folder
+- Vue components: PascalCase (e.g., `MapCard.vue`, `LinkableCardWrapper.vue`, `InteractiveDashboard.vue`)
+- TypeScript modules: PascalCase for classes (e.g., `FilterManager.ts`, `DataTableManager.ts`)
+- Utility modules: camelCase (e.g., `colorSchemes.ts`, `debug.ts`)
+- Test files: Same name as source + `.test.ts` (e.g., `FilterManager.test.ts`)
+- Config files: kebab-case or camelCase (e.g., `vite.config.mts`, `.prettierrc.cjs`)
 
 **Functions:**
 - camelCase for all functions and methods
-- Async functions prefixed implicitly (no special naming convention)
-- Event handlers: `handle*` or verb prefix (e.g., `handleCardIsLoaded`, `toggleZoom`, `getFileText`)
-- Getters: `get*` prefix (e.g., `getDirectory`, `getRowById`, `getCardComponent`)
+- Prefix with verb: `get`, `set`, `handle`, `on`, `apply`, `toggle`, `clear`, `build`
+- Examples from Interactive Dashboard:
+  ```typescript
+  setFilter()
+  toggleFilterValue()
+  clearAllFilters()
+  applyFilters()
+  handleHover()
+  handleSelect()
+  buildColorMap()
+  getCategoryColor()
+  ```
 
 **Variables:**
-- camelCase for local variables and component data
-- SCREAMING_SNAKE_CASE for constants (e.g., `DEFAULT_PROJECTION`, `MAP_STYLES_ONLINE`, `MAPBOX_TOKEN`)
-- Private class properties: no prefix convention (TypeScript `private` keyword used)
+- camelCase for all variables
+- Prefix with `is` or `has` for booleans: `isDarkMode`, `hasActiveFilters()`
+- Use descriptive names: `filteredData`, `hoveredIds`, `selectedIds`
 
 **Types/Interfaces:**
 - PascalCase for all types and interfaces
-- Interfaces often suffixed with descriptive names (e.g., `FileSystemConfig`, `FilterObserver`, `DataTableColumn`)
-- Enums use PascalCase with PascalCase members (e.g., `ColorScheme.DarkMode`, `Status.ERROR`)
+- Suffix with purpose: `Config`, `Observer`, `Manager`
+- Examples:
+  ```typescript
+  FilterObserver
+  LinkageConfig
+  TableConfig
+  CardConfig
+  FilterType
+  ```
 
-**CSS Classes:**
-- kebab-case for CSS class names (e.g., `dash-card-frame`, `is-panel-narrow`, `table-wrapper`)
-- BEM-like modifiers with `is-*` prefix for state (e.g., `is-active`, `is-hovered`, `is-filtered`)
+**Constants:**
+- SCREAMING_SNAKE_CASE for module-level constants
+- Examples from `colorSchemes.ts`:
+  ```typescript
+  MODE_COLORS
+  ACTIVITY_COLORS
+  CATEGORICAL_COLORS
+  ```
 
 ## Code Style
 
 **Formatting:**
-- Prettier configured in `.prettierrc.cjs`
-- No semicolons (semi: false)
-- Single quotes for strings
-- Arrow function parentheses avoided when possible (`arrowParens: 'avoid'`)
-- Trailing commas in ES5 contexts
-- Print width: 100 characters
+- Prettier enforced via `.prettierrc.cjs`
+- Key settings:
+  - `printWidth: 100` - Line length limit
+  - `semi: false` - No semicolons
+  - `singleQuote: true` - Single quotes for strings
+  - `trailingComma: 'es5'` - Trailing commas in ES5 contexts
+  - `arrowParens: 'avoid'` - No parens for single-param arrows
+- **Indentation:** 2 spaces (critical for Pug templates)
 
 **Linting:**
 - ESLint with Vue and TypeScript plugins
-- Console and debugger statements allowed (`'no-console': 'off'`)
-- No strict var rule (`'no-var': 'off'`)
-- TypeScript parser with Vue essential rules
+- Config: `.eslintrc.js`
+- Key rules:
+  - `no-console: 'off'` - Console allowed (but prefer `debugLog` in Interactive Dashboard)
+  - `no-debugger: 'off'` - Debugger allowed in dev
+  - Uses `@typescript-eslint/parser`
 
 ## Import Organization
 
 **Order:**
-1. External library imports (vue, vuex, third-party packages)
-2. Alias imports (`@/` for src directory)
-3. Relative imports (`./`, `../`)
+1. Vue/framework imports
+2. External library imports
+3. Internal path alias imports (`@/`)
+4. Relative imports (`./`, `../`)
+
+**Examples from Interactive Dashboard:**
+```typescript
+// 1. Vue/framework
+import Vue, { defineComponent } from 'vue'
+import type { PropType } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
+
+// 2. External libraries
+import YAML from 'yaml'
+import Plotly from 'plotly.js/dist/plotly'
+
+// 3. Internal path alias imports
+import globalStore from '@/store'
+import { sleep } from '@/js/util'
+import { FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
+import HTTPFileSystem from '@/js/HTTPFileSystem'
+
+// 4. Relative imports (same plugin)
+import { FilterManager } from './managers/FilterManager'
+import { LinkageManager } from './managers/LinkageManager'
+import { debugLog } from './utils/debug'
+import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
+```
 
 **Path Aliases:**
 - `@/` maps to `src/`
 - `~/` maps to `node_modules/`
-
-**Example pattern from `InteractiveDashboard.vue`:**
-```typescript
-import Vue, { defineComponent } from 'vue'
-import type { PropType } from 'vue'
-
-import YAML from 'yaml'
-
-import globalStore from '@/store'
-import { sleep } from '@/js/util'
-
-import { FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
-import HTTPFileSystem from '@/js/HTTPFileSystem'
-
-import { FilterManager } from './managers/FilterManager'
-import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
-```
+- Configured in `tsconfig.json` and `vite.config.mts`
 
 ## Error Handling
 
 **Patterns:**
-- "Throw early, catch late" philosophy (see `HTTPFileSystem.ts` comments)
-- Errors thrown with `throw Error('message')` or `throw response` for HTTP errors
-- Try/catch at component boundaries with `$emit('error', message)` for user feedback
-- Console.error for debugging, console.warn for recoverable issues
+- Use try/catch for async operations
+- Log errors with context: `console.error('[ComponentName] Error message:', e)`
+- Emit errors to parent via `$emit('error', message)` for dashboard-level handling
+- Return early on error conditions
 
-**Example from `HTTPFileSystem.ts`:**
+**Example from InteractiveDashboard:**
 ```typescript
-async getFileText(scaryPath: string): Promise<string> {
-  // This can throw lots of errors; we are not going to catch them
-  // here so the code further up can deal with errors properly.
-  // "Throw early, catch late."
-  const response = await this._getFileResponse(scaryPath)
-  return response.text()
+try {
+  await this.dataTableManager.loadData(this.fileApi, this.xsubfolder)
+  debugLog('[InteractiveDashboard] Data loaded successfully')
+} catch (e) {
+  console.error('[InteractiveDashboard] Failed to load centralized data:', e)
+  this.$emit('error', `Failed to load data: ${e}`)
 }
-```
-
-**HTTP Error Handling:**
-```typescript
-const response = await fetch(myRequest).then(response => {
-  if (response.status >= 300) {
-    console.warn('Status:', response.status)
-    throw response
-  }
-  return response
-})
 ```
 
 ## Logging
 
-**Framework:** Browser console (console.log, console.warn, console.error)
+**Framework:** Custom `debugLog` utility for Interactive Dashboard
 
-**Patterns:**
-- Debug logging via custom `debugLog()` utility (see `src/plugins/interactive-dashboard/utils/debug.ts`)
-- Component-prefixed log messages: `[ComponentName] message` format
-- Console statements are allowed in development (ESLint rule disabled)
+**Pattern:**
+- Use `debugLog()` instead of `console.log()` for development logging
+- Enable via URL parameter `?debug=interactive-dashboard` or localStorage
+- Prefix log messages with `[ComponentName]` for traceability
 
-**Example:**
+**Debug Utility Location:** `src/plugins/interactive-dashboard/utils/debug.ts`
+
+**Usage:**
 ```typescript
+import { debugLog } from '../utils/debug'
+
 debugLog('[FilterManager] Setting filter:', filterId, 'column:', column)
-console.log('[InteractiveDashboard] setupRows called with layout:', layout)
-console.error('[InteractiveDashboard] Failed to load centralized data:', e)
+debugLog('[LinkableCardWrapper] Filter event:', filterId, column, values)
 ```
 
 ## Comments
 
 **When to Comment:**
-- Complex logic or non-obvious behavior
-- TODO/FIXME markers for future work
-- Section headers for long files (e.g., `// NEW: Initialize coordination layer`)
-- API documentation for public methods
+- JSDoc for public interfaces and complex functions
+- Inline comments for non-obvious logic
+- `// NEW:` prefix for additions during development (remove before merge)
+- `// TODO:` for future work
 
 **JSDoc/TSDoc:**
-- Used sparingly, primarily for utility functions and class methods
-- Focus on describing purpose, not parameters when types are clear
+- Use for exported functions and interfaces
+- Document parameters and return types
 
-**Example from `Globals.ts`:**
+**Example:**
 ```typescript
 /**
- * DataTableColumn represents one column of a loaded dataset. Numerical data will always be
- * stored as a Float32Array, while other data such as strings will be stored as regular
- * arrays.
- *
- * @property type - is one of the DataType enumeration, and is used to decode factors
+ * Apply filters to dataset (AND between filters, OR within values)
  */
-export interface DataTableColumn {
-  values: Float64Array | Float32Array | any[]
-  name: string
-  type: DataType
-  max?: number
+applyFilters<T extends Record<string, any>>(data: T[]): T[] {
+  // ...
+}
+
+/**
+ * Compare two values with flexible matching for common data mismatches
+ */
+private valuesMatch(cellValue: any, filterValue: any): boolean {
+  // ...
 }
 ```
 
 ## Function Design
 
-**Size:** No strict limit, but larger functions are broken into helper methods
+**Size:** Keep functions focused - single responsibility principle
 
 **Parameters:**
-- Destructuring used for options objects
-- Default values provided in parameter definitions
-- TypeScript interfaces for complex parameter types
-- PropType<T> used for Vue prop definitions
+- Use interfaces for complex parameter objects
+- Provide sensible defaults via `withDefaults()` in Vue 3-style components
 
 **Return Values:**
-- Promises for async operations
-- Explicit return types in TypeScript
-- Void returns common for event handlers and observers
+- Return `ReadonlyMap` or `ReadonlySet` to prevent external mutation
+- Return `undefined` for not-found cases, not `null`
 
 **Example:**
 ```typescript
-setFilter(
-  filterId: string,
-  column: string,
-  values: Set<any>,
-  type: FilterType,
-  binSize?: number
-): void {
-  if (values.size === 0) {
-    this.filters.delete(filterId)
-  } else {
-    this.filters.set(filterId, { id: filterId, column, type, values, behavior: 'toggle', binSize })
-  }
-  this.notifyObservers()
+getFilters(): ReadonlyMap<string, Filter> {
+  return this.filters
+}
+
+getRowById(id: any): DataRow | undefined {
+  return this.data.find(row => row[this.idColumn] === id)
 }
 ```
 
 ## Module Design
 
 **Exports:**
-- Named exports for most utilities and types
-- Default exports for Vue components and main classes
-- Re-exports through index files in some directories
+- Named exports for utilities and types
+- Default export for Vue components
+- Export interfaces alongside implementations
 
-**Barrel Files:**
-- Used in some plugin directories (e.g., `src/layers/flowmap/index.ts`)
-- Panel lookup in `src/dash-panels/_allPanels.ts`
-
-## Vue Component Structure
-
-**Template Language:** Pug (Python-style indentation)
-- No HTML tags, use indentation-based syntax
-- Vue directives as Pug attributes
-
-**Script Structure (Options API with defineComponent):**
+**Pattern from managers:**
 ```typescript
-export default defineComponent({
-  name: 'ComponentName',
-  components: {},
-  props: {},
-  data: () => {
-    return {}
-  },
-  computed: {},
-  watch: {},
-  methods: {},
-  mounted() {},
-  beforeDestroy() {},
-})
+// FilterManager.ts
+export type FilterType = 'categorical' | 'range' | 'time' | 'binned'
+
+export interface Filter {
+  id: string
+  column: string
+  type: FilterType
+  values: Set<any>
+  behavior: 'toggle' | 'replace'
+  binSize?: number
+}
+
+export interface FilterObserver {
+  onFilterChange: (filters: Map<string, Filter>) => void
+}
+
+export class FilterManager {
+  // ...
+}
 ```
 
-**Style:**
-- Scoped SCSS with `<style scoped lang="scss">`
-- Global styles imported via `@import '@/styles.scss'`
-- CSS custom properties for theming (e.g., `var(--bgCardFrame)`, `var(--text)`)
+**Barrel Files:** Not used - import directly from source files
 
-## Observer Pattern
+## Vue Component Conventions
 
-**Manager Classes:**
-- Used extensively in interactive dashboard coordination layer
-- `addObserver(observer)` / `removeObserver(observer)` pattern
-- Observers implement specific interfaces (e.g., `FilterObserver`, `LinkageObserver`)
+**Template Language:** Pug (not HTML)
+- Python-style indentation instead of HTML tags
+- Critical: Maintain consistent 2-space indentation
 
-**Example from `FilterManager.ts`:**
+**Script Setup (Composition API):**
+- Use `<script setup lang="ts">` for new components
+- Define props with `defineProps<Props>()` and `withDefaults()`
+- Define emits with `defineEmits<{...}>()`
+
+**Example from HistogramCard.vue:**
+```typescript
+<script setup lang="ts">
+import { ref, watch, onMounted, computed } from 'vue'
+
+interface Props {
+  title?: string
+  column: string
+  binSize?: number
+  filteredData?: any[]
+  linkage?: { type: 'filter'; column: string; behavior: 'toggle' }
+  tableConfig?: TableConfig
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  filteredData: () => []
+})
+
+const emit = defineEmits<{
+  filter: [filterId: string, column: string, values: Set<any>, filterType: string, binSize?: number]
+}>()
+```
+
+**Options API (Legacy):**
+- Use `defineComponent()` for Options API components
+- Type props with `PropType<T>`
+
+## Interactive Dashboard Specific Patterns
+
+### Observer Pattern
+Managers use observer pattern for cross-component communication:
+
 ```typescript
 export interface FilterObserver {
   onFilterChange: (filters: Map<string, Filter>) => void
@@ -241,23 +286,57 @@ export class FilterManager {
     this.observers.add(observer)
   }
 
+  removeObserver(observer: FilterObserver): void {
+    this.observers.delete(observer)
+  }
+
   private notifyObservers(): void {
     this.observers.forEach(obs => obs.onFilterChange(this.filters))
   }
 }
 ```
 
-## State Management
+### Linkable Card Props Interface
+All linkable cards must accept these props:
 
-**Vuex Store:**
-- Single store in `src/store.ts`
-- Mutations for synchronous state changes
-- Actions for async operations (rarely used)
-- State accessed via `this.$store.state` or imported `globalStore`
+```typescript
+interface Props {
+  filteredData: any[]           // Filtered data from LinkableCardWrapper
+  hoveredIds?: Set<any>         // IDs to highlight on hover
+  selectedIds?: Set<any>        // IDs that are selected
+  linkage?: LinkageConfig       // Linkage configuration
+  // ... card-specific props
+}
+```
 
-**Component State:**
-- Vue.set() used for reactive property additions in Vue 2
-- Data returned as arrow function `data: () => { return {} }`
+### Event Emission Pattern
+Cards emit events for user interactions:
+
+```typescript
+const emit = defineEmits<{
+  filter: [filterId: string, column: string, values: Set<any>, filterType?: string, binSize?: number]
+  hover: [ids: Set<any>]
+  select: [ids: Set<any>]
+}>()
+
+// Usage
+emit('filter', filterId, props.column, new Set(selectedBins.value), 'binned', binSize)
+emit('hover', new Set([featureId]))
+emit('select', new Set([featureId]))
+```
+
+### Defensive Data Handling
+Always check for undefined/empty data:
+
+```typescript
+const histogramData = computed(() => {
+  if (!props.filteredData || props.filteredData.length === 0) {
+    debugLog('[HistogramCard] No filtered data available')
+    return []
+  }
+  // ... process data
+})
+```
 
 ---
 

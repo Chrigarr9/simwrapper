@@ -6,265 +6,240 @@
 
 ```
 simwrapper/
-├── src/                    # Main source code
-│   ├── plugins/            # Visualization plugins (one folder each)
-│   ├── layout-manager/     # Main app layout and navigation
-│   ├── dash-panels/        # Dashboard card components
-│   ├── components/         # Shared Vue components
-│   ├── js/                 # TypeScript utilities
-│   ├── workers/            # Web Worker scripts
-│   ├── layers/             # Custom deck.gl layer implementations
-│   ├── assets/             # Images, icons, SVGs
-│   ├── sim-runner/         # Simulation execution UI
-│   ├── templates/          # Template files
-│   ├── polyfills/          # Browser polyfills
-│   ├── App.vue             # Root Vue component
-│   ├── main.ts             # Application entry point
-│   ├── router.ts           # Vue Router configuration
-│   ├── store.ts            # Vuex state store
-│   ├── Globals.ts          # Global types and constants
-│   ├── fileSystemConfig.ts # File system definitions
-│   └── styles.scss         # Global SCSS styles
-├── public/                 # Static assets (copied to dist)
-│   ├── colors/             # Color palette files
-│   ├── data/               # Sample data files
-│   ├── images/             # Static images
-│   ├── map-styles/         # MapLibre style definitions
-│   ├── webfonts/           # Font files
-│   └── *.wasm              # WebAssembly modules
-├── tests/                  # E2E tests (Playwright)
-├── scripts/                # Build/utility scripts
-├── wasm/                   # WASM source code
-├── .planning/              # Planning documents
-│   └── codebase/           # Architecture documentation
-├── index.html              # HTML entry point
-├── vite.config.mts         # Vite build configuration
-├── tsconfig.json           # TypeScript configuration
-└── package.json            # NPM dependencies
+├── src/
+│   ├── plugins/                    # Visualization plugins (self-contained)
+│   │   ├── interactive-dashboard/  # NEW: Coordinated dashboard system
+│   │   ├── commuter-requests/      # Reference impl (to be deprecated)
+│   │   ├── shape-file/             # GeoJSON/Shapefile viewer
+│   │   ├── agent-animation/        # MATSim agent animation
+│   │   └── ...                     # Other visualization plugins
+│   ├── layout-manager/             # Main app layout and routing
+│   │   ├── TabbedDashboardView.vue # Dashboard router (chooses Standard vs Interactive)
+│   │   ├── DashBoard.vue           # Standard dashboard (no coordination)
+│   │   └── FolderBrowser.vue       # File system navigation
+│   ├── dash-panels/                # Reusable chart components
+│   │   ├── _allPanels.ts           # Panel type registry
+│   │   ├── bar.vue                 # Bar chart
+│   │   ├── pie.vue                 # Pie chart
+│   │   └── ...                     # Other chart types
+│   ├── components/                 # Shared Vue components
+│   ├── js/                         # TypeScript utilities
+│   │   ├── HTTPFileSystem.ts       # File system abstraction
+│   │   └── DashboardDataManager.ts # Data caching for dashboards
+│   ├── layers/                     # deck.gl layer implementations
+│   ├── store.ts                    # Vuex global state
+│   ├── router.ts                   # Vue Router configuration
+│   └── Globals.ts                  # TypeScript interfaces and constants
+├── public/                         # Static assets
+├── scripts/                        # Build/deployment scripts
+├── .planning/                      # GSD planning documents
+│   └── codebase/                   # Codebase analysis docs
+├── vite.config.mts                 # Vite configuration
+├── tsconfig.json                   # TypeScript configuration
+└── package.json                    # Dependencies and scripts
 ```
 
 ## Directory Purposes
 
-**`src/plugins/`:**
-- Purpose: Self-contained visualization implementations
-- Contains: One folder per visualization type
+**`src/plugins/interactive-dashboard/`**
+- Purpose: Coordinated visualization system with cross-card interactivity
+- Contains: Main component, manager classes, linkable card components
 - Key files:
-  - `pluginRegistry.ts` - Plugin registration and file pattern matching
-  - `interactive-dashboard/` - Coordinated dashboard system
-  - `shape-file/` - GeoJSON/shapefile viewer
-  - `xy-hexagons/` - Hexbin aggregation
-  - `vehicle-animation/` - Animated trajectories
-  - `layer-map/` - Multi-layer maps
-  - `matrix/` - Matrix visualization
-  - `sankey/` - Sankey diagrams
+  - `InteractiveDashboard.vue` - Main dashboard orchestrator
+  - `managers/FilterManager.ts` - Filter state management
+  - `managers/LinkageManager.ts` - Hover/selection coordination
+  - `managers/DataTableManager.ts` - Central data storage
+  - `components/cards/LinkableCardWrapper.vue` - HOC for card coordination
+  - `components/cards/MapCard.vue` - Interactive map with deck.gl
+  - `components/cards/HistogramCard.vue` - Binned histogram
+  - `components/cards/PieChartCard.vue` - Categorical pie chart
+  - `components/cards/ScatterCard.vue` - XY scatter plot
+  - `components/cards/DataTableCard.vue` - Sortable/filterable table
 
-**`src/layout-manager/`:**
-- Purpose: Main application layout, navigation, dashboard containers
-- Contains: Split-panel layout, tabbed views, folder browsing
+**`src/layout-manager/`**
+- Purpose: Top-level dashboard routing and layout management
+- Contains: Dashboard view components, folder browser
 - Key files:
-  - `LayoutManager.vue` - Main split-panel layout (37KB)
-  - `TabbedDashboardView.vue` - Dashboard tab management (26KB)
-  - `DashBoard.vue` - Standard dashboard renderer (27KB)
-  - `FolderBrowser.vue` - File/folder navigation (27KB)
-  - `SplashPage.vue` - Landing page
-  - `SettingsPanel.vue` - User settings
+  - `TabbedDashboardView.vue` - Detects dashboard type, manages tabs
+  - `DashBoard.vue` - Standard dashboard (independent cards)
+  - `FolderBrowser.vue` - File system navigation UI
 
-**`src/dash-panels/`:**
-- Purpose: Individual chart/visualization card components
-- Contains: One file per chart type
+**`src/dash-panels/`**
+- Purpose: Reusable chart components for both dashboard types
+- Contains: Chart components and registry
 - Key files:
-  - `_allPanels.ts` - Panel registration and lookup
-  - `bar.vue` - Bar charts
-  - `pie.vue` - Pie charts
-  - `scatter.vue` - Scatter plots
-  - `line.vue` - Line charts
-  - `table.vue` - Data tables
-  - `heatmap.vue` - Heatmaps
-  - `tile.vue` - Metric tiles
-  - `text.vue` - Markdown text
+  - `_allPanels.ts` - Maps YAML `type` to Vue components
+  - Chart types: `bar.vue`, `pie.vue`, `line.vue`, `scatter.vue`, `heatmap.vue`, etc.
 
-**`src/plugins/interactive-dashboard/`:**
-- Purpose: Coordinated visualizations with shared state
-- Contains: Three-layer architecture
+**`src/js/`**
+- Purpose: Core TypeScript utilities and services
+- Contains: File system, data loading, helpers
 - Key files:
-  - `InteractiveDashboard.vue` - Main orchestrating component (66KB)
-  - `managers/FilterManager.ts` - Filter state coordination
-  - `managers/DataTableManager.ts` - Central data table
-  - `managers/LinkageManager.ts` - Card interaction linkage
-  - `components/cards/MapCard.vue` - Interactive map (57KB)
-  - `components/cards/HistogramCard.vue` - Interactive histogram
-  - `components/cards/PieChartCard.vue` - Interactive pie chart
-  - `components/cards/DataTableCard.vue` - Interactive data table
-  - `components/cards/LinkableCardWrapper.vue` - Card coordination wrapper
-  - `components/cards/ScatterCard.vue` - Interactive scatter plot
+  - `HTTPFileSystem.ts` - Abstraction over HTTP/local/GitHub file access
+  - `DashboardDataManager.ts` - Caches loaded data for dashboard lifetime
 
-**`src/components/`:**
-- Purpose: Shared reusable UI components
-- Contains: Common widgets and utilities
-- Key files:
-  - `BreadCrumbs.vue` - Navigation breadcrumbs
-  - `TimeSlider.vue` - Time selection slider
-  - `PlaybackControls.vue` - Animation playback
-  - `ZoomButtons.vue` - Map zoom controls
-  - `MapScale.vue` - Map scale indicator
-  - `ColorMapSelector/` - Color palette selection
-  - `viz-configurator/` - Visualization configuration UI
-
-**`src/js/`:**
-- Purpose: TypeScript utility classes and functions
-- Contains: File system, data processing, coordinates
-- Key files:
-  - `HTTPFileSystem.ts` - File access abstraction (24KB)
-  - `DashboardDataManager.ts` - Data loading/caching (28KB)
-  - `ColorsAndWidths.ts` - Color scale utilities (35KB)
-  - `Coords.ts` - Coordinate transformations
-  - `DeckMap.ts` - deck.gl map utilities
-  - `util.ts` - General utilities
-
-**`src/workers/`:**
-- Purpose: Web Worker scripts for background processing
-- Contains: Heavy data processing workers
-- Key files:
-  - `DataFetcher.worker.ts` - CSV parsing worker (13KB)
-  - `RoadNetworkLoader.worker.ts` - Network loading (20KB)
-  - `WasmXmlNetworkParser.worker.ts` - WASM XML parsing (12KB)
-  - `MATSimEventStreamer.worker.ts` - Event file streaming
-
-**`src/layers/`:**
-- Purpose: Custom deck.gl layer implementations
-- Contains: Extended layer classes
-- Key files:
-  - `GeojsonOffsetLayer.ts` - GeoJSON with offset
-  - `LineOffsetLayer.ts` - Lines with offset
-  - `PathOffsetLayer.ts` - Paths with offset
-  - `PathTraceLayer.ts` - Path trace rendering
-
-**`src/sim-runner/`:**
-- Purpose: Simulation execution interface
-- Contains: Simulation config and monitoring UI
-- Key files:
-  - `SimRunner.vue` - Main simulation runner
-  - `SimRunDetails.vue` - Run details view
-  - `LeftRunnerPanel.vue` - Runner navigation panel
-
-**`public/`:**
-- Purpose: Static assets copied directly to build output
-- Contains: WASM modules, fonts, images, sample data
-- Key files:
-  - `sax-wasm.wasm` - XML parsing WASM
-  - `sql-wasm.wasm` - SQLite WASM
-  - `colors/` - Color palette definitions
-  - `map-styles/` - MapLibre GL styles
+**`src/plugins/commuter-requests/`**
+- Purpose: Reference implementation for Interactive Dashboard (to be deprecated)
+- Contains: Tightly-coupled implementation that inspired Interactive Dashboard
+- Note: Use as reference, but new features should go in `interactive-dashboard/`
 
 ## Key File Locations
 
 **Entry Points:**
-- `index.html`: HTML shell with `#app` mount point
-- `src/main.ts`: Vue app bootstrap, plugin registration
-- `src/App.vue`: Root component, theme/auth setup
+- `src/main.ts`: Vue app initialization
+- `src/App.vue`: Root component
+- `src/router.ts`: Route definitions
 
 **Configuration:**
-- `src/store.ts`: Vuex global state (view state, theme, credentials)
-- `src/fileSystemConfig.ts`: File system backend definitions
-- `src/Globals.ts`: TypeScript interfaces and constants
-- `vite.config.mts`: Vite build configuration
+- `vite.config.mts`: Build configuration, path aliases
 - `tsconfig.json`: TypeScript compiler options
+- `src/fileSystemConfig.ts`: Default file system sources
+- `src/Globals.ts`: Shared TypeScript types and constants
 
 **Core Logic:**
-- `src/router.ts`: URL routing to components
-- `src/js/HTTPFileSystem.ts`: Multi-backend file access
-- `src/js/DashboardDataManager.ts`: Dashboard data loading/caching
-- `src/plugins/pluginRegistry.ts`: Plugin registration and matching
+- `src/store.ts`: Vuex global state (theme, zoom, file systems)
+- `src/js/HTTPFileSystem.ts`: File loading abstraction
+- `src/layout-manager/TabbedDashboardView.vue`: Dashboard type routing
+
+**Interactive Dashboard:**
+- `src/plugins/interactive-dashboard/InteractiveDashboard.vue`: Main component
+- `src/plugins/interactive-dashboard/managers/*.ts`: State managers
+- `src/plugins/interactive-dashboard/components/cards/*.vue`: Linkable cards
 
 **Testing:**
-- `src/plugins/interactive-dashboard/managers/__tests__/`: Manager unit tests
-- `src/plugins/interactive-dashboard/components/cards/__tests__/`: Card tests
-- `tests/`: E2E Playwright tests
+- `src/plugins/interactive-dashboard/managers/__tests__/*.test.ts`: Manager unit tests
+- `src/plugins/interactive-dashboard/components/cards/__tests__/*.test.ts`: Component tests
 
 ## Naming Conventions
 
 **Files:**
-- Components: PascalCase `.vue` files (e.g., `MapCard.vue`, `HistogramCard.vue`)
-- TypeScript utilities: PascalCase `.ts` (e.g., `FilterManager.ts`, `HTTPFileSystem.ts`)
-- Workers: PascalCase with `.worker.ts` suffix (e.g., `DataFetcher.worker.ts`)
-- Dash panels: lowercase `.vue` (e.g., `bar.vue`, `pie.vue`)
-- Config files: lowercase with dots (e.g., `vite.config.mts`)
+- Vue components: `PascalCase.vue` (e.g., `MapCard.vue`, `InteractiveDashboard.vue`)
+- TypeScript utilities: `PascalCase.ts` (e.g., `FilterManager.ts`)
+- Test files: `ComponentName.test.ts` (e.g., `FilterManager.test.ts`)
+- Config files: `kebab-case` (e.g., `vite.config.mts`)
 
 **Directories:**
-- Plugins: kebab-case (e.g., `interactive-dashboard`, `shape-file`, `xy-hexagons`)
-- Components: PascalCase subdirs or kebab-case (e.g., `ColorMapSelector`, `left-panels`)
-- General: lowercase (e.g., `js`, `workers`, `assets`)
+- Plugins: `kebab-case` (e.g., `interactive-dashboard`, `shape-file`)
+- Nested component folders: `kebab-case` (e.g., `components/cards`)
 
-**Variables/Functions:**
-- camelCase for variables and functions
-- PascalCase for classes and Vue components
-- UPPER_CASE for constants
+**YAML Dashboard Types:**
+- Chart types: `kebab-case` (e.g., `pie-chart`, `scatter-plot`, `data-table`)
+- Maps to `panelLookup` keys in `src/dash-panels/_allPanels.ts`
 
 ## Where to Add New Code
 
-**New Visualization Plugin:**
-1. Create folder: `src/plugins/{plugin-name}/`
-2. Add main component: `src/plugins/{plugin-name}/{PluginName}.vue`
-3. Register in: `src/plugins/pluginRegistry.ts`
-4. Add file patterns for automatic activation
+**New Interactive Card Type:**
+1. Create component: `src/plugins/interactive-dashboard/components/cards/YourCard.vue`
+2. Implement props interface:
+   ```typescript
+   interface Props {
+     filteredData?: any[]
+     hoveredIds?: Set<any>
+     selectedIds?: Set<any>
+     linkage?: LinkageConfig
+     // ... card-specific props
+   }
+   ```
+3. Emit events: `@filter`, `@hover`, `@select` for coordination
+4. Register in `src/dash-panels/_allPanels.ts`:
+   ```typescript
+   'your-card': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/YourCard.vue'))
+   ```
+5. Add tests: `src/plugins/interactive-dashboard/components/cards/__tests__/YourCard.test.ts`
 
-**New Dashboard Card Type:**
-1. Create component: `src/dash-panels/{type}.vue`
-2. Register in: `src/dash-panels/_allPanels.ts`
-3. Use in YAML configs with `type: {type}`
+**New Manager Type:**
+1. Create class: `src/plugins/interactive-dashboard/managers/YourManager.ts`
+2. Implement observer pattern (see `FilterManager.ts` for template)
+3. Initialize in `InteractiveDashboard.vue:initializeCoordinationLayer()`
+4. Add tests: `src/plugins/interactive-dashboard/managers/__tests__/YourManager.test.ts`
 
-**New Interactive Card:**
-1. Create component: `src/plugins/interactive-dashboard/components/cards/{CardName}.vue`
-2. Implement props: `filteredData`, `hoveredIds`, `selectedIds`, `linkage`
-3. Emit events: `filter`, `hover`, `select`
-4. Register in `_allPanels.ts` if usable in standard dashboards
+**New Dash Panel (Non-Interactive):**
+1. Create component: `src/dash-panels/your-panel.vue`
+2. Register in `src/dash-panels/_allPanels.ts`
 
-**New Utility Function:**
-- Shared helpers: `src/js/util.ts`
-- File system: `src/js/HTTPFileSystem.ts`
-- Visualization: `src/js/ColorsAndWidths.ts`
+**New Full Plugin:**
+1. Create folder: `src/plugins/your-plugin/`
+2. Create main component: `YourPlugin.vue`
+3. Register in `src/plugins/pluginRegistry.ts` with file pattern triggers
 
-**New Web Worker:**
-1. Create: `src/workers/{Name}.worker.ts`
-2. Export via Comlink if needed
-3. Import with `?worker` suffix in consumer
-
-**New Shared Component:**
-- General: `src/components/{ComponentName}.vue`
-- Left panels: `src/components/left-panels/`
-- Interactive controls: `src/plugins/interactive-dashboard/components/controls/`
+**Utilities:**
+- Interactive Dashboard utils: `src/plugins/interactive-dashboard/utils/`
+- Global utils: `src/js/`
 
 ## Special Directories
 
-**`.planning/`:**
-- Purpose: Project planning and architecture documentation
-- Generated: No (manually maintained)
+**`node_modules/`**
+- Purpose: npm dependencies
+- Generated: Yes (by `npm install`)
+- Committed: No
+
+**`dist/`**
+- Purpose: Production build output
+- Generated: Yes (by `npm run build`)
+- Committed: No
+
+**`.planning/`**
+- Purpose: GSD planning and analysis documents
+- Generated: By GSD commands
+- Committed: Yes (project documentation)
+
+**`public/`**
+- Purpose: Static assets copied to build output
+- Generated: No
 - Committed: Yes
 
-**`coverage/`:**
-- Purpose: Test coverage reports
-- Generated: Yes (by vitest)
-- Committed: No (in .gitignore)
+**`scripts/`**
+- Purpose: Build and deployment automation
+- Generated: No
+- Committed: Yes
 
-**`node_modules/`:**
-- Purpose: NPM dependencies
-- Generated: Yes (by npm install)
-- Committed: No
+## Path Aliases
 
-**`dist/`:**
-- Purpose: Production build output
-- Generated: Yes (by npm run build)
-- Committed: No
+Configured in `vite.config.mts` and `tsconfig.json`:
 
-**`.venv/`:**
-- Purpose: Python virtual environment (for local development tools)
-- Generated: Yes
-- Committed: No
+| Alias | Target | Example |
+|-------|--------|---------|
+| `@/` | `src/` | `import globalStore from '@/store'` |
+| `~/` | `node_modules/` | `import '~/maplibre-gl/dist/maplibre-gl.css'` |
 
-**`test-results/` and `playwright-report/`:**
-- Purpose: E2E test outputs
-- Generated: Yes (by Playwright)
-- Committed: No
+## Interactive Dashboard File Tree
+
+```
+src/plugins/interactive-dashboard/
+├── InteractiveDashboard.vue        # Main component (~1600 lines)
+├── InteractiveDashboardConfig.ts   # TypeScript interfaces for YAML config
+├── README.md                       # Plugin documentation
+├── managers/
+│   ├── DataTableManager.ts         # Central data store (~100 lines)
+│   ├── FilterManager.ts            # Filter state + observer (~170 lines)
+│   ├── LinkageManager.ts           # Hover/select state (~70 lines)
+│   ├── LinkedTableManager.ts       # Secondary table linkage (~170 lines)
+│   └── __tests__/
+│       ├── DataTableManager.test.ts
+│       ├── FilterManager.test.ts
+│       └── LinkageManager.test.ts
+├── components/
+│   └── cards/
+│       ├── LinkableCardWrapper.vue # HOC for coordination (~130 lines)
+│       ├── MapCard.vue             # deck.gl map (~700 lines)
+│       ├── HistogramCard.vue       # Binned histogram
+│       ├── PieChartCard.vue        # Categorical pie chart
+│       ├── ScatterCard.vue         # XY scatter plot
+│       ├── DataTableCard.vue       # Sortable table
+│       ├── ColorLegend.vue         # Shared legend component
+│       ├── LinkedTableCard.vue     # Secondary table display
+│       ├── SubDashboard.vue        # Nested dashboard
+│       └── __tests__/
+│           └── MapCard.test.ts
+├── utils/
+│   ├── debug.ts                    # Debug logging utility
+│   └── colorSchemes.ts             # Color palette definitions
+├── docs/                           # Additional documentation
+└── examples/                       # Example YAML configurations
+    ├── basic/
+    ├── commuter-requests/
+    └── mapcard/
+```
 
 ---
 
