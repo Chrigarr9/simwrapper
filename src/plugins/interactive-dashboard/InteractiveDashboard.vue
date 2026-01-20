@@ -1893,17 +1893,29 @@ li.is-not-active b a {
   cursor: pointer;
 }
 
-// Data table card styles
+/*
+ * Data table card styles
+ * Uses CSS variables from StyleManager for theme-aware colors:
+ * - --dashboard-bg-* for backgrounds
+ * - --dashboard-text-* for text colors
+ * - --dashboard-border-* for borders
+ * - --dashboard-interaction-hover (#fbbf24) and --dashboard-interaction-selected (#3b82f6)
+ *
+ * Note: rgba() backgrounds use hardcoded values as CSS color-mix not widely supported.
+ * The hex values match StyleManager definitions.
+ */
 .table-card-frame {
   flex: 1;
   min-height: 300px;
   max-height: 500px;
   display: flex;
   flex-direction: column;
+  background: var(--dashboard-bg-secondary, var(--bgCardFrame));
 
   &.is-fullscreen {
     max-height: none;
     height: 100%;
+    background: var(--dashboard-bg-primary, var(--bgBold));
   }
 
   .reset-label,
@@ -1916,7 +1928,7 @@ li.is-not-active b a {
     align-items: center;
     margin-right: 0.5rem;
     font-size: 0.8rem;
-    color: var(--text);
+    color: var(--dashboard-text-primary, var(--text));
     cursor: pointer;
     opacity: 0.7;
 
@@ -1944,25 +1956,26 @@ li.is-not-active b a {
   thead {
     position: sticky;
     top: 0;
-    background: var(--bgCardFrame);
+    background: var(--dashboard-bg-secondary, var(--bgCardFrame));
     z-index: 10;
 
     th {
       padding: 0.5rem 0.75rem;
       text-align: left;
       font-weight: 600;
-      border-bottom: 2px solid var(--borderColor);
-      color: var(--text);
+      border-bottom: 2px solid var(--dashboard-border-default, var(--borderColor));
+      color: var(--dashboard-text-primary, var(--text));
       white-space: nowrap;
       cursor: pointer;
       user-select: none;
 
       &:hover {
-        background: var(--bgHover);
+        background: var(--dashboard-bg-tertiary, var(--bgHover));
       }
 
       &.sorted {
-        color: var(--link);
+        // Use interaction.selected color for sorted column indicator
+        color: var(--dashboard-interaction-selected, var(--link));
       }
 
       .header-cell {
@@ -1980,18 +1993,18 @@ li.is-not-active b a {
 
   tbody {
     tr {
-      border-bottom: 1px solid var(--borderColor);
+      border-bottom: 1px solid var(--dashboard-border-subtle, var(--borderColor));
       cursor: pointer;
       transition: all 0.1s ease;
 
       &:hover {
-        background: var(--bgHover);
+        background: var(--dashboard-bg-tertiary, var(--bgHover));
       }
 
-      // Filtered rows (matching current filters) - highlighted
+      // Filtered rows (matching current filters) - use selected color (#3b82f6)
       &.is-filtered {
-        background-color: rgba(59, 130, 246, 0.1);
-        border-left: 3px solid #3b82f6;
+        background-color: rgba(59, 130, 246, 0.1); // --dashboard-interaction-selected at 10%
+        border-left: 3px solid var(--dashboard-interaction-selected, #3b82f6);
         font-weight: 500;
       }
 
@@ -2000,32 +2013,33 @@ li.is-not-active b a {
         opacity: 0.5;
       }
 
-      // Hovered from map/other component
+      // Hovered from map/other component - use hover color (#fbbf24)
       &.is-hovered {
-        background: rgba(52, 152, 219, 0.25);
+        background: rgba(251, 191, 36, 0.25); // --dashboard-interaction-hover at 25%
         transform: scale(1.001);
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         z-index: 1;
       }
 
-      // Selected (clicked) rows
+      // Selected (clicked) rows - use selected color (#3b82f6)
       &.is-selected {
-        background: rgba(231, 76, 60, 0.25);
+        background: rgba(59, 130, 246, 0.25); // --dashboard-interaction-selected at 25%
       }
 
       // Combined states
       &.is-filtered.is-hovered {
         background: rgba(59, 130, 246, 0.25);
-        border-left: 3px solid #2563eb;
+        border-left: 3px solid var(--dashboard-interaction-selected, #2563eb);
       }
 
       &.is-hovered.is-selected {
+        // Purple blend of hover+selected
         background: rgba(155, 89, 182, 0.35);
       }
 
       td {
         padding: 0.4rem 0.75rem;
-        color: var(--text);
+        color: var(--dashboard-text-primary, var(--text));
       }
     }
   }
