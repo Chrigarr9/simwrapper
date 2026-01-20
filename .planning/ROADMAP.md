@@ -95,7 +95,13 @@ Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster
 3. User clicks close/escape and the card returns to its original position within the sub-dashboard
 4. User can interact with the enlarged card (hover, select, zoom) exactly as with top-level cards
 
-**Research Flag:** None - CSS portal pattern identified in research
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Create FullscreenPortal component and integrate with sub-dashboard card rendering
+- [ ] 02-02-PLAN.md — Verify and polish fullscreen behavior across all card types
+
+**Research Flag:** None - CSS portal pattern identified in research (Pitfall #4)
 
 ---
 
@@ -186,7 +192,7 @@ Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster
 |-------|------|--------------|--------|------------|
 | 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Complete | 100% |
 | 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
-| 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Not Started | 0% |
+| 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Planned | 0% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
@@ -224,4 +230,4 @@ Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-20 — Phase 1.1 complete (adaptive layer coloring with selection fix)*
+*Last updated: 2026-01-20 — Phase 2 planned (sub-dashboard fullscreen fix)*
