@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Phase 1 completed)
+**Last Updated:** 2026-01-20 (Plan 01.1-01 complete)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 1 Complete - Ready for Phase 2
+**Current Focus:** Phase 1.1 (Adaptive Layer Coloring) - Plan 01 complete, 2 plans remaining
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,22 +21,23 @@
 
 ## Current Position
 
-**Phase:** 1 of 6 (Theming Foundation) - COMPLETE
-**Plan:** 4 of 4 complete
-**Status:** Phase complete
-**Last activity:** 2026-01-20 - Completed 01-04-PLAN.md (Verification and cleanup)
+**Phase:** 1.1 of 7 (Adaptive Layer Coloring)
+**Plan:** 1 of 3 plans complete
+**Status:** In progress
+**Last activity:** 2026-01-20 - Completed 01.1-01-PLAN.md (LayerColoringManager)
 
 **Progress:**
 ```
-Phase 1: Theming Foundation      [####] 100% (4/4 plans) COMPLETE
-Phase 2: Sub-Dashboard Fix       [    ] 0%
-Phase 3: Correlation Analysis    [    ] 0%
-Phase 4: Dual Maps               [    ] 0%
-Phase 5: Timeline                [    ] 0%
-Phase 6: Graph Visualization     [    ] 0%
+Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
+Phase 1.1: Adaptive Layer Coloring  [#   ] 33% (1/3 plans)
+Phase 2:   Sub-Dashboard Fix        [    ] 0%
+Phase 3:   Correlation Analysis     [    ] 0%
+Phase 4:   Dual Maps                [    ] 0%
+Phase 5:   Timeline                 [    ] 0%
+Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 1 complete. Ready to begin Phase 2 (Sub-Dashboard Fix).
+**Overall:** Phase 1.1 Plan 01 complete. LayerColoringManager created with types and 32 tests. Ready for Plan 02 (MapCard integration).
 
 ---
 
@@ -44,7 +45,7 @@ Phase 6: Graph Visualization     [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 4 |
+| Plans completed | 5 |
 | Plans requiring revision | 0 |
 | Requirements completed | 3/14 (REQ-1.1, REQ-1.2, REQ-1.3) |
 | Research phases triggered | 0 |
@@ -70,6 +71,14 @@ Phase 6: Graph Visualization     [    ] 0%
 | ScatterCard uses interaction.hover/selected | Consistent highlighting/selection behavior with MapCard | 2026-01-20 |
 | D3 categorical palette as domain-specific | Category colors not theme-dependent, documented in code | 2026-01-20 |
 | Hardcoded rgba() for row state backgrounds | CSS color-mix not widely supported; hex values match StyleManager | 2026-01-20 |
+| Case-insensitive geoProperty matching | Normalizes to lowercase for robust layer grouping | 2026-01-20 |
+| Standalone group naming with __standalone_ prefix | Ensures unique grouping for layers without linkage | 2026-01-20 |
+| Functional + OOP API for LayerColoringManager | Functional primary, class wrapper for stateful caching | 2026-01-20 |
+
+### Roadmap Evolution
+
+- Phase 1.1 inserted after Phase 1: Adaptive Layer Coloring (URGENT) - 2026-01-20
+  - Reason: Cluster visualization issues - colorBy not affecting clusters/arcs, need intelligent layer coloring based on visibility
 
 ### TODOs
 
@@ -78,6 +87,10 @@ Phase 6: Graph Visualization     [    ] 0%
 - [x] Execute Plan 01-02: Migrate MapCard/ColorLegend/InteractiveDashboard
 - [x] Execute Plan 01-03: Migrate chart cards (Pie, Histogram, Scatter)
 - [x] Execute Plan 01-04: Verification and cleanup
+- [x] Plan Phase 1.1: Adaptive Layer Coloring
+- [x] Execute Plan 01.1-01: Create LayerColoringManager
+- [ ] Execute Plan 01.1-02: Integrate into MapCard (NEXT)
+- [ ] Execute Plan 01.1-03: YAML config and documentation
 - [ ] Plan Phase 2: Sub-Dashboard Fix
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
@@ -92,6 +105,7 @@ None currently.
 1. **CSS variable fallback chains work well**: The pattern `var(--dashboard-X, var(--app-X, #fallback))` provides graceful degradation.
 2. **rgba() limitations**: CSS custom properties can't be used directly in rgba() without color-mix(), so we use hardcoded values matching StyleManager definitions.
 3. **Vuex watch for theme changes**: StyleManager subscribes to `globalStore.state.colorScheme` for automatic theme updates.
+4. **Case-insensitive matching for configs**: GeoJSON properties may have inconsistent casing; normalize for comparison.
 
 ---
 
@@ -99,36 +113,24 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Completed Phase 1 (Theming Foundation) - all 4 plans executed.
+**Where we left off:** Completed Phase 1.1 Plan 01 - LayerColoringManager with types and tests.
 
-**Next action:** Begin Phase 2 (Sub-Dashboard Fix) - plan and execute.
+**Next action:** Execute Plan 01.1-02 - Integrate LayerColoringManager into MapCard.vue's getBaseColor() function.
 
-**Phase 1 Deliverables:**
-- StyleManager singleton at `src/plugins/interactive-dashboard/managers/StyleManager.ts`
-- CSS variables injected via `initializeTheme()` into `:root`
-- All interactive dashboard components use StyleManager for theme colors
-- 23 StyleManager tests passing
-- Consistent interaction colors: hover (#fbbf24), selected (#3b82f6)
+**Phase 1.1 Plan 01 Deliverables:**
+- TypeScript types at `src/plugins/interactive-dashboard/types/layerColoring.ts`
+- LayerColoringManager at `src/plugins/interactive-dashboard/managers/LayerColoringManager.ts`
+- 32 tests passing at `src/plugins/interactive-dashboard/managers/__tests__/LayerColoringManager.test.ts`
 
-**Components Using StyleManager:**
-- InteractiveDashboard.vue (CSS variables + initializeTheme)
-- MapCard.vue (getInteractionColorRGBA + CSS variables)
-- ColorLegend.vue (CSS variables)
-- PieChartCard.vue (StyleManager.getColor)
-- HistogramCard.vue (StyleManager.getColor)
-- ScatterCard.vue (StyleManager.getColor)
-- DataTableCard.vue (CSS variables)
+**Key Exports:**
+- Types: `ColorByRole`, `LayerStrategy`, `LayerColoringRole`, `LayerGroup`, `LayerConfigForColoring`
+- Functions: `computeAllLayerRoles`, `computeLayerGroups`, `computeLayerRole`
+- Class: `LayerColoringManager`
 
-**CSS Variables Available:**
-```css
---dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
---dashboard-text-primary, --dashboard-text-secondary
---dashboard-border-default, --dashboard-border-subtle
---dashboard-interaction-hover, --dashboard-interaction-selected
---dashboard-cluster-origin, --dashboard-cluster-destination
---dashboard-chart-bar, --dashboard-chart-bar-selected, --dashboard-chart-grid
---dashboard-categorical-0 through --dashboard-categorical-14
-```
+**Patterns Established:**
+- Layer grouping by shared `linkage.geoProperty` (case-insensitive)
+- Role priority: explicit override > strategy rules > auto-detection
+- Auto strategy: arc+geometry = arc primary; single geometry = primary; multiple geometries = all primary
 
 ### Recovery Commands
 
@@ -137,7 +139,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/01-theming-foundation/01-04-SUMMARY.md for latest execution
+Read .planning/phases/01.1-adaptive-layer-coloring/01.1-01-SUMMARY.md for latest execution
 ```
 
 ---
