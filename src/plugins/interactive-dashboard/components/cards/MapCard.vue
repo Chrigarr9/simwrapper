@@ -55,7 +55,7 @@ import { debugLog } from '../../utils/debug'
 import { getInteractionColorRGBA } from '../../utils/colorSchemes'
 import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
-import type { LayerColoringRole, LayerStrategy } from '../../types/layerColoring'
+import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
 
 // Types
 interface LayerConfig {
@@ -118,6 +118,14 @@ interface LayerConfig {
     onSelect?: 'filter' | 'highlight' | 'none'
     hideOthersOnSelect?: boolean  // When true, hide non-filtered features completely instead of dimming
   }
+
+  // Explicit layer coloring role override (from YAML layer config)
+  // When set, overrides auto-detection in LayerColoringManager
+  // 'primary': Layer receives full colorBy data coloring
+  // 'secondary': Layer receives subdued coloring (future use)
+  // 'neutral': Layer receives theme-neutral styling (skips colorBy)
+  // 'auto': Defer to automatic role detection based on layer relationships
+  colorByRole?: ColorByRole
 }
 
 interface Props {
