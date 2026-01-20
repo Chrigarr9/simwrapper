@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
+import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 
@@ -113,6 +114,7 @@ function formatValue(value: number, column: string): string {
 }
 
 // Generate distinct colors for categories
+// D3 categorical palette - domain-specific colors, not theme-dependent
 function generateCategoryColors(categories: string[]): Record<string, string> {
   const colorPalette = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -169,7 +171,8 @@ const scatterData = computed(() => {
       if (props.colorColumn && row[props.colorColumn] !== undefined) {
         colors.push(categoryColors[String(row[props.colorColumn])])
       } else {
-        colors.push(isDarkMode.value ? '#60a5fa' : '#3b82f6')
+        // Use theme-aware default color from StyleManager
+        colors.push(StyleManager.getInstance().getColor('chart.bar.default'))
       }
 
       // Size by value
@@ -200,13 +203,15 @@ const scatterData = computed(() => {
 const renderChart = () => {
   if (!plotContainer.value || scatterData.value.x.length === 0) return
 
-  // Theme-aware colors
-  const bgColor = isDarkMode.value ? '#1e293b' : '#ffffff'
-  const textColor = isDarkMode.value ? '#e2e8f0' : '#374151'
-  const gridColor = isDarkMode.value ? '#334155' : '#e5e7eb'
-  const defaultColor = isDarkMode.value ? '#60a5fa' : '#3b82f6'
-  const highlightColor = isDarkMode.value ? '#fbbf24' : '#f59e0b'
-  const selectedColor = isDarkMode.value ? '#f87171' : '#ef4444'
+  // Theme-aware colors from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const textColor = styleManager.getColor('theme.text.primary')
+  const gridColor = styleManager.getColor('theme.border.default')
+  const defaultColor = styleManager.getColor('chart.bar.default')
+  // Interaction states - consistent with MapCard
+  const highlightColor = styleManager.getColor('interaction.hover')
+  const selectedColor = styleManager.getColor('interaction.selected')
 
   // Build traces - one per category for proper legend, or single trace if no categories
   const traces: any[] = []
@@ -273,7 +278,7 @@ const renderChart = () => {
             color: categoryMarkerColors,
             size: categorySizes,
             line: {
-              color: isDarkMode.value ? '#ffffff' : '#1e293b',
+              color: textColor, // Use text color for marker outline contrast
               width: categoryLineWidths,
             },
             opacity: 0.8,
@@ -310,7 +315,7 @@ const renderChart = () => {
         color: markerColors,
         size: scatterData.value.sizes,
         line: {
-          color: isDarkMode.value ? '#ffffff' : '#1e293b',
+          color: textColor, // Use text color for marker outline contrast
           width: lineWidths,
         },
         opacity: 0.8,
