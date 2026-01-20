@@ -1790,10 +1790,6 @@ export default defineComponent({
   .spinner-box {
     grid-row: 3 / 4;
     position: relative;
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
     background: url('../assets/simwrapper-logo/SW_logo_icon_anim.gif');
     background-size: 8rem;
     background-repeat: no-repeat;
@@ -1814,8 +1810,6 @@ export default defineComponent({
   overflow-x: hidden;
   overflow-y: hidden;
   border-radius: 2px;
-  height: 100%;
-  width: 100%;
 }
 
 // Allow data-table cards to contain their scrollable content
