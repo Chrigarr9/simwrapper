@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Plan 01.1-02 complete)
+**Last Updated:** 2026-01-20 (Phase 1.1 Testing - Bug fixes during integration testing)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 1.1 of 7 (Adaptive Layer Coloring)
-**Plan:** 2 of 3 plans complete
-**Status:** In progress
-**Last activity:** 2026-01-20 - Completed 01.1-02-PLAN.md (MapCard Integration)
+**Plan:** 2 of 3 plans complete + testing session
+**Status:** In progress (testing discovered bugs, all fixed)
+**Last activity:** 2026-01-20 - Integration testing with cluster visualization, multiple bug fixes
 
 **Progress:**
 ```
@@ -76,6 +76,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Functional + OOP API for LayerColoringManager | Functional primary, class wrapper for stateful caching | 2026-01-20 |
 | Remove colorBy from getCardLayers() | MapCard now handles colorBy based on computed roles | 2026-01-20 |
 | Neutral layers use theme.border.default | StyleManager provides theme-aware neutral color | 2026-01-20 |
+| getFeatureId() helper for compound IDs | Constructs 'type_id' format (e.g., 'od_0') for data join between GeoJSON and CSV | 2026-01-20 |
+| fillOpacity: 0 for outline-only polygons | deck.gl LineLayer expects LineString, not Polygon; use fill with zero opacity for outlines | 2026-01-20 |
+| StyleManager CSS vars in tooltip styling | Use var(--dashboard-interaction-selected) instead of hardcoded colors | 2026-01-20 |
 
 ### Roadmap Evolution
 
@@ -109,6 +112,10 @@ None currently.
 3. **Vuex watch for theme changes**: StyleManager subscribes to `globalStore.state.colorScheme` for automatic theme updates.
 4. **Case-insensitive matching for configs**: GeoJSON properties may have inconsistent casing; normalize for comparison.
 5. **Role-aware coloring pattern**: Check role at start of getBaseColor(), neutral layers exit early with theme border color.
+6. **Compound ID construction for data joins**: GeoJSON features may need ID prefixing (e.g., cluster_type + '_' + cluster_id) to match CSV unique_id column.
+7. **deck.gl LineLayer vs PolygonLayer**: LineLayer uses getSourcePosition/getTargetPosition expecting LineString; for polygon outlines, use PolygonLayer with fillOpacity: 0.
+8. **getFeatureFillColor must call getBaseColor**: Without this delegation, fill layers don't receive colorBy coloring.
+9. **isLayerVisible must filter by geometryType**: Geometry type selector only works if visibility function considers layerConfig.geometryType.
 
 ---
 
@@ -116,19 +123,30 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Completed Phase 1.1 Plan 02 - MapCard integration with role-aware coloring.
+**Where we left off:** Integration testing of Phase 1.1 with cluster visualization. Multiple bugs found and fixed.
 
-**Next action:** Execute Plan 01.1-03 - YAML configuration and documentation.
+**Next action:** Execute Plan 01.1-03 - YAML configuration and documentation. All code fixes complete.
 
-**Phase 1.1 Plan 02 Deliverables:**
-- InteractiveDashboard.vue: layerStrategy YAML parsing and prop passing
-- MapCard.vue: computeAllLayerRoles integration, role-aware getBaseColor()
+**Testing Session Summary (2026-01-20):**
 
-**Integration Points:**
-- `yaml.map.colorBy.layerStrategy` for dashboard-level strategy ('auto', 'explicit', 'all')
-- `layer.colorByRole` for per-layer override ('primary', 'secondary', 'neutral', 'auto')
+**Bugs Found and Fixed:**
+1. **isLayerVisible() didn't filter by geometryType** - Geometry type selector had no effect
+2. **legendData didn't use dashboard-level colorByAttribute** - Legend showed wrong attribute
+3. **GeoJSON missing colorBy attributes** - Need CSV data join, not just GeoJSON properties
+4. **Data join mismatch** - GeoJSON `cluster_id='0'` didn't match CSV `unique_id='od_0'`
+   - Fix: Created `getFeatureId()` helper to construct compound IDs
+5. **getFeatureFillColor didn't call getBaseColor()** - Fill layers had no colorBy coloring
+6. **OD boundary layers used `type: line`** - LineLayer expects LineString, not Polygon
+   - Fix: Changed to `type: fill` with `fillOpacity: 0` for outline-only rendering
+7. **Tooltip used hardcoded colors** - Should use StyleManager CSS variables
 
-**Adaptive Coloring Behavior:**
+**Code Changes Made (MapCard.vue):**
+- Added `getFeatureId()` helper function for compound ID construction
+- Updated `getFeatureFillColor()` to delegate to `getBaseColor()`
+- Increased default fill opacity from 0.5 to 0.7
+- Added colorBy value display in tooltips with StyleManager CSS styling
+
+**Adaptive Coloring Behavior (Verified):**
 - Origin clusters alone: colorBy applied (primary)
 - Origin + arcs visible: arcs get colorBy (primary), clusters get neutral styling
 - Multiple geometries without arcs: all get colorBy (all primary)

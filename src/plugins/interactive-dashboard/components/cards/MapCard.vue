@@ -57,13 +57,24 @@ import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
 import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
 
+// Debug flag for one-time logging
+declare global {
+  interface Window {
+    _colorByDebugLogged?: boolean
+  }
+}
+
 // Types
 interface LayerConfig {
   name: string
   file: string
-  type: 'polygon' | 'line' | 'arc' | 'scatterplot'
+  type: 'polygon' | 'fill' | 'line' | 'arc' | 'scatterplot'
   visible?: boolean
   zIndex?: number
+
+  // Geometry type filter - layer only visible when this matches the selected geometryType
+  // Used by the geometry type selector (origin/destination/od/all)
+  geometryType?: string
 
   // Polygon styling
   fillColor?: string
@@ -515,7 +526,23 @@ function getLayerData(layerName: string): any[] {
 
 // Helper to check if layer is visible
 function isLayerVisible(layerConfig: LayerConfig): boolean {
-  return layerConfig.visible !== false
+  // Check basic visibility flag
+  if (layerConfig.visible === false) {
+    return false
+  }
+
+  // Check geometry type filter (from geometry type selector)
+  // If layer has a geometryType and it doesn't match the selected type, hide it
+  if (layerConfig.geometryType && props.geometryType) {
+    // 'all' shows all layers regardless of their geometryType
+    if (props.geometryType === 'all') {
+      return true
+    }
+    // Otherwise, layer's geometryType must match the selected type
+    return layerConfig.geometryType === props.geometryType
+  }
+
+  return true
 }
 
 // ============================================================================
@@ -554,9 +581,36 @@ function getTooltipContent(object: any): any {
 
   const properties = object.properties || {}
 
+  // Look up colorBy attribute value from central table if applicable
+  let colorByValue: { label: string; value: any } | null = null
+  if (props.colorByAttribute && props.filteredData?.length > 0) {
+    // Find the matching layer config to get linkage info
+    const layerConfig = props.layers.find(l => l.linkage)
+    if (layerConfig?.linkage) {
+      const featureId = getFeatureId(object, layerConfig)
+      const tableColumn = layerConfig.linkage.tableColumn
+
+      // Find matching row in central table
+      const matchingRow = props.filteredData.find((row: any) => {
+        const rowId = row[tableColumn]
+        return rowId == featureId || String(rowId) === String(featureId)
+      })
+
+      if (matchingRow && matchingRow[props.colorByAttribute] !== undefined) {
+        // Get the label from colorByOptions
+        const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+        const label = attrConfig?.label || props.colorByAttribute
+        colorByValue = {
+          label,
+          value: matchingRow[props.colorByAttribute]
+        }
+      }
+    }
+  }
+
   // Use custom template if provided
   if (props.tooltip.template) {
-    const html = renderTooltipTemplate(props.tooltip.template, properties)
+    const html = renderTooltipTemplate(props.tooltip.template, properties, colorByValue)
     return {
       html,
       style: getTooltipStyle(),
@@ -564,7 +618,7 @@ function getTooltipContent(object: any): any {
   }
 
   // Auto-generate tooltip from all properties
-  const html = renderDefaultTooltip(properties)
+  const html = renderDefaultTooltip(properties, colorByValue)
   return {
     html,
     style: getTooltipStyle(),
@@ -572,7 +626,11 @@ function getTooltipContent(object: any): any {
 }
 
 // Render tooltip from template string
-function renderTooltipTemplate(template: string, properties: Record<string, any>): string {
+function renderTooltipTemplate(
+  template: string,
+  properties: Record<string, any>,
+  colorByValue: { label: string; value: any } | null = null
+): string {
   let html = template
 
   // Replace {properties.xxx} placeholders
@@ -585,17 +643,47 @@ function renderTooltipTemplate(template: string, properties: Record<string, any>
     return formatTooltipValue(value)
   })
 
-  // Wrap in container
-  return `<div class="mapcard-tooltip">${html}</div>`
+  // Add colorBy value if available (as highlighted header)
+  let colorByHtml = ''
+  if (colorByValue) {
+    const formattedValue = formatTooltipValue(colorByValue.value)
+    colorByHtml = `
+      <div class="tooltip-row tooltip-highlight">
+        <span class="tooltip-key">${colorByValue.label}:</span>
+        <span class="tooltip-value">${formattedValue}</span>
+      </div>
+      <hr class="tooltip-divider" />
+    `
+  }
+
+  // Wrap in container with colorBy at top
+  return `<div class="mapcard-tooltip">${colorByHtml}${html}</div>`
 }
 
 // Render default tooltip showing all properties
-function renderDefaultTooltip(properties: Record<string, any>): string {
-  if (Object.keys(properties).length === 0) {
+function renderDefaultTooltip(
+  properties: Record<string, any>,
+  colorByValue: { label: string; value: any } | null = null
+): string {
+  if (Object.keys(properties).length === 0 && !colorByValue) {
     return '<div class="mapcard-tooltip"><em>No data</em></div>'
   }
 
   let html = '<div class="mapcard-tooltip">'
+
+  // Add colorBy value first (highlighted)
+  if (colorByValue) {
+    const formattedValue = formatTooltipValue(colorByValue.value)
+    html += `
+      <div class="tooltip-row tooltip-highlight">
+        <span class="tooltip-key">${colorByValue.label}:</span>
+        <span class="tooltip-value">${formattedValue}</span>
+      </div>
+    `
+    if (Object.keys(properties).length > 0) {
+      html += '<hr class="tooltip-divider" />'
+    }
+  }
 
   // Limit to first 10 properties to avoid huge tooltips
   const entries = Object.entries(properties).slice(0, 10)
@@ -731,10 +819,22 @@ function updateLayers() {
     return
   }
 
+  // Filter to visible layers only BEFORE computing roles
+  // This is critical: role computation must only consider currently visible layers
+  // Otherwise, hidden arcs would cause all visible polygons to become neutral
+  const visibleLayers = props.layers.filter(layer => isLayerVisible(layer))
+
+  // DEBUG: Log visibility filtering
+  console.log('[MapCard] geometryType selected:', props.geometryType)
+  console.log('[MapCard] All layers:', props.layers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  console.log('[MapCard] Visible layers:', visibleLayers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  console.log('[MapCard] layerStrategy:', props.layerStrategy)
+  console.log('[MapCard] colorByAttribute:', props.colorByAttribute)
+
   // Compute layer roles using LayerColoringManager
   // This determines which layers get colorBy coloring vs neutral styling
-  layerRoles.value = computeAllLayerRoles(props.layers, props.layerStrategy)
-  debugLog('[MapCard] Computed layer roles:', [...layerRoles.value.entries()])
+  layerRoles.value = computeAllLayerRoles(visibleLayers, props.layerStrategy)
+  debugLog('[MapCard] Computed layer roles for', visibleLayers.length, 'visible layers:', [...layerRoles.value.entries()])
 
   const layers: any[] = []
 
@@ -1120,8 +1220,8 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
   }
 
   return [...features].sort((a, b) => {
-    const aId = a.properties?.[layerConfig.linkage!.geoProperty]
-    const bId = b.properties?.[layerConfig.linkage!.geoProperty]
+    const aId = getFeatureId(a, layerConfig)
+    const bId = getFeatureId(b, layerConfig)
 
     // Use loose comparison for type mismatches (string "45" vs number 45)
     const aSelected = setHasLoose(props.selectedIds, aId)
@@ -1141,46 +1241,57 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
 }
 
 function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
 
   // Use loose comparison for type mismatches (string "45" vs number 45)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
   if (isSelected) {
-    return getInteractionColorRGBA('selected', 120)
+    // Selected items: blue fill with higher alpha for visibility
+    return getInteractionColorRGBA('selected', 180)
   }
 
   if (isHovered) {
     return getInteractionColorRGBA('hover', 100)
   }
 
-  if (hasActiveFilters && !isFiltered) {
+  // Only dim non-filtered items when there are actual chart filters active,
+  // NOT when there's just a selection. Selection should only highlight,
+  // not dim other features.
+  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
     }
-    return [180, 180, 180, 80]
+    // Dimmed color - use base color but with reduced opacity
+    const baseColor = getBaseColor(feature, layerConfig)
+    const dimmed: [number, number, number] = [
+      Math.round((baseColor[0] + 180) / 2),
+      Math.round((baseColor[1] + 180) / 2),
+      Math.round((baseColor[2] + 180) / 2),
+    ]
+    return [dimmed[0], dimmed[1], dimmed[2], 60]
   }
 
-  if (layerConfig.fillColor) {
-    const rgb = hexToRgb(layerConfig.fillColor)
-    const opacity = Math.round((layerConfig.fillOpacity || 0.5) * 255)
-    return [rgb[0], rgb[1], rgb[2], opacity]
-  }
-
-  return [156, 163, 175, 60]
+  // Use getBaseColor for colorBy support (dashboard-level or per-layer)
+  const baseColor = getBaseColor(feature, layerConfig)
+  // Default to 0.7 opacity for better visibility (was 0.5)
+  const opacity = Math.round((layerConfig.fillOpacity ?? 0.7) * 255)
+  return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
 function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
 
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) {
+    // Selected items: thicker blue outline for clear indication
     return getInteractionColorRGBA('selected', 255)
   }
 
@@ -1267,24 +1378,26 @@ function getAttributeBasedRadius(
 }
 
 function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
 
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
-  if (isSelected) return 4
-  if (isHovered) return 3
+  // Selected items get thicker outline to stand out clearly
+  if (isSelected) return 6
+  if (isHovered) return 4
 
   return layerConfig.lineWidth || 2
 }
 
 // Get feature width with attribute-based sizing support
 function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
   // Base width (static or attribute-based)
   let baseWidth: number
@@ -1299,8 +1412,9 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
 
   // State-based scaling
   if (isHovered) return baseWidth * 3
-  if (isSelected) return baseWidth * 2
-  if (hasActiveFilters && !isFiltered) {
+  if (isSelected) return baseWidth * 2.5
+  // Only dim when chart filters are active, not when there's just a selection
+  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
     // If hideOthersOnSelect is true, make invisible (0 width)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
     return 1 // Always 1px when dimmed
@@ -1310,11 +1424,12 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
 
 // Get feature radius with attribute-based sizing support
 function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
   // Base radius (static or attribute-based)
   let baseRadius: number
@@ -1329,8 +1444,9 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
 
   // State-based scaling
   if (isHovered) return baseRadius * 1.5
-  if (isSelected) return baseRadius * 1.2
-  if (hasActiveFilters && !isFiltered) {
+  if (isSelected) return baseRadius * 1.3
+  // Only dim when chart filters are active, not when there's just a selection
+  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
     // If hideOthersOnSelect is true, make invisible (0 radius)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
     return baseRadius * 0.5 // Smaller when dimmed
@@ -1339,11 +1455,12 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
 }
 
 function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
   if (isSelected) {
     return getInteractionColorRGBA('selected', 255)
@@ -1353,7 +1470,8 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
     return getInteractionColorRGBA('hover', 255)
   }
 
-  if (hasActiveFilters && !isFiltered) {
+  // Only dim when chart filters are active, not when there's just a selection
+  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
@@ -1520,21 +1638,60 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
   // Priority 1: Use dashboard-level colorByAttribute if set (from "Color by" selector)
   // This allows the global selector to override per-layer static colors
   // Only applies to primary/secondary layers (neutral already handled above)
-  if (props.colorByAttribute && feature.properties?.[props.colorByAttribute] !== undefined) {
-    const attributeValue = feature.properties[props.colorByAttribute]
+  if (props.colorByAttribute) {
+    // Try to get attribute value from feature properties first
+    let attributeValue = feature.properties?.[props.colorByAttribute]
 
-    // Look up the attribute config from colorByOptions to determine type
-    const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
-    const attrType = attrConfig?.type || 'categorical'
+    // If not found in feature, look up from central data table via linkage
+    // This handles the case where GeoJSON has limited properties and full data is in CSV
+    if (attributeValue === undefined && layerConfig.linkage && props.filteredData) {
+      const featureId = getFeatureId(feature, layerConfig)
+      const tableColumn = layerConfig.linkage.tableColumn
 
-    if (attrType === 'numeric') {
-      // Numeric coloring - calculate range from layer data
-      const features = getLayerData(layerConfig.name)
-      const scale = calculateNumericRange(features, props.colorByAttribute)
-      return getNumericColor(attributeValue, scale)
-    } else {
-      // Categorical coloring
-      return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+      // DEBUG: Log the first few lookups
+      if (!window._colorByDebugLogged) {
+        console.log('[MapCard] colorBy data join lookup:')
+        console.log('  raw cluster_id:', feature.properties?.[layerConfig.linkage.geoProperty])
+        console.log('  cluster_type:', feature.properties?.cluster_type)
+        console.log('  constructed featureId:', featureId)
+        console.log('  tableColumn:', tableColumn)
+        console.log('  colorByAttribute:', props.colorByAttribute)
+        console.log('  filteredData rows:', props.filteredData?.length)
+        console.log('  First row sample:', props.filteredData?.[0])
+        window._colorByDebugLogged = true
+      }
+
+      // Find matching row in central table
+      const matchingRow = props.filteredData.find((row: any) => {
+        const rowId = row[tableColumn]
+        // Loose comparison for type mismatches (string "45" vs number 45)
+        return rowId == featureId || String(rowId) === String(featureId)
+      })
+
+      if (matchingRow) {
+        attributeValue = matchingRow[props.colorByAttribute]
+      }
+    }
+
+    // If we found an attribute value, apply coloring
+    if (attributeValue !== undefined) {
+      // Look up the attribute config from colorByOptions to determine type
+      const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+      const attrType = attrConfig?.type || 'categorical'
+
+      if (attrType === 'numeric') {
+        // Numeric coloring - calculate range from central table data
+        const allValues = props.filteredData
+          .map((row: any) => row[props.colorByAttribute])
+          .filter((v: any) => typeof v === 'number')
+        const min = Math.min(...allValues)
+        const max = Math.max(...allValues)
+        const scale: [number, number] = [min, max]
+        return getNumericColor(attributeValue, scale)
+      } else {
+        // Categorical coloring
+        return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+      }
     }
   }
 
@@ -1590,10 +1747,46 @@ function setHasLoose(set: Set<any>, value: any): boolean {
   return false
 }
 
+/**
+ * Get the feature ID to use for data joins with the central table.
+ *
+ * Handles ID mismatch between GeoJSON and CSV:
+ * - GeoJSON OD flows have: cluster_type='od', cluster_id='0'
+ * - CSV has: unique_id='od_0'
+ *
+ * This function constructs the compound ID when needed by combining
+ * cluster_type and cluster_id.
+ *
+ * @param feature - GeoJSON feature
+ * @param layerConfig - Layer configuration with linkage info
+ * @returns The feature ID suitable for joining with the table
+ */
+function getFeatureId(feature: any, layerConfig: LayerConfig): any {
+  if (!layerConfig.linkage) return undefined
+
+  let featureId = feature.properties?.[layerConfig.linkage.geoProperty]
+
+  // Handle ID mismatch: GeoJSON may have simple cluster_id (e.g., '0')
+  // while CSV has compound unique_id (e.g., 'od_0')
+  // If the featureId is numeric or doesn't contain the cluster_type prefix,
+  // construct the compound ID from cluster_type + '_' + cluster_id
+  const clusterType = feature.properties?.cluster_type
+  if (clusterType && featureId !== undefined) {
+    const featureIdStr = String(featureId)
+    // Check if featureId already has the prefix (e.g., 'origin_1' already contains 'origin')
+    if (!featureIdStr.startsWith(clusterType + '_') && !featureIdStr.includes('_')) {
+      // Construct compound ID: 'od' + '_' + '0' = 'od_0'
+      featureId = `${clusterType}_${featureIdStr}`
+    }
+  }
+
+  return featureId
+}
+
 function isFeatureFiltered(feature: any, layerConfig: LayerConfig): boolean {
   if (!layerConfig.linkage) return true
 
-  const featureId = feature.properties?.[layerConfig.linkage.geoProperty]
+  const featureId = getFeatureId(feature, layerConfig)
   const tableColumn = layerConfig.linkage.tableColumn
 
   // Use loose comparison to handle type mismatches (string "45" vs number 45)
@@ -1637,15 +1830,17 @@ function handleClick(info: any) {
     return
   }
 
+  // Use getFeatureId to construct compound IDs for proper table matching
   const featureIds = picked
-    .map((p) => p.object?.properties?.[layerConfig.linkage!.geoProperty])
+    .map((p) => getFeatureId(p.object, layerConfig))
     .filter((id) => id !== undefined && id !== null)
 
   // Debug: log what we're getting from the GeoJSON
   if (picked.length > 0) {
     const firstFeature = picked[0].object
     debugLog('[MapCard] Click - geoProperty:', layerConfig.linkage!.geoProperty,
-      'extracted IDs:', featureIds,
+      'raw cluster_id:', firstFeature?.properties?.[layerConfig.linkage!.geoProperty],
+      'constructed IDs:', featureIds,
       'first feature properties:', firstFeature?.properties)
   }
 
@@ -1688,8 +1883,9 @@ function handleHover(info: any) {
 
   const picked = pickMultipleFeatures(info, layerConfig)
 
+  // Use getFeatureId to construct compound IDs for proper matching
   const featureIds = picked
-    .map((p) => p.object?.properties?.[layerConfig.linkage!.geoProperty])
+    .map((p) => getFeatureId(p.object, layerConfig))
     .filter((id) => id !== undefined && id !== null)
 
   if (featureIds.length > 0) {
@@ -1752,7 +1948,63 @@ const legendData = computed(() => {
     return null
   }
 
-  // Find the first layer with colorBy configuration
+  // Priority 1: Use dashboard-level colorByAttribute (from "Color by" selector)
+  // This is the primary way colors are applied via map.colorBy.attributes
+  if (props.colorByAttribute && props.colorByOptions?.length > 0) {
+    const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+    if (attrConfig) {
+      // Use central table data (props.filteredData) for attribute values
+      // This handles the case where attributes are in CSV, not GeoJSON
+      if (props.filteredData && props.filteredData.length > 0) {
+        if (attrConfig.type === 'numeric') {
+          const allValues = props.filteredData
+            .map((row: any) => row[props.colorByAttribute])
+            .filter((v: any) => typeof v === 'number')
+          const min = allValues.length > 0 ? Math.min(...allValues) : 0
+          const max = allValues.length > 0 ? Math.max(...allValues) : 1
+          return {
+            type: 'numeric' as const,
+            title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+            minValue: min,
+            maxValue: max,
+          }
+        } else {
+          // Categorical - get unique values from central table
+          return {
+            type: 'categorical' as const,
+            title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+            items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
+          }
+        }
+      }
+
+      // Fallback: try to get from GeoJSON features (original behavior)
+      const primaryLayer = props.layers.find(layer => {
+        const role = layerRoles.value.get(layer.name)
+        return role?.role === 'primary' || !role  // Include layers without roles (defaults to primary)
+      }) || props.layers[0]
+
+      if (attrConfig.type === 'numeric') {
+        const features = getLayerData(primaryLayer.name)
+        const [min, max] = calculateNumericRange(features, props.colorByAttribute)
+        return {
+          type: 'numeric' as const,
+          title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+          minValue: min,
+          maxValue: max,
+        }
+      } else {
+        // Categorical
+        return {
+          type: 'categorical' as const,
+          title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+          items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
+        }
+      }
+    }
+  }
+
+  // Priority 2: Find the first layer with per-layer colorBy configuration
   const colorByLayer = props.layers.find((layer) => layer.colorBy)
 
   if (!colorByLayer || !colorByLayer.colorBy) {
@@ -1816,6 +2068,68 @@ function buildCategoricalLegendItems(
 
   uniqueValues.forEach((value) => {
     const rgb = getCategoricalColor(value, colorBy.colors, colorBy.attribute)
+    const hexColor = rgbToHex(rgb)
+
+    items.push({
+      label: String(value),
+      color: hexColor,
+    })
+  })
+
+  return items
+}
+
+// Build categorical legend items from dashboard-level colorByAttribute
+function buildCategoricalLegendItemsFromAttribute(
+  layerConfig: LayerConfig,
+  attribute: string
+): { label: string; color: string }[] {
+  const items: { label: string; color: string }[] = []
+  const features = getLayerData(layerConfig.name)
+
+  // Collect unique values from features
+  const uniqueValues = new Set<any>()
+  features.forEach((feature) => {
+    const value = feature.properties?.[attribute]
+    if (value !== undefined && value !== null) {
+      uniqueValues.add(value)
+    }
+  })
+
+  uniqueValues.forEach((value) => {
+    const rgb = getCategoricalColor(value, undefined, attribute)
+    const hexColor = rgbToHex(rgb)
+
+    items.push({
+      label: String(value),
+      color: hexColor,
+    })
+  })
+
+  return items
+}
+
+// Build categorical legend items from central table data (props.filteredData)
+function buildCategoricalLegendItemsFromTable(
+  attribute: string
+): { label: string; color: string }[] {
+  const items: { label: string; color: string }[] = []
+
+  if (!props.filteredData || props.filteredData.length === 0) {
+    return items
+  }
+
+  // Collect unique values from table rows
+  const uniqueValues = new Set<any>()
+  props.filteredData.forEach((row: any) => {
+    const value = row[attribute]
+    if (value !== undefined && value !== null) {
+      uniqueValues.add(value)
+    }
+  })
+
+  uniqueValues.forEach((value) => {
+    const rgb = getCategoricalColor(value, undefined, attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
@@ -2000,5 +2314,23 @@ function cleanup() {
 
 :global(.tooltip-value) {
   flex: 1;
+}
+
+:global(.tooltip-highlight) {
+  background-color: color-mix(in srgb, var(--dashboard-interaction-selected) 15%, transparent);
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem 0.25rem -0.5rem;
+  border-radius: 4px;
+}
+
+:global(.tooltip-highlight .tooltip-value) {
+  font-weight: 700;
+  color: var(--dashboard-interaction-selected);
+}
+
+:global(.tooltip-divider) {
+  border: none;
+  border-top: 1px solid var(--dashboard-border-default);
+  margin: 0.5rem 0;
 }
 </style>

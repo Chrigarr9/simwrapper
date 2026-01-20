@@ -20,7 +20,7 @@
 
 // Debug flag - set to true to enable console logging for layer role computation
 // Helps diagnose why layers get certain roles (primary/neutral)
-const DEBUG_LAYER_COLORING = false
+const DEBUG_LAYER_COLORING = true
 
 import type {
   ColorByRole,
