@@ -160,9 +160,9 @@ export default Vue.extend({
   margin-top: 1.5rem;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  // Ensure proper containment
   position: relative;
-  contain: layout;
+  // Note: Removed `contain: layout` - it was blocking position:fixed for card fullscreen.
+  // The FullscreenPortal pattern now handles escaping containment by teleporting to document.body.
 }
 
 .sub-dashboard-header {
