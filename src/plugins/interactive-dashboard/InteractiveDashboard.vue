@@ -290,6 +290,7 @@ import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
 import { LinkedTableManager } from './managers/LinkedTableManager'
+import { StyleManager, initializeTheme } from './managers/StyleManager'
 import { debugLog } from './utils/debug'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import LinkedTableCard from './components/cards/LinkedTableCard.vue'
@@ -1259,6 +1260,29 @@ export default defineComponent({
 
     // NEW: Initialize coordination managers and load centralized data
     async initializeCoordinationLayer() {
+      /**
+       * Initialize theme system for CSS variables injection.
+       * This must happen before any components render to ensure
+       * --dashboard-* CSS variables are available.
+       */
+      initializeTheme()
+
+      /**
+       * Dashboard YAML color configuration:
+       *
+       * colors:
+       *   clusters:
+       *     origin: "#2563eb"       # Hex color for origin clusters
+       *     destination: "#dc2626"  # Hex color for destination clusters
+       *
+       * If not specified, colorblind-safe defaults are used.
+       */
+      if (this.yaml?.colors?.clusters) {
+        const { origin, destination } = this.yaml.colors.clusters
+        StyleManager.getInstance().setClusterColors({ origin, destination })
+        debugLog('[InteractiveDashboard] Applied YAML cluster colors:', { origin, destination })
+      }
+
       this.filterManager = new FilterManager()
       this.linkageManager = new LinkageManager()
 
