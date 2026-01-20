@@ -52,6 +52,8 @@ import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
+import { getInteractionColorRGBA } from '../../utils/colorSchemes'
+import { StyleManager } from '../../managers/StyleManager'
 
 // Types
 interface LayerConfig {
@@ -634,9 +636,10 @@ function formatTooltipValue(value: any): string {
 
 // Get tooltip style based on theme
 function getTooltipStyle(): Record<string, string> {
+  const styleManager = StyleManager.getInstance()
   return {
-    backgroundColor: isDarkMode.value ? '#1f2937' : 'white',
-    color: isDarkMode.value ? '#e5e7eb' : '#111827',
+    backgroundColor: styleManager.getColor('theme.background.secondary'),
+    color: styleManager.getColor('theme.text.primary'),
     fontSize: '12px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     lineHeight: '1.5',
@@ -1118,11 +1121,11 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
   if (isSelected) {
-    return [59, 130, 246, 120]
+    return getInteractionColorRGBA('selected', 120)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 100]
+    return getInteractionColorRGBA('hover', 100)
   }
 
   if (hasActiveFilters && !isFiltered) {
@@ -1149,11 +1152,11 @@ function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, n
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) {
-    return [59, 130, 246, 255]
+    return getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 255]
+    return getInteractionColorRGBA('hover', 255)
   }
 
   if (layerConfig.lineColor) {
@@ -1314,11 +1317,11 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
 
   if (isSelected) {
-    return [59, 130, 246, 255]
+    return getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 255]
+    return getInteractionColorRGBA('hover', 255)
   }
 
   if (hasActiveFilters && !isFiltered) {
