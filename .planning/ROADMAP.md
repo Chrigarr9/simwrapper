@@ -2,8 +2,8 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 6
-**Total v1 Requirements:** 14
+**Total Phases:** 7 (including 1 inserted)
+**Total v1 Requirements:** 18
 
 ---
 
@@ -30,7 +30,7 @@ This roadmap delivers enhanced visualization capabilities for SimWrapper's inter
 3. User configures OD cluster colors once in dashboard YAML and sees those colors in both map layers and legends
 4. Developer can add a new card type and access theme colors via CSS variables without importing colorSchemes.ts directly
 
-**Plans:** 4 plans ✓
+**Plans:** 4 plans
 
 Plans:
 - [x] 01-01-PLAN.md — Create StyleManager class with color definitions and CSS variable generation
@@ -41,6 +41,39 @@ Plans:
 **Completed:** 2026-01-20
 
 **Research Flag:** None - patterns well-documented in existing codebase
+
+---
+
+## Phase 1.1: Adaptive Layer Coloring (INSERTED)
+
+**Goal:** Color-by system automatically adapts based on visible layer relationships - single geometry gets colored, multiple geometries with arc colors the arc while others become neutral
+
+**Dependencies:** Phase 1 (StyleManager provides color infrastructure)
+
+**Requirements:**
+- ALYR-01: Layer relationship detection via shared geoProperty identifies connected layers at runtime
+- ALYR-02: Automatic coloring strategy applies colorBy to primary layer (arc when multiple geometries visible, geometry when single)
+- ALYR-03: Neutral styling mode for secondary layers (subtle boundaries without data coloring)
+- ALYR-04: YAML configuration for layerStrategy (auto/explicit/all) and per-layer colorByRole overrides
+
+**Success Criteria:**
+1. User views origin clusters only and sees clusters colored by the selected colorBy attribute
+2. User views destination clusters only and sees clusters colored by the selected colorBy attribute
+3. User switches to OD view (origin + destination + arcs) and arcs become colored by attribute while cluster boundaries become neutral/subtle
+4. User configures `layerStrategy: explicit` in YAML and only layers with `colorByRole: primary` receive colorBy coloring
+5. Developer can override auto-detection with `colorByRole: primary|secondary|neutral` per-layer in YAML
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01.1-01-PLAN.md — Create LayerColoringManager with types and role computation logic
+- [ ] 01.1-02-PLAN.md — Integrate into MapCard and InteractiveDashboard with YAML config support
+- [ ] 01.1-03-PLAN.md — Verification and edge case handling
+
+**Details:**
+Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster_id), count visible geometry layers and arc layers per group, apply coloring rule automatically. Configurable via `map.colorBy.layerStrategy` and per-layer `colorByRole` properties.
+
+**Research Flag:** None - layer linkage architecture already well-understood from Phase 1
 
 ---
 
@@ -149,14 +182,15 @@ Plans:
 
 | Phase | Name | Requirements | Status | Completion |
 |-------|------|--------------|--------|------------|
-| 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | ✓ Complete | 100% |
+| 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Complete | 100% |
+| 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Planned | 0% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Not Started | 0% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 1/6 phases complete (17%)
+**Overall Progress:** 1/7 phases complete (14%)
 
 ---
 
@@ -167,6 +201,10 @@ Plans:
 | THEME-01 | Phase 1 | Yes |
 | THEME-02 | Phase 1 | Yes |
 | THEME-03 | Phase 1 | Yes |
+| ALYR-01 | Phase 1.1 | Yes |
+| ALYR-02 | Phase 1.1 | Yes |
+| ALYR-03 | Phase 1.1 | Yes |
+| ALYR-04 | Phase 1.1 | Yes |
 | SUBD-01 | Phase 2 | Yes |
 | SUBD-02 | Phase 2 | Yes |
 | CORR-01 | Phase 3 | Yes |
@@ -179,9 +217,9 @@ Plans:
 | TIME-02 | Phase 5 | Yes |
 | GRPH-01 | Phase 6 | Yes |
 
-**Coverage:** 14/14 requirements mapped (100%)
+**Coverage:** 18/18 requirements mapped (100%)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-20 — Phase 1 complete*
+*Last updated: 2026-01-20 — Phase 1.1 planned (3 plans in 3 waves)*
