@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
+import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 
@@ -130,12 +131,14 @@ const histogramData = computed(() => {
 const renderChart = () => {
   if (!plotContainer.value || histogramData.value.length === 0) return
 
-  // Theme-aware colors
-  const bgColor = isDarkMode.value ? '#1e293b' : '#ffffff'
-  const textColor = isDarkMode.value ? '#e2e8f0' : '#374151'
-  const gridColor = isDarkMode.value ? '#334155' : '#e5e7eb'
-  const barColor = isDarkMode.value ? '#60a5fa' : '#3b82f6'
-  const selectedColor = isDarkMode.value ? '#f87171' : '#ef4444'
+  // Theme-aware colors from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const textColor = styleManager.getColor('theme.text.primary')
+  const gridColor = styleManager.getColor('theme.border.default')
+  const barColor = styleManager.getColor('chart.bar.default')
+  // Selected color for user selection feedback
+  const selectedColor = styleManager.getColor('chart.bar.selected')
 
   // Format tick values if column format is defined
   const tickvals = histogramData.value.map(d => d.bin)
@@ -150,7 +153,8 @@ const renderChart = () => {
         selectedBins.value.has(d.bin) ? selectedColor : barColor
       ),
       line: {
-        color: isDarkMode.value ? '#1e293b' : '#ffffff',
+        // Use background color for bar outline to create subtle separation
+        color: bgColor,
         width: 1,
       },
     },
