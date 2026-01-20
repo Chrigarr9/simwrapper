@@ -113,6 +113,7 @@
                 :map-controls-config="yaml.map?.controls"
                 :geometry-type-options="geometryTypeOptions"
                 :color-by-options="colorByOptions"
+                :layer-strategy="layerStrategy"
                 :table-config="yaml.table"
                 :data-table-manager="dataTableManager"
                 :filter-manager="filterManager"
@@ -162,6 +163,7 @@
             :map-controls-config="yaml.map?.controls"
             :geometry-type-options="geometryTypeOptions"
             :color-by-options="colorByOptions"
+            :layer-strategy="layerStrategy"
             @update:geometry-type="geometryType = $event"
             @update:color-by-attribute="colorByAttribute = $event"
             @isLoaded="handleCardIsLoaded(card)"
@@ -374,6 +376,8 @@ export default defineComponent({
       // Map controls
       geometryType: 'all' as string,  // 'origin', 'destination', 'all', or custom values
       colorByAttribute: '' as string,  // Will be initialized from YAML default
+      // Layer coloring strategy (from YAML map.colorBy.layerStrategy)
+      layerStrategy: 'auto' as 'auto' | 'explicit' | 'all',
     }
   },
 
@@ -573,6 +577,8 @@ export default defineComponent({
     },
 
     // Get layers for a card, filtering by geometry type if applicable
+    // NOTE: colorBy is NOT applied here - MapCard handles colorBy based on computed layer roles
+    // from LayerColoringManager. This ensures neutral layers skip colorBy coloring.
     getCardLayers(card: any): any[] {
       if (!card.layers) return []
 
@@ -585,24 +591,9 @@ export default defineComponent({
         if (!layer.geometryType) return true
         // If layer specifies geometryType, only include if it matches current selection
         return layer.geometryType === this.geometryType
-      }).map((layer: any) => {
-        // Apply colorBy attribute from selector if configured and attribute is selected
-        // BUT only if the layer doesn't already have a color or colorBy property defined
-        // This allows layers (like flow arcs) to keep their own static colors
-        if (this.colorByAttribute && this.yaml.map?.controls?.colorBy && !layer.color && !layer.colorBy) {
-          const colorByConfig = this.colorByOptions.find((opt: any) => opt.attribute === this.colorByAttribute)
-          if (colorByConfig) {
-            return {
-              ...layer,
-              colorBy: {
-                attribute: this.colorByAttribute,
-                type: colorByConfig.type || 'categorical',
-              },
-            }
-          }
-        }
-        return layer
       })
+      // Note: Previous implementation applied colorBy here, but that's now handled
+      // in MapCard.vue's getBaseColor() using LayerColoringManager for role-aware coloring
     },
 
     // Table row interaction methods
@@ -985,6 +976,13 @@ export default defineComponent({
         // Default to first geometry type if 'all' is not in the options
         const hasAll = this.yaml.map.geometryTypes.some((gt: any) => gt.value === 'all')
         this.geometryType = hasAll ? 'all' : this.yaml.map.geometryTypes[0].value
+      }
+      // Initialize layer strategy from YAML (default: 'auto')
+      if (this.yaml.map?.colorBy?.layerStrategy) {
+        const strategy = this.yaml.map.colorBy.layerStrategy
+        if (strategy === 'auto' || strategy === 'explicit' || strategy === 'all') {
+          this.layerStrategy = strategy
+        }
       }
 
       // set header
