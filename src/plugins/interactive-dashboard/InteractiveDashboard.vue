@@ -35,13 +35,13 @@
         :style="getCardStyle(card)"
         :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen-card': fullScreenCardId === card.id}"
       )
-          //- card header/title
-          .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
-            .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
-              h3 {{ card.title }}
+          //- card header/title - always show (for enlarge button)
+          .dash-card-headers(:class="{'fullscreen': !!fullScreenCardId}")
+            .header-labels(v-if="card.title || card.description" :style="{paddingLeft: card.type=='text' ? '4px' : ''}")
+              h3(v-if="card.title") {{ card.title }}
               p(v-if="card.description") {{ card.description }}
 
-            //- zoom button
+            //- zoom button - always show
             .header-buttons
               button.button.is-small.is-white(
                 v-if="card.info"
