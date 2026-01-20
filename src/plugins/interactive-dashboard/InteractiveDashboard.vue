@@ -28,11 +28,19 @@
       :style="{'flex': rowFlexWeights[i] || 1}"
     )
 
-      //- each card here
-      .dash-card-frame(v-for="card,j in row.cards" :key="`${i}/${j}`"
-        :style="getCardStyle(card)"
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
+      //- each card here - wrapped with FullscreenPortal for embedded mode
+      //- Portal is only active when embedded AND this card is fullscreen
+      //- When not active, portal just renders slot content in place (display: contents)
+      fullscreen-portal(
+        v-for="card,j in row.cards"
+        :key="`${i}/${j}`"
+        :active="embedded && fullScreenCardId === card.id"
+        @close="toggleZoom(card)"
       )
+        .dash-card-frame(
+          :style="getCardStyle(card)"
+          :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
+        )
 
         //- card header/title
         .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
@@ -298,6 +306,7 @@ import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
+import FullscreenPortal from './components/FullscreenPortal.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -312,7 +321,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard, FullscreenPortal }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -1588,10 +1597,24 @@ export default defineComponent({
         manager.setParentSelection(selectedIds)
       })
     },
+
+    // NEW: Handle Escape key to close fullscreen in embedded mode
+    // This is a backup handler - FullscreenPortal also handles Escape
+    handleEscapeKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && this.fullScreenCardId) {
+        this.fullScreenCardId = ''
+        this.$emit('zoom', '')
+      }
+    },
   },
   async mounted() {
     window.addEventListener('resize', this.resizeAllCards)
     this.setupNarrowPanelObserver()
+
+    // NEW: Add Escape key handler for embedded mode fullscreen
+    if (this.embedded) {
+      window.addEventListener('keydown', this.handleEscapeKey)
+    }
 
     if (this.gist) {
       this.fileSystemConfig = {
@@ -1622,6 +1645,9 @@ export default defineComponent({
     this.isDestroying = true
     this.narrowPanelObserver?.disconnect()
     window.removeEventListener('resize', this.resizeAllCards)
+
+    // NEW: Remove Escape key handler
+    window.removeEventListener('keydown', this.handleEscapeKey)
 
     // NEW: Clean up managers
     this.filterManager = null
