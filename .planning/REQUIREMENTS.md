@@ -1,0 +1,119 @@
+# Requirements: SimWrapper Interactive Dashboard Enhancements
+
+**Defined:** 2026-01-20
+**Core Value:** One styling configuration controls all visualizations
+
+## v1 Requirements
+
+Requirements for initial release. Each maps to roadmap phases.
+
+### Theming
+
+- [ ] **THEME-01**: StyleManager class centralizes color definitions replacing hardcoded values across components
+- [ ] **THEME-02**: CSS variables system for theme colors accessible to all dashboard components
+- [ ] **THEME-03**: OD cluster color scheme configurable (origin, destination, arc default colors)
+
+### Sub-Dashboard
+
+- [ ] **SUBD-01**: Enlarge button appears on sub-dashboard card headers
+- [ ] **SUBD-02**: Enlarged card breaks out of sub-dashboard container to full viewport
+
+### Correlation Analysis
+
+- [ ] **CORR-01**: Correlation matrix card showing pairwise Pearson correlations as heatmap
+- [ ] **CORR-02**: Attribute selector allows choosing which columns to include in correlation matrix
+
+### Dual Maps
+
+- [ ] **DMAP-01**: Dashboard layout supports side-by-side dual map configuration
+- [ ] **DMAP-02**: Maps synchronize pan/zoom (move one map, other follows automatically)
+- [ ] **DMAP-03**: Each map has independent colorBy attribute selector
+- [ ] **DMAP-04**: Hover on one map highlights same feature(s) on other map and data table
+
+### Timeline
+
+- [ ] **TIME-01**: Timeline card shows time window bars (Gantt-style with earliest/latest constraints)
+- [ ] **TIME-02**: Requests visually grouped by their parent ride in timeline
+
+### Graph
+
+- [ ] **GRPH-01**: Graph card displays path cover visualization (rides as nodes, feasibility edges between them)
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Theming Enhancements
+
+- **THEME-04**: styling.yaml auto-discovery by dashboards
+- **THEME-05**: Configurable interaction state colors (hover, selected, dimmed)
+- **THEME-06**: Per-dashboard style overrides
+
+### Sub-Dashboard Enhancements
+
+- **SUBD-03**: Vue teleport/portal pattern for true viewport fullscreen
+- **SUBD-04**: Keyboard shortcuts (Escape to close fullscreen)
+
+### Correlation Enhancements
+
+- **CORR-03**: Click correlation cell to configure dual maps with those attributes
+- **CORR-04**: Filter-aware correlation recalculation
+- **CORR-05**: SPLOM (Scatter Plot Matrix) for multiple attributes
+
+### Dual Maps Enhancements
+
+- **DMAP-05**: Swipe comparison view
+- **DMAP-06**: Difference map (showing attribute delta between views)
+
+### Timeline Enhancements
+
+- **TIME-03**: Time range filter (drag to select time window)
+- **TIME-04**: Animation playback through time
+- **TIME-05**: Vehicle assignment visualization
+
+### Graph Enhancements
+
+- **GRPH-02**: Request-to-ride matching graph
+- **GRPH-03**: Interactive graph exploration (click nodes, expand/collapse, drag layout)
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| 3D visualizations | Unnecessary complexity for analysis use case |
+| Mobile-specific layouts | Desktop-first for research analysis workflows |
+| Real-time data streaming | Dashboards work with static analysis outputs |
+| Non-interactive dashboard changes | Focus on interactive dashboard plugin only |
+| Upstream SimWrapper contribution | Can be considered later after local validation |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| THEME-01 | TBD | Pending |
+| THEME-02 | TBD | Pending |
+| THEME-03 | TBD | Pending |
+| SUBD-01 | TBD | Pending |
+| SUBD-02 | TBD | Pending |
+| CORR-01 | TBD | Pending |
+| CORR-02 | TBD | Pending |
+| DMAP-01 | TBD | Pending |
+| DMAP-02 | TBD | Pending |
+| DMAP-03 | TBD | Pending |
+| DMAP-04 | TBD | Pending |
+| TIME-01 | TBD | Pending |
+| TIME-02 | TBD | Pending |
+| GRPH-01 | TBD | Pending |
+
+**Coverage:**
+- v1 requirements: 14 total
+- Mapped to phases: 0
+- Unmapped: 14 ⚠️
+
+---
+*Requirements defined: 2026-01-20*
+*Last updated: 2026-01-20 after initial definition*
