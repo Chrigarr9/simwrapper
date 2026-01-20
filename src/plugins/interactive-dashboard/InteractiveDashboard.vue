@@ -1261,9 +1261,20 @@ export default defineComponent({
     // NEW: Initialize coordination managers and load centralized data
     async initializeCoordinationLayer() {
       /**
-       * Initialize theme system for CSS variables injection.
-       * This must happen before any components render to ensure
-       * --dashboard-* CSS variables are available.
+       * Initialize dashboard theme (injects CSS variables into :root).
+       * This must happen before dashboard content renders to ensure
+       * --dashboard-* CSS variables are available to all child components.
+       *
+       * CSS variables injected:
+       * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
+       * - --dashboard-text-primary, --dashboard-text-secondary
+       * - --dashboard-border-default, --dashboard-border-subtle
+       * - --dashboard-interaction-hover, --dashboard-interaction-selected
+       * - --dashboard-cluster-origin, --dashboard-cluster-destination
+       * - --dashboard-chart-bar, --dashboard-chart-bar-selected, --dashboard-chart-grid
+       * - --dashboard-categorical-0 through --dashboard-categorical-14
+       *
+       * Theme state is synced with Vuex store (globalStore.state.colorScheme).
        */
       initializeTheme()
 
