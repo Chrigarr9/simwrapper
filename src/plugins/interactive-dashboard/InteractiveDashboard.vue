@@ -83,8 +83,10 @@
             :data-table-manager="dataTableManager"
           )
             template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
+              //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
               component.dash-card(v-if="card.visible"
                 :is="getCardComponent(card)"
+                :key="`${card.id}-${embedded && fullScreenCardId === card.id ? 'fullscreen' : 'normal'}`"
                 :class="{'is-data-table': card.type === 'data-table'}"
                 :fileSystemConfig="fileSystemConfig"
                 :subfolder="row.subtabFolder || xsubfolder"
@@ -138,8 +140,10 @@
               )
 
           //- Standard rendering for cards without linkage
+          //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
           component.dash-card(v-else-if="card.visible"
             :is="getCardComponent(card)"
+            :key="`${card.id}-${embedded && fullScreenCardId === card.id ? 'fullscreen' : 'normal'}`"
             :fileSystemConfig="fileSystemConfig"
             :subfolder="row.subtabFolder || xsubfolder"
             :files="fileList"
