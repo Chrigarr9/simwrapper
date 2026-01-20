@@ -64,6 +64,8 @@ Phase 6: Graph Visualization     [ ] 0%
 | Singleton pattern for StyleManager | Ensures single source of truth for theme state | 2026-01-20 |
 | CSS variables with --dashboard- prefix | Namespaces variables to avoid conflicts with app-level styles | 2026-01-20 |
 | Interaction colors constant across modes | Per CONTEXT.md - hover/selected remain same in light/dark | 2026-01-20 |
+| CSS variables with fallback chains | var(--dashboard-X, var(--app-X, #fallback)) for graceful degradation | 2026-01-20 |
+| Keep domain-specific colors static | Transport mode colors are semantic, not theme-dependent | 2026-01-20 |
 | White border for selected pie slices | Provides contrast against category colors regardless of theme | 2026-01-20 |
 | ScatterCard uses interaction.hover/selected | Consistent highlighting/selection behavior with MapCard | 2026-01-20 |
 | D3 categorical palette as domain-specific | Category colors not theme-dependent, documented in code | 2026-01-20 |
