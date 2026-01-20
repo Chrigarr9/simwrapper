@@ -54,6 +54,8 @@ import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
 import { getInteractionColorRGBA } from '../../utils/colorSchemes'
 import { StyleManager } from '../../managers/StyleManager'
+import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
+import type { LayerColoringRole, LayerStrategy } from '../../types/layerColoring'
 
 // Types
 interface LayerConfig {
@@ -159,6 +161,9 @@ interface Props {
   geometryType?: string
   colorByAttribute?: string
 
+  // Layer coloring strategy (from YAML map.colorBy.layerStrategy)
+  layerStrategy?: LayerStrategy
+
   // Map controls configuration (from YAML)
   mapControlsConfig?: {
     geometryType?: boolean
@@ -179,6 +184,7 @@ const props = withDefaults(defineProps<Props>(), {
   selectedIds: () => new Set(),
   geometryType: 'all',
   colorByAttribute: '',
+  layerStrategy: 'auto',
   geometryTypeOptions: () => [],
   colorByOptions: () => [],
 })
@@ -204,6 +210,9 @@ const layerData = ref<Map<string, any[]>>(new Map())
 // Selection state (local to map)
 const hoveredFeatureIds = ref<Set<any>>(new Set())
 const selectedFeatureIds = ref<Set<any>>(new Set())
+
+// Computed layer roles for adaptive coloring (from LayerColoringManager)
+const layerRoles = ref<Map<string, LayerColoringRole>>(new Map())
 
 // Dark mode access from global store (Critical Fix #2)
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
@@ -282,6 +291,12 @@ watch(() => props.layers, () => {
 // Watch for colorByAttribute changes to update layer colors
 watch(() => props.colorByAttribute, (newVal, oldVal) => {
   debugLog('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
+  updateLayers()
+})
+
+// Watch for layerStrategy changes to recompute roles and update layers
+watch(() => props.layerStrategy, (newVal, oldVal) => {
+  debugLog('[MapCard] layerStrategy changed:', oldVal, '->', newVal)
   updateLayers()
 })
 
@@ -708,6 +723,11 @@ function updateLayers() {
     return
   }
 
+  // Compute layer roles using LayerColoringManager
+  // This determines which layers get colorBy coloring vs neutral styling
+  layerRoles.value = computeAllLayerRoles(props.layers, props.layerStrategy)
+  debugLog('[MapCard] Computed layer roles:', [...layerRoles.value.entries()])
+
   const layers: any[] = []
 
   props.layers.forEach((layerConfig) => {
@@ -894,8 +914,8 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
-        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
         getLineWidth: [props.hoveredIds, props.selectedIds],
       },
     })
@@ -929,7 +949,7 @@ function createLineLayer(layerConfig: LayerConfig, features: any[]): LineLayer |
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -968,7 +988,7 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1003,8 +1023,8 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
-        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1038,7 +1058,7 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1073,7 +1093,7 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.radiusBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1478,10 +1498,20 @@ function calculateNumericRange(features: any[], attribute: string): [number, num
   return [min, max]
 }
 
-// Enhanced getBaseColor with dynamic coloring support
+// Enhanced getBaseColor with dynamic coloring support and role-aware logic
 function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, number] {
+  // Priority 0: Check layer role - neutral layers skip colorBy entirely
+  // This enables adaptive coloring where only primary layers show data colors
+  const role = layerRoles.value.get(layerConfig.name)
+  if (role?.role === 'neutral') {
+    // Return neutral theme color - subtle boundary without data coloring
+    const styleManager = StyleManager.getInstance()
+    return hexToRgb(styleManager.getColor('theme.border.default'))
+  }
+
   // Priority 1: Use dashboard-level colorByAttribute if set (from "Color by" selector)
   // This allows the global selector to override per-layer static colors
+  // Only applies to primary/secondary layers (neutral already handled above)
   if (props.colorByAttribute && feature.properties?.[props.colorByAttribute] !== undefined) {
     const attributeValue = feature.properties[props.colorByAttribute]
 
