@@ -66,8 +66,42 @@ export default Vue.extend({
         backgroundColor: 'var(--dashboard-bg-primary, var(--bgBold, #1a1a2e))',
         display: 'flex',
         flexDirection: 'column',
-        padding: '1rem'
+        padding: '1rem',
+        opacity: '0',
+        transition: 'opacity 0.2s ease-in-out'
       })
+
+      // Add close button using DOM APIs (safe, no XSS risk)
+      const closeBtn = document.createElement('button')
+      closeBtn.className = 'fullscreen-close-btn'
+      closeBtn.title = 'Close (Escape)'
+
+      // Create icon element safely using DOM API
+      const icon = document.createElement('i')
+      icon.className = 'fa fa-compress'
+      closeBtn.appendChild(icon)
+
+      Object.assign(closeBtn.style, {
+        position: 'absolute',
+        top: '1rem',
+        right: '1rem',
+        zIndex: '10001',
+        background: 'var(--dashboard-bg-secondary, rgba(0,0,0,0.5))',
+        border: '1px solid var(--dashboard-border-default, rgba(255,255,255,0.2))',
+        borderRadius: '4px',
+        color: 'var(--dashboard-text-primary, white)',
+        padding: '0.5rem 0.75rem',
+        cursor: 'pointer',
+        fontSize: '1rem'
+      })
+      closeBtn.addEventListener('click', () => this.$emit('close'))
+      container.appendChild(closeBtn)
+
+      // Fade in after adding to DOM
+      requestAnimationFrame(() => {
+        container.style.opacity = '1'
+      })
+
       return container
     },
     activatePortal() {
@@ -99,26 +133,35 @@ export default Vue.extend({
     deactivatePortal() {
       if (!this.portalContainer) return
 
-      // Move content back to origin
-      const origin = this.$refs.origin as HTMLElement
-      if (origin && this.portalContainer) {
-        while (this.portalContainer.firstChild) {
-          origin.appendChild(this.portalContainer.firstChild)
+      // Fade out first
+      this.portalContainer.style.opacity = '0'
+
+      // Wait for transition then move content back
+      setTimeout(() => {
+        const origin = this.$refs.origin as HTMLElement
+        if (origin && this.portalContainer) {
+          // Move all children EXCEPT the close button back to origin
+          const children = Array.from(this.portalContainer.children)
+          for (const child of children) {
+            if (!child.classList.contains('fullscreen-close-btn')) {
+              origin.appendChild(child)
+            }
+          }
+
+          // Remove portal container from body
+          if (this.portalContainer.parentNode) {
+            this.portalContainer.parentNode.removeChild(this.portalContainer)
+          }
         }
 
-        // Remove portal container from body
-        if (this.portalContainer.parentNode) {
-          this.portalContainer.parentNode.removeChild(this.portalContainer)
-        }
-      }
+        // Remove Escape key listener
+        document.removeEventListener('keydown', this.handleKeydown)
 
-      // Remove Escape key listener
-      document.removeEventListener('keydown', this.handleKeydown)
-
-      // Trigger resize event
-      this.$nextTick(() => {
-        window.dispatchEvent(new Event('resize'))
-      })
+        // Trigger resize event
+        this.$nextTick(() => {
+          window.dispatchEvent(new Event('resize'))
+        })
+      }, 200) // Match transition duration
     },
     handleKeydown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
