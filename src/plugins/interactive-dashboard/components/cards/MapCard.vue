@@ -778,8 +778,9 @@ function updateLayers() {
 }
 
 // TASK 12: Create baseline layer (gray, dimmed) for comparison mode
+// Comparison baseline - intentionally neutral gray regardless of theme
 function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
-  const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // 30% gray
+  const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // Neutral gray for comparison
 
   switch (layerConfig.type) {
     case 'polygon':
@@ -1347,7 +1348,9 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
 // TASK 8: Dynamic Color Management System
 // ============================================================================
 
-// Default categorical color schemes
+// Domain-specific categorical color schemes - not theme-dependent
+// These colors represent semantic meaning (e.g., transport mode types)
+// and should remain constant regardless of light/dark mode
 const DEFAULT_CATEGORICAL_COLORS: Record<string, Record<string, string>> = {
   mode: {
     car: '#e74c3c',
@@ -1867,8 +1870,8 @@ function cleanup() {
   align-items: center;
   gap: 1rem;
   padding: 0.5rem 0.75rem;
-  background: var(--bgPanel, #f8f9fa);
-  border-bottom: 1px solid var(--borderColor, #e5e7eb);
+  background: var(--dashboard-bg-secondary, var(--bgPanel, #f8f9fa));
+  border-bottom: 1px solid var(--dashboard-border-default, var(--borderColor, #e5e7eb));
 }
 
 .control-item {
@@ -1880,28 +1883,28 @@ function cleanup() {
 .control-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--text, #374151);
+  color: var(--dashboard-text-primary, var(--text, #374151));
   opacity: 0.8;
 }
 
 .control-select {
   padding: 0.3rem 0.5rem;
   font-size: 0.8rem;
-  border: 1px solid var(--borderColor, #d1d5db);
+  border: 1px solid var(--dashboard-border-default, var(--borderColor, #d1d5db));
   border-radius: 4px;
-  background: var(--bgCream, white);
-  color: var(--text, #374151);
+  background: var(--dashboard-bg-primary, var(--bgCream, white));
+  color: var(--dashboard-text-primary, var(--text, #374151));
   cursor: pointer;
   min-width: 100px;
 }
 
 .control-select:hover {
-  border-color: var(--link, #3b82f6);
+  border-color: var(--dashboard-interaction-selected, var(--link, #3b82f6));
 }
 
 .control-select:focus {
   outline: none;
-  border-color: var(--link, #3b82f6);
+  border-color: var(--dashboard-interaction-selected, var(--link, #3b82f6));
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
@@ -1917,7 +1920,8 @@ function cleanup() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--dashboard-bg-primary, rgba(255, 255, 255, 0.9));
+  color: var(--dashboard-text-primary, #374151);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1929,8 +1933,8 @@ function cleanup() {
 .spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
+  border: 4px solid var(--dashboard-border-default, #e5e7eb);
+  border-top-color: var(--dashboard-interaction-selected, #3b82f6);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
