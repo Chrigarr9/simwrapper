@@ -170,7 +170,7 @@ import {
   Status,
 } from '@/Globals'
 
-import { debounce } from '@/js/util'
+import { debounce, gUnzip } from '@/js/util'
 import Geotools from '@/js/geo-utils'
 import GeojsonLayer from './DeckMapComponent.vue'
 import ColorWidthSymbologizer, { buildRGBfromHexCodes } from '@/js/ColorsAndWidths'
@@ -610,33 +610,31 @@ const MyComponent = defineComponent({
 
       this.wantToClearTooltip = false
       const PRECISION = 4
-      const propList = []
+      let propList = []
 
-      // normalized value first
-      if (this.dataNormalizedValues) {
-        const label = this.dataCalculatedValueLabel ?? 'Normalized Value'
-        let value = this.truncateFractionalPart(this.dataNormalizedValues[index], PRECISION)
-
-        propList.push(
-          `<tr><td style="text-align: right; padding-right: 0.5rem;">${label}</td><td><b>${value}</b></td></tr>`
-        )
-      }
-
-      // calculated value
-      if (this.dataCalculatedValues) {
-        let cLabel = this.dataCalculatedValueLabel ?? 'Value'
-
-        const label = this.dataNormalizedValues
-          ? cLabel.substring(0, cLabel.lastIndexOf('/'))
-          : cLabel
-
-        let value = this.truncateFractionalPart(this.dataCalculatedValues[index], PRECISION)
-        if (this.dataCalculatedValueLabel.startsWith('%')) value = `${value} %`
-
-        propList.push(
-          `<tr><td style="text-align: right; padding-right: 0.5rem;">${label}</td><td><b>${value}</b></td></tr>
-         <tr><td>&nbsp;</td></tr>`
-        )
+      // If user DID NOT provide any tooltip settings, show some useful things:
+      if (!this.vizDetails.tooltip?.length) {
+        // normalized value first
+        if (this.dataNormalizedValues) {
+          const label = this.dataCalculatedValueLabel || 'Normalized Value'
+          let value = this.truncateFractionalPart(this.dataNormalizedValues[index], PRECISION)
+          propList.push(
+            `<tr><td style="text-align: right; padding-right: 0.5rem;">${label}</td><td><b>${value}</b></td></tr>`
+          )
+        }
+        // calculated value
+        if (this.dataCalculatedValues) {
+          let cLabel = this.dataCalculatedValueLabel || 'Value'
+          const label = this.dataNormalizedValues
+            ? cLabel.substring(0, cLabel.lastIndexOf('/'))
+            : cLabel
+          let value = this.truncateFractionalPart(this.dataCalculatedValues[index], PRECISION)
+          if (this.dataCalculatedValueLabel.startsWith('%')) value = `${value} %`
+          propList.push(
+            `<tr><td style="text-align: right; padding-right: 0.5rem;">${label}</td><td><b>${value}</b></td></tr>
+            <tr><td>&nbsp;</td></tr>`
+          )
+        }
       }
 
       // --- dataset tooltip lines ---
@@ -669,7 +667,7 @@ const MyComponent = defineComponent({
         columns = this.vizDetails.tooltip.map(tip => tip.substring(tip.indexOf(delim) + 1))
       }
 
-      // nice sort order
+      // nice sort order puts useful network fields at the top
       const sortColumns = ['id', 'from', 'to', ...columns]
 
       let featureProps = ''
@@ -833,7 +831,7 @@ const MyComponent = defineComponent({
         display: { fill: {} as any },
       }
 
-      // are we in a dashboard?
+      // are we in a dashboard? also EMBED maps come from here:
       if (this.configFromDashboard) {
         this.config = JSON.parse(JSON.stringify(this.configFromDashboard))
         this.vizDetails = Object.assign({}, emptyState, this.configFromDashboard)
@@ -872,6 +870,13 @@ const MyComponent = defineComponent({
       }
 
       if (!this.vizDetails.backgroundLayers) this.vizDetails.backgroundLayers = {}
+
+      // fix tooltip string
+      if (typeof this.vizDetails.tooltip == 'string') {
+        const tips = (this.vizDetails.tooltip as string).split(',').map(t => t.trim())
+        this.vizDetails.tooltip = tips
+        this.config.tooltip = tips
+      }
 
       const t = this.vizDetails.title || 'Map'
       this.$emit('title', t)
@@ -1148,7 +1153,8 @@ const MyComponent = defineComponent({
       const { dataTable, datasetId, dataJoinColumn } = props
 
       let delim = ':'
-      const tips = this.vizDetails.tooltip || []
+      let tips = this.vizDetails.tooltip || []
+      if (tips instanceof String) tips = tips.split(',').map(t => t.trim())
       if (tips.length) delim = tips[0].indexOf(':') > -1 ? ':' : '.'
 
       // user specified no tooltips, but we can help them by adding
@@ -1556,7 +1562,7 @@ const MyComponent = defineComponent({
       if (rgbArray) {
         this.dataFillColors = rgbArray
         this.dataCalculatedValues = calculatedValues
-        this.dataNormalizedValues = calculatedValues || null
+        this.dataNormalizedValues = null
         this.isRGBA = isRGBA
         this.showLegend = true
         this.legendStore.setLegendSection({
@@ -1714,14 +1720,14 @@ const MyComponent = defineComponent({
           join: color.join,
         }) as any
 
-        const { rgbArray, legend, calculatedValues } = result
+        const { rgbArray, legend, calculatedValues, normalizedValues } = result
 
         if (!rgbArray) return
 
         this.dataLineColors = rgbArray
 
         this.dataCalculatedValues = calculatedValues
-        this.dataNormalizedValues = calculatedValues || null
+        this.dataNormalizedValues = normalizedValues || null
 
         // If colors are based on category and line widths are constant, then use a
         // 1-pixel line width when the category is undefined.
@@ -2294,7 +2300,10 @@ const MyComponent = defineComponent({
         } else if (filename.startsWith('http')) {
           // geojson from url!
           console.log('--HTTP to JSON file')
-          boundaries = (await fetch(filename).then(async r => await r.json())).features
+          const blob = await fetch(filename).then(async r => await r.blob())
+          const unzipped = await blob.arrayBuffer().then(buf => gUnzip(buf))
+          const text = new TextDecoder().decode(unzipped)
+          boundaries = JSON.parse(text).features
         } else if (filename.toLocaleLowerCase().endsWith('.shp')) {
           // shapefile!
           console.log('--SHP')
@@ -2674,6 +2683,32 @@ const MyComponent = defineComponent({
         if (key in this.datasets) continue
 
         await this.loadDataset(key)
+      }
+
+      // Load XFERDATA: data passed in from Quarto (etc)
+      if (this.config.xferdata) {
+        for (const datatable in this.config.xferdata) {
+          console.log('XFERDATA --' + datatable)
+          const dt: DataTable = {}
+          for (const col in this.config.xferdata[datatable]) {
+            const values = this.config.xferdata[datatable][col]
+            const t = Number.isFinite(values[0]) ? DataType.NUMBER : DataType.STRING
+            dt[col] = {
+              name: col,
+              type: t,
+              values,
+            }
+          }
+          this.myDataManager.setPreloadedDataset({ key: datatable, dataTable: dt })
+          this.datasets[datatable] = dt
+          this.myDataManager.addFilterListener(
+            { dataset: datatable, subfolder: this.subfolder },
+            this.processFiltersNow
+          )
+        }
+        delete this.config.xferdata
+        // and features need a join too
+        this.featureJoinColumn = this.config.geojson.join
       }
     },
 
@@ -3258,6 +3293,7 @@ export default MyComponent
   left: 0;
   user-select: none;
   border-top-right-radius: 5px;
+  z-index: 2;
   // pointer-events: all;
 }
 
