@@ -28,19 +28,13 @@
       :style="{'flex': rowFlexWeights[i] || 1}"
     )
 
-      //- each card here - wrapped with FullscreenPortal for embedded mode
-      //- Portal is only active when embedded AND this card is fullscreen
-      //- When not active, portal just renders slot content in place (display: contents)
-      fullscreen-portal(
+      //- each card here
+      .dash-card-frame(
         v-for="card,j in row.cards"
         :key="`${i}/${j}`"
-        :active="embedded && fullScreenCardId === card.id"
-        @close="toggleZoom(card)"
+        :style="getCardStyle(card)"
+        :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen-card': fullScreenCardId === card.id}"
       )
-        .dash-card-frame(
-          :style="getCardStyle(card)"
-          :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
-        )
           //- card header/title
           .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
             .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
@@ -58,9 +52,9 @@
 
               button.button.is-small.is-white(
                 @click="toggleZoom(card)"
-                :title="fullScreenCardId ? 'Restore':'Enlarge'"
+                :title="fullScreenCardId === card.id ? 'Restore':'Enlarge'"
               )
-                i.fa.fa-expand
+                i.fa(:class="fullScreenCardId === card.id ? 'fa-compress' : 'fa-expand'")
 
           //- info contents
           .info(v-show="infoToggle[card.id]")
@@ -85,7 +79,7 @@
                 //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
                 component.dash-card(v-if="card.visible"
                   :is="getCardComponent(card)"
-                  :key="`${card.id}-${embedded && fullScreenCardId === card.id ? 'fullscreen' : 'normal'}`"
+                  :key="card.id"
                   :class="{'is-data-table': card.type === 'data-table'}"
                   :fileSystemConfig="fileSystemConfig"
                   :subfolder="row.subtabFolder || xsubfolder"
@@ -142,7 +136,7 @@
             //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
             component.dash-card(v-else-if="card.visible"
               :is="getCardComponent(card)"
-              :key="`${card.id}-${embedded && fullScreenCardId === card.id ? 'fullscreen' : 'normal'}`"
+              :key="card.id"
               :fileSystemConfig="fileSystemConfig"
               :subfolder="row.subtabFolder || xsubfolder"
               :files="fileList"
@@ -309,7 +303,7 @@ import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
-import FullscreenPortal from './components/FullscreenPortal.vue'
+// FullscreenPortal removed - using simpler CSS position:fixed approach
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -324,7 +318,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard, FullscreenPortal }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -891,15 +885,25 @@ export default defineComponent({
         style.margin = '0.25rem 0.25rem'
       }
 
-      // but no actually, if it's full screen then do this.
+      // Fullscreen mode: use position fixed to cover entire viewport
       if (this.fullScreenCardId) {
         if (this.fullScreenCardId !== card.id) {
           style.display = 'none'
         } else {
+          // Use position:fixed to cover entire viewport
+          // This works now that contain:layout is removed from SubDashboard
           style = {
-            position: 'absolute',
-            inset: '0 0 0 0',
-            margin: '6px 0px', // '18px 1rem 0.5rem 1rem',
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            zIndex: '10000',
+            margin: '0',
+            padding: '1rem',
+            backgroundColor: 'var(--dashboard-bg-primary, var(--bgBold, #1a1a2e))',
+            maxHeight: 'none',
+            height: 'auto',
           }
         }
       }
@@ -1601,8 +1605,7 @@ export default defineComponent({
       })
     },
 
-    // NEW: Handle Escape key to close fullscreen in embedded mode
-    // This is a backup handler - FullscreenPortal also handles Escape
+    // Handle Escape key to close fullscreen mode
     handleEscapeKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && this.fullScreenCardId) {
         this.fullScreenCardId = ''
@@ -1614,10 +1617,8 @@ export default defineComponent({
     window.addEventListener('resize', this.resizeAllCards)
     this.setupNarrowPanelObserver()
 
-    // NEW: Add Escape key handler for embedded mode fullscreen
-    if (this.embedded) {
-      window.addEventListener('keydown', this.handleEscapeKey)
-    }
+    // Add Escape key handler for fullscreen mode
+    window.addEventListener('keydown', this.handleEscapeKey)
 
     if (this.gist) {
       this.fileSystemConfig = {
@@ -1762,6 +1763,12 @@ export default defineComponent({
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
   overflow: hidden;
+
+  // Fullscreen card mode - covers entire viewport
+  &.is-fullscreen-card {
+    border-radius: 0;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+  }
 
   .dash-card-headers {
     display: flex;
