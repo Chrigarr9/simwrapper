@@ -1637,6 +1637,22 @@ export default defineComponent({
 <style scoped lang="scss">
 @import '@/styles.scss';
 
+/*
+ * Interactive Dashboard theme colors via CSS variables
+ * Managed by StyleManager - see managers/StyleManager.ts
+ *
+ * Variables used:
+ * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
+ * - --dashboard-text-primary, --dashboard-text-secondary
+ * - --dashboard-border-default, --dashboard-border-subtle
+ * - --dashboard-interaction-hover (#fbbf24), --dashboard-interaction-selected (#3b82f6)
+ * - --dashboard-cluster-origin, --dashboard-cluster-destination
+ * - --dashboard-chart-*, --dashboard-categorical-*
+ *
+ * Fallback pattern: var(--dashboard-X, var(--app-X, #fallback))
+ * This ensures graceful degradation when StyleManager hasn't initialized.
+ */
+
 .dashboard {
   margin: 0 0;
   padding: 0 0;
@@ -1681,7 +1697,7 @@ export default defineComponent({
   gap: 1rem;
   margin: 0 0 1rem 0;
   padding: 0.75rem 1rem;
-  background: var(--bgCardFrame);
+  background: var(--dashboard-bg-secondary, var(--bgCardFrame));
   border-radius: 6px;
 }
 
@@ -1715,7 +1731,7 @@ export default defineComponent({
   grid-auto-columns: 1fr;
   grid-auto-rows: auto auto 1fr;
   margin: 0 $cardSpacing $cardSpacing 0;
-  background-color: var(--bgCardFrame);
+  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
   overflow: hidden;
@@ -1727,6 +1743,7 @@ export default defineComponent({
     padding: 3px 3px 2px 3px;
     p {
       margin-bottom: 0.1rem;
+      color: var(--dashboard-text-secondary, var(--textFaint));
     }
   }
 
@@ -1741,11 +1758,11 @@ export default defineComponent({
 
     button {
       background-color: #00000000;
-      color: var(--link);
+      color: var(--dashboard-interaction-selected, var(--link));
       opacity: 0.5;
     }
     button:hover {
-      background-color: #ffffff20;
+      background-color: var(--dashboard-bg-tertiary, #ffffff20);
       opacity: 1;
     }
   }
@@ -1755,7 +1772,7 @@ export default defineComponent({
     font-size: 1.1rem;
     line-height: 1.5rem;
     margin-bottom: 0.5rem;
-    color: var(--link);
+    color: var(--dashboard-interaction-selected, var(--link));
   }
 
   // if there is a description, fix the margins
@@ -2049,12 +2066,12 @@ li.is-not-active b a {
 .linked-tables-section {
   padding: 1rem 0;
   margin-top: 1rem;
-  border-top: 2px solid var(--bgBold);
-  
+  border-top: 2px solid var(--dashboard-border-default, var(--bgBold));
+
   h4 {
     margin: 0 0 1rem 0;
     font-size: 0.9rem;
-    color: var(--textFancy);
+    color: var(--dashboard-text-secondary, var(--textFancy));
     font-weight: 600;
   }
 }

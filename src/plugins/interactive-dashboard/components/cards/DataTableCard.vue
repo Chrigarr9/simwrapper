@@ -399,6 +399,18 @@ emit('isLoaded')
 </script>
 
 <style scoped>
+/*
+ * DataTableCard theme colors via CSS variables
+ * Managed by StyleManager - see managers/StyleManager.ts
+ *
+ * Variables used:
+ * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
+ * - --dashboard-text-primary, --dashboard-text-secondary
+ * - --dashboard-border-default, --dashboard-border-subtle
+ * - --dashboard-interaction-hover (#fbbf24), --dashboard-interaction-selected (#3b82f6)
+ *
+ * Fallback pattern: var(--dashboard-X, var(--app-X, #fallback))
+ */
 .data-table-card {
   position: relative;
   height: 100%;
@@ -413,7 +425,7 @@ emit('isLoaded')
   right: 0;
   bottom: 0;
   z-index: 9999;
-  background-color: var(--bgBold);
+  background-color: var(--dashboard-bg-primary, var(--bgBold));
 }
 
 /* Adjust absolute children in fullscreen mode to add margin */
@@ -439,8 +451,8 @@ emit('isLoaded')
   gap: 0.5rem;
   align-items: center;
   padding: 0.25rem 0.5rem;
-  background: var(--bgBold);
-  border-bottom: 1px solid var(--borderFaint);
+  background: var(--dashboard-bg-secondary, var(--bgBold));
+  border-bottom: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
   z-index: 2;
   height: 28px;
 }
@@ -451,7 +463,7 @@ emit('isLoaded')
   gap: 0.25rem;
   cursor: pointer;
   font-size: 0.75rem;
-  color: var(--text);
+  color: var(--dashboard-text-primary, var(--text));
 }
 
 .scroll-toggle input {
@@ -479,28 +491,28 @@ emit('isLoaded')
 }
 
 .table-wrapper::-webkit-scrollbar-track {
-  background: var(--bgPanel);
+  background: var(--dashboard-bg-secondary, var(--bgPanel));
   border-radius: 6px;
 }
 
 .table-wrapper::-webkit-scrollbar-thumb {
-  background: var(--textFaint);
+  background: var(--dashboard-text-secondary, var(--textFaint));
   border-radius: 6px;
-  border: 2px solid var(--bgPanel);
+  border: 2px solid var(--dashboard-bg-secondary, var(--bgPanel));
 }
 
 .table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: var(--text);
+  background: var(--dashboard-text-primary, var(--text));
 }
 
 .table-wrapper::-webkit-scrollbar-corner {
-  background: var(--bgPanel);
+  background: var(--dashboard-bg-secondary, var(--bgPanel));
 }
 
 /* Firefox scrollbar */
 .table-wrapper {
   scrollbar-width: auto;
-  scrollbar-color: var(--textFaint) var(--bgPanel);
+  scrollbar-color: var(--dashboard-text-secondary, var(--textFaint)) var(--dashboard-bg-secondary, var(--bgPanel));
 }
 
 .data-table {
@@ -513,7 +525,7 @@ emit('isLoaded')
 .data-table thead {
   position: sticky;
   top: 0;
-  background: var(--bgBold);
+  background: var(--dashboard-bg-secondary, var(--bgBold));
   z-index: 1;
 }
 
@@ -521,18 +533,20 @@ emit('isLoaded')
   padding: 0.5rem 0.75rem;
   text-align: left;
   font-weight: 600;
-  border-bottom: 2px solid var(--borderFaint);
+  border-bottom: 2px solid var(--dashboard-border-default, var(--borderFaint));
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  color: var(--dashboard-text-primary, var(--text));
 }
 
 .data-table th:hover {
-  background: var(--bgHover);
+  background: var(--dashboard-bg-tertiary, var(--bgHover));
 }
 
 .data-table th.sorted {
-  background: var(--bgPanel);
+  background: var(--dashboard-bg-tertiary, var(--bgPanel));
+  color: var(--dashboard-interaction-selected, var(--link));
 }
 
 .header-cell {
@@ -543,13 +557,14 @@ emit('isLoaded')
 
 .sort-icon {
   font-size: 0.7rem;
-  color: var(--link);
+  color: var(--dashboard-interaction-selected, var(--link));
 }
 
 .data-table td {
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid var(--borderFaint);
+  border-bottom: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
   white-space: nowrap;
+  color: var(--dashboard-text-primary, var(--text));
 }
 
 .data-table tbody tr {
@@ -557,15 +572,17 @@ emit('isLoaded')
 }
 
 .data-table tbody tr:hover {
-  background: var(--bgHover);
+  background: var(--dashboard-bg-tertiary, var(--bgHover));
 }
 
+/* Hovered from map/other component - use hover color (#fbbf24) */
 .data-table tbody tr.is-hovered {
-  background: rgba(251, 146, 60, 0.2) !important;
+  background: rgba(251, 191, 36, 0.2) !important;  /* --dashboard-interaction-hover at 20% */
 }
 
+/* Selected (clicked) rows - use selected color (#3b82f6) */
 .data-table tbody tr.is-selected {
-  background: rgba(59, 130, 246, 0.2) !important;
+  background: rgba(59, 130, 246, 0.2) !important;  /* --dashboard-interaction-selected at 20% */
 }
 
 .data-table tbody tr.is-dimmed {
@@ -581,10 +598,10 @@ emit('isLoaded')
   border: none;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
-  color: var(--text);
+  color: var(--dashboard-text-primary, var(--text));
 }
 
 .button.is-small.is-white:hover {
-  background: var(--bgHover);
+  background: var(--dashboard-bg-tertiary, var(--bgHover));
 }
 </style>
