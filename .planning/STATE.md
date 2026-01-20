@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Plan 01.1-01 complete)
+**Last Updated:** 2026-01-20 (Plan 01.1-02 complete)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 1.1 (Adaptive Layer Coloring) - Plan 01 complete, 2 plans remaining
+**Current Focus:** Phase 1.1 (Adaptive Layer Coloring) - Plan 02 complete, 1 plan remaining
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,14 +22,14 @@
 ## Current Position
 
 **Phase:** 1.1 of 7 (Adaptive Layer Coloring)
-**Plan:** 1 of 3 plans complete
+**Plan:** 2 of 3 plans complete
 **Status:** In progress
-**Last activity:** 2026-01-20 - Completed 01.1-01-PLAN.md (LayerColoringManager)
+**Last activity:** 2026-01-20 - Completed 01.1-02-PLAN.md (MapCard Integration)
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
-Phase 1.1: Adaptive Layer Coloring  [#   ] 33% (1/3 plans)
+Phase 1.1: Adaptive Layer Coloring  [##  ] 67% (2/3 plans)
 Phase 2:   Sub-Dashboard Fix        [    ] 0%
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
@@ -37,7 +37,7 @@ Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 1.1 Plan 01 complete. LayerColoringManager created with types and 32 tests. Ready for Plan 02 (MapCard integration).
+**Overall:** Phase 1.1 Plan 02 complete. LayerColoringManager integrated into MapCard with role-aware coloring. Ready for Plan 03 (YAML config and documentation).
 
 ---
 
@@ -45,7 +45,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 5 |
+| Plans completed | 6 |
 | Plans requiring revision | 0 |
 | Requirements completed | 3/14 (REQ-1.1, REQ-1.2, REQ-1.3) |
 | Research phases triggered | 0 |
@@ -74,6 +74,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Case-insensitive geoProperty matching | Normalizes to lowercase for robust layer grouping | 2026-01-20 |
 | Standalone group naming with __standalone_ prefix | Ensures unique grouping for layers without linkage | 2026-01-20 |
 | Functional + OOP API for LayerColoringManager | Functional primary, class wrapper for stateful caching | 2026-01-20 |
+| Remove colorBy from getCardLayers() | MapCard now handles colorBy based on computed roles | 2026-01-20 |
+| Neutral layers use theme.border.default | StyleManager provides theme-aware neutral color | 2026-01-20 |
 
 ### Roadmap Evolution
 
@@ -89,8 +91,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 01-04: Verification and cleanup
 - [x] Plan Phase 1.1: Adaptive Layer Coloring
 - [x] Execute Plan 01.1-01: Create LayerColoringManager
-- [ ] Execute Plan 01.1-02: Integrate into MapCard (NEXT)
-- [ ] Execute Plan 01.1-03: YAML config and documentation
+- [x] Execute Plan 01.1-02: Integrate into MapCard
+- [ ] Execute Plan 01.1-03: YAML config and documentation (NEXT)
 - [ ] Plan Phase 2: Sub-Dashboard Fix
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
@@ -106,6 +108,7 @@ None currently.
 2. **rgba() limitations**: CSS custom properties can't be used directly in rgba() without color-mix(), so we use hardcoded values matching StyleManager definitions.
 3. **Vuex watch for theme changes**: StyleManager subscribes to `globalStore.state.colorScheme` for automatic theme updates.
 4. **Case-insensitive matching for configs**: GeoJSON properties may have inconsistent casing; normalize for comparison.
+5. **Role-aware coloring pattern**: Check role at start of getBaseColor(), neutral layers exit early with theme border color.
 
 ---
 
@@ -113,24 +116,22 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Completed Phase 1.1 Plan 01 - LayerColoringManager with types and tests.
+**Where we left off:** Completed Phase 1.1 Plan 02 - MapCard integration with role-aware coloring.
 
-**Next action:** Execute Plan 01.1-02 - Integrate LayerColoringManager into MapCard.vue's getBaseColor() function.
+**Next action:** Execute Plan 01.1-03 - YAML configuration and documentation.
 
-**Phase 1.1 Plan 01 Deliverables:**
-- TypeScript types at `src/plugins/interactive-dashboard/types/layerColoring.ts`
-- LayerColoringManager at `src/plugins/interactive-dashboard/managers/LayerColoringManager.ts`
-- 32 tests passing at `src/plugins/interactive-dashboard/managers/__tests__/LayerColoringManager.test.ts`
+**Phase 1.1 Plan 02 Deliverables:**
+- InteractiveDashboard.vue: layerStrategy YAML parsing and prop passing
+- MapCard.vue: computeAllLayerRoles integration, role-aware getBaseColor()
 
-**Key Exports:**
-- Types: `ColorByRole`, `LayerStrategy`, `LayerColoringRole`, `LayerGroup`, `LayerConfigForColoring`
-- Functions: `computeAllLayerRoles`, `computeLayerGroups`, `computeLayerRole`
-- Class: `LayerColoringManager`
+**Integration Points:**
+- `yaml.map.colorBy.layerStrategy` for dashboard-level strategy ('auto', 'explicit', 'all')
+- `layer.colorByRole` for per-layer override ('primary', 'secondary', 'neutral', 'auto')
 
-**Patterns Established:**
-- Layer grouping by shared `linkage.geoProperty` (case-insensitive)
-- Role priority: explicit override > strategy rules > auto-detection
-- Auto strategy: arc+geometry = arc primary; single geometry = primary; multiple geometries = all primary
+**Adaptive Coloring Behavior:**
+- Origin clusters alone: colorBy applied (primary)
+- Origin + arcs visible: arcs get colorBy (primary), clusters get neutral styling
+- Multiple geometries without arcs: all get colorBy (all primary)
 
 ### Recovery Commands
 
@@ -139,7 +140,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/01.1-adaptive-layer-coloring/01.1-01-SUMMARY.md for latest execution
+Read .planning/phases/01.1-adaptive-layer-coloring/01.1-02-SUMMARY.md for latest execution
 ```
 
 ---
