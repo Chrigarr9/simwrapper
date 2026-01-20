@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20
+**Last Updated:** 2026-01-20 (Plan 01-03 completed)
 
 ---
 
@@ -22,12 +22,13 @@
 ## Current Position
 
 **Phase:** 1 of 6 (Theming Foundation)
-**Plan:** 1 of 4 complete
+**Plan:** 3 of 4 complete
 **Status:** In progress
+**Last activity:** 2026-01-20 - Completed 01-03-PLAN.md (Chart cards migration)
 
 **Progress:**
 ```
-Phase 1: Theming Foundation      [#...] 25% (1/4 plans)
+Phase 1: Theming Foundation      [###.] 75% (3/4 plans)
 Phase 2: Sub-Dashboard Fix       [ ] 0%
 Phase 3: Correlation Analysis    [ ] 0%
 Phase 4: Dual Maps               [ ] 0%
@@ -35,7 +36,7 @@ Phase 5: Timeline                [ ] 0%
 Phase 6: Graph Visualization     [ ] 0%
 ```
 
-**Overall:** Phase 1 in progress
+**Overall:** Phase 1 in progress - only verification/cleanup remaining
 
 ---
 
@@ -43,7 +44,7 @@ Phase 6: Graph Visualization     [ ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 1 |
+| Plans completed | 3 |
 | Plans requiring revision | 0 |
 | Requirements completed | 0/14 |
 | Research phases triggered | 0 |
@@ -63,13 +64,16 @@ Phase 6: Graph Visualization     [ ] 0%
 | Singleton pattern for StyleManager | Ensures single source of truth for theme state | 2026-01-20 |
 | CSS variables with --dashboard- prefix | Namespaces variables to avoid conflicts with app-level styles | 2026-01-20 |
 | Interaction colors constant across modes | Per CONTEXT.md - hover/selected remain same in light/dark | 2026-01-20 |
+| White border for selected pie slices | Provides contrast against category colors regardless of theme | 2026-01-20 |
+| ScatterCard uses interaction.hover/selected | Consistent highlighting/selection behavior with MapCard | 2026-01-20 |
+| D3 categorical palette as domain-specific | Category colors not theme-dependent, documented in code | 2026-01-20 |
 
 ### TODOs
 
 - [x] Plan Phase 1: Theming Foundation
 - [x] Execute Plan 01-01: Create StyleManager core
-- [ ] Execute Plan 01-02: Migrate interactive dashboard components
-- [ ] Execute Plan 01-03: Migrate manager classes
+- [x] Execute Plan 01-02: Migrate MapCard/ColorLegend/InteractiveDashboard
+- [x] Execute Plan 01-03: Migrate chart cards (Pie, Histogram, Scatter)
 - [ ] Execute Plan 01-04: Verification and cleanup
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
@@ -89,21 +93,22 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Completed Plan 01-01 (StyleManager core creation).
+**Where we left off:** Completed Plan 01-03 (Chart cards migration to StyleManager).
 
-**Next action:** Execute Plan 01-02 to migrate interactive dashboard components to use StyleManager.
+**Next action:** Execute Plan 01-04 (Verification and cleanup) to complete Phase 1.
 
 **Important context:**
-- StyleManager singleton now available at `src/plugins/interactive-dashboard/managers/StyleManager.ts`
-- CSS variables injected with `--dashboard-*` prefix
-- Helper functions added to colorSchemes.ts: `getInteractionColor()`, `getClusterColor()`, etc.
-- 22 unit tests validate StyleManager functionality
-- Backward compatibility maintained - existing colorSchemes.ts imports still work
+- StyleManager singleton available at `src/plugins/interactive-dashboard/managers/StyleManager.ts`
+- All interactive dashboard cards now use StyleManager for theme colors
+- MapCard, ColorLegend, InteractiveDashboard migrated in Plan 01-02
+- PieChartCard, HistogramCard, ScatterCard migrated in Plan 01-03
+- Consistent interaction colors: hover (orange #fbbf24), selected (blue #3b82f6)
+- Category/domain colors kept separate from theme colors
 
-**Files created:**
-- `src/plugins/interactive-dashboard/managers/StyleManager.ts` - Core theme manager
-- `src/plugins/interactive-dashboard/managers/__tests__/StyleManager.test.ts` - Tests
-- `.planning/phases/01-theming-foundation/01-01-SUMMARY.md` - Execution summary
+**Files modified in Plan 01-03:**
+- `src/plugins/interactive-dashboard/components/cards/PieChartCard.vue`
+- `src/plugins/interactive-dashboard/components/cards/HistogramCard.vue`
+- `src/plugins/interactive-dashboard/components/cards/ScatterCard.vue`
 
 ### Recovery Commands
 
@@ -112,7 +117,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/01-theming-foundation/01-01-SUMMARY.md for latest execution
+Read .planning/phases/01-theming-foundation/01-03-SUMMARY.md for latest execution
 ```
 
 ---
