@@ -94,26 +94,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| THEME-01 | TBD | Pending |
-| THEME-02 | TBD | Pending |
-| THEME-03 | TBD | Pending |
-| SUBD-01 | TBD | Pending |
-| SUBD-02 | TBD | Pending |
-| CORR-01 | TBD | Pending |
-| CORR-02 | TBD | Pending |
-| DMAP-01 | TBD | Pending |
-| DMAP-02 | TBD | Pending |
-| DMAP-03 | TBD | Pending |
-| DMAP-04 | TBD | Pending |
-| TIME-01 | TBD | Pending |
-| TIME-02 | TBD | Pending |
-| GRPH-01 | TBD | Pending |
+| THEME-01 | Phase 1: Theming Foundation | Pending |
+| THEME-02 | Phase 1: Theming Foundation | Pending |
+| THEME-03 | Phase 1: Theming Foundation | Pending |
+| SUBD-01 | Phase 2: Sub-Dashboard Fix | Pending |
+| SUBD-02 | Phase 2: Sub-Dashboard Fix | Pending |
+| CORR-01 | Phase 3: Correlation Analysis | Pending |
+| CORR-02 | Phase 3: Correlation Analysis | Pending |
+| DMAP-01 | Phase 4: Dual Maps | Pending |
+| DMAP-02 | Phase 4: Dual Maps | Pending |
+| DMAP-03 | Phase 4: Dual Maps | Pending |
+| DMAP-04 | Phase 4: Dual Maps | Pending |
+| TIME-01 | Phase 5: Timeline | Pending |
+| TIME-02 | Phase 5: Timeline | Pending |
+| GRPH-01 | Phase 6: Graph Visualization | Pending |
 
 **Coverage:**
 - v1 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14 ⚠️
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-20 after initial definition*
+*Last updated: 2026-01-20 after roadmap creation*
