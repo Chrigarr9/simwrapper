@@ -18,6 +18,10 @@
  *   const roleForLayer = roles.get(layerName)
  */
 
+// Debug flag - set to true to enable console logging for layer role computation
+// Helps diagnose why layers get certain roles (primary/neutral)
+const DEBUG_LAYER_COLORING = false
+
 import type {
   ColorByRole,
   LayerStrategy,
@@ -184,8 +188,21 @@ export function computeAllLayerRoles(
     return roles
   }
 
+  if (DEBUG_LAYER_COLORING) {
+    console.log('[LayerColoring] Computing roles for', visibleLayers.length, 'layers')
+    console.log('[LayerColoring] Strategy:', strategy)
+  }
+
   // Step 1: Group layers by geoProperty
   const groups = computeLayerGroups(visibleLayers)
+
+  if (DEBUG_LAYER_COLORING) {
+    groups.forEach((group, key) => {
+      console.log(
+        `[LayerColoring] Group "${key}": ${group.layers.length} layers, hasArc=${group.hasArc}, geometryCount=${group.geometryCount}`
+      )
+    })
+  }
 
   // Step 2: Compute role for each layer based on its group
   for (const layer of visibleLayers) {
@@ -194,6 +211,10 @@ export function computeAllLayerRoles(
 
     const role = computeLayerRole(layer, group, strategy)
     roles.set(layer.name, role)
+
+    if (DEBUG_LAYER_COLORING) {
+      console.log(`[LayerColoring] Layer "${layer.name}": role=${role.role}, reason=${role.reason}`)
+    }
   }
 
   return roles
