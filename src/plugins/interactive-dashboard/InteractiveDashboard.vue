@@ -35,26 +35,26 @@
         :style="getCardStyle(card)"
         :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen-card': fullScreenCardId === card.id}"
       )
-          //- card header/title - always show (for enlarge button)
-          .dash-card-headers(:class="{'fullscreen': !!fullScreenCardId}")
-            .header-labels(v-if="card.title || card.description" :style="{paddingLeft: card.type=='text' ? '4px' : ''}")
-              h3(v-if="card.title") {{ card.title }}
-              p(v-if="card.description") {{ card.description }}
+        //- Enlarge button - always visible, positioned in top-right corner
+        button.card-enlarge-btn(
+          @click="toggleZoom(card)"
+          :title="fullScreenCardId === card.id ? 'Restore':'Enlarge'"
+        )
+          i.fa(:class="fullScreenCardId === card.id ? 'fa-compress' : 'fa-expand'")
 
-            //- zoom button - always show
-            .header-buttons
-              button.button.is-small.is-white(
-                v-if="card.info"
-                @click="handleToggleInfoClick(card)"
-                :title="infoToggle[card.id] ? 'Hide Info':'Show Info'"
-              )
-                i.fa.fa-info-circle
+        //- card header/title
+        .dash-card-headers(v-if="card.title || card.description" :class="{'fullscreen': !!fullScreenCardId}")
+          .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
+            h3(v-if="card.title") {{ card.title }}
+            p(v-if="card.description") {{ card.description }}
 
-              button.button.is-small.is-white(
-                @click="toggleZoom(card)"
-                :title="fullScreenCardId === card.id ? 'Restore':'Enlarge'"
-              )
-                i.fa(:class="fullScreenCardId === card.id ? 'fa-compress' : 'fa-expand'")
+          //- info button only
+          .header-buttons(v-if="card.info")
+            button.button.is-small.is-white(
+              @click="handleToggleInfoClick(card)"
+              :title="infoToggle[card.id] ? 'Hide Info':'Show Info'"
+            )
+              i.fa.fa-info-circle
 
           //- info contents
           .info(v-show="infoToggle[card.id]")
@@ -1763,11 +1763,41 @@ export default defineComponent({
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
   overflow: hidden;
+  position: relative; // For absolute positioned enlarge button
+
+  // Enlarge button - always visible in top-right corner
+  .card-enlarge-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 10;
+    background: var(--dashboard-bg-secondary, rgba(0,0,0,0.3));
+    border: none;
+    border-radius: 3px;
+    color: var(--dashboard-text-secondary, #aaa);
+    padding: 4px 6px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+
+    &:hover {
+      opacity: 1;
+      background: var(--dashboard-bg-tertiary, rgba(0,0,0,0.5));
+    }
+  }
 
   // Fullscreen card mode - covers entire viewport
   &.is-fullscreen-card {
     border-radius: 0;
     box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+
+    .card-enlarge-btn {
+      top: 1rem;
+      right: 1rem;
+      opacity: 0.8;
+      padding: 8px 12px;
+      font-size: 1.1rem;
+    }
   }
 
   .dash-card-headers {
