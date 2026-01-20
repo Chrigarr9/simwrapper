@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Phase 1.1 Complete - Adaptive Layer Coloring)
+**Last Updated:** 2026-01-20 (Phase 2 Plan 01 Complete - Sub-Dashboard Fullscreen Fix)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Ready for Phase 2 (Sub-Dashboard Fix)
+**Current Focus:** Phase 2 in progress (Sub-Dashboard Fix)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,23 +21,23 @@
 
 ## Current Position
 
-**Phase:** Phase 1.1 complete, ready for Phase 2
-**Plan:** All Phase 1.1 plans complete (3/3)
-**Status:** Phase 1.1 COMPLETE
-**Last activity:** 2026-01-20 - Phase 1.1 verified and complete, selection behavior fixed
+**Phase:** 2 of 6 (Sub-Dashboard Fix)
+**Plan:** 1/1 complete
+**Status:** Phase 2 Plan 01 COMPLETE
+**Last activity:** 2026-01-20 - Completed 02-01-PLAN.md (FullscreenPortal implementation)
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
-Phase 2:   Sub-Dashboard Fix        [    ] 0%
+Phase 2:   Sub-Dashboard Fix        [#] 100% (1/1 plans) COMPLETE
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 1.1 complete. Adaptive layer coloring with intelligent role detection. Ready for Phase 2.
+**Overall:** Phase 2 complete. Sub-dashboard cards can now expand to fullscreen via portal pattern.
 
 ---
 
@@ -45,9 +45,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 7 |
+| Plans completed | 8 |
 | Plans requiring revision | 0 |
-| Requirements completed | 7/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04) |
+| Requirements completed | 8/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04, SUBD-01) |
 | Research phases triggered | 0 |
 
 ---
@@ -79,6 +79,10 @@ Phase 6:   Graph Visualization      [    ] 0%
 | getFeatureId() helper for compound IDs | Constructs 'type_id' format (e.g., 'od_0') for data join between GeoJSON and CSV | 2026-01-20 |
 | fillOpacity: 0 for outline-only polygons | deck.gl LineLayer expects LineString, not Polygon; use fill with zero opacity for outlines | 2026-01-20 |
 | StyleManager CSS vars in tooltip styling | Use var(--dashboard-interaction-selected) instead of hardcoded colors | 2026-01-20 |
+| Portal wraps entire card frame | Header with enlarge/restore button must remain accessible in fullscreen | 2026-01-20 |
+| Portal always rendered, conditionally active | Avoids duplicating template code; active only when embedded && fullScreenCardId matches | 2026-01-20 |
+| z-index 10000 for fullscreen portal | Higher than DataTableCard's 9999 for proper stacking | 2026-01-20 |
+| Dual Escape key handling | Both portal and dashboard handle Escape for redundancy | 2026-01-20 |
 
 ### Roadmap Evolution
 
@@ -96,7 +100,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 01.1-01: Create LayerColoringManager
 - [x] Execute Plan 01.1-02: Integrate into MapCard
 - [x] Execute Plan 01.1-03: Verification and edge case handling
-- [ ] Plan Phase 2: Sub-Dashboard Fix (NEXT)
+- [x] Plan Phase 2: Sub-Dashboard Fix
+- [x] Execute Plan 02-01: FullscreenPortal implementation
+- [ ] Plan Phase 3: Correlation Analysis (NEXT)
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
@@ -116,6 +122,8 @@ None currently.
 7. **deck.gl LineLayer vs PolygonLayer**: LineLayer uses getSourcePosition/getTargetPosition expecting LineString; for polygon outlines, use PolygonLayer with fillOpacity: 0.
 8. **getFeatureFillColor must call getBaseColor**: Without this delegation, fill layers don't receive colorBy coloring.
 9. **isLayerVisible must filter by geometryType**: Geometry type selector only works if visibility function considers layerConfig.geometryType.
+10. **Portal pattern for CSS containment escape**: Use DOM teleportation to document.body to bypass parent `contain: layout` that blocks position:fixed.
+11. **display:contents for layout-neutral wrappers**: Components that wrap content without affecting layout should use `display: contents`.
 
 ---
 
@@ -123,31 +131,22 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Phase 1.1 complete. Adaptive layer coloring fully implemented and verified.
+**Where we left off:** Phase 2 complete. Sub-dashboard fullscreen functionality implemented via FullscreenPortal.
 
-**Next action:** Plan Phase 2 (Sub-Dashboard Fix) with `/gsd:plan-phase 2`.
+**Next action:** Plan Phase 3 (Correlation Analysis) with `/gsd:plan-phase 3`.
 
-**Phase 1.1 Completion Summary (2026-01-20):**
+**Phase 2 Completion Summary (2026-01-20):**
 
 **Key Deliverables:**
-1. **LayerColoringManager** - Role computation based on layer visibility and relationships
-2. **Adaptive coloring** - Arc gets colorBy when arc+clusters visible, clusters become neutral
-3. **YAML configuration** - `layerStrategy` and per-layer `colorByRole` overrides
-4. **32 test cases** - Comprehensive coverage of all strategies and edge cases
+1. **FullscreenPortal component** - Teleports slot content to document.body when active
+2. **InteractiveDashboard integration** - Portal wraps card frames, active only when embedded
+3. **SubDashboard CSS fix** - Removed `contain: layout` that blocked position:fixed
 
-**Selection Behavior Fix (Plan 01.1-03):**
-- Selection no longer dims non-selected features
-- Added `hasActiveSelection` check to distinguish selection from filtering
-- Only chart filters (histogram/pie) trigger dimming, not map selections
-- Selected items: higher alpha (180), thicker outline (6px)
-
-**All Phase 1.1 Success Criteria Met:**
-- [x] Origin clusters alone → colored by attribute
-- [x] Destination clusters alone → colored by attribute
-- [x] OD view → arcs colored, clusters neutral
-- [x] `layerStrategy: explicit` → only colorByRole:primary layers colored
-- [x] Per-layer `colorByRole` override works
-- [x] Neutral layers show hover/select interaction
+**Success Criteria Met:**
+- [x] SUBD-01: Enlarge button visible on sub-dashboard card headers
+- [x] SUBD-02: Enlarged card breaks out to full viewport
+- [x] Escape key closes fullscreen view
+- [x] Card maintains interactivity in fullscreen mode
 
 ### Recovery Commands
 
@@ -156,7 +155,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/01.1-adaptive-layer-coloring/01.1-03-SUMMARY.md for latest execution
+Read .planning/phases/02-sub-dashboard-fix/02-01-SUMMARY.md for latest execution
 ```
 
 ---
