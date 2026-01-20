@@ -1,9 +1,19 @@
 /**
  * Color schemes for interactive dashboard visualizations
  * Adapted from commuter-requests plugin for generic use
+ *
+ * NOTE: This module is being migrated to use StyleManager for theme-aware colors.
+ * New code should prefer StyleManager.getInstance().getColor() for theme colors.
+ * The existing exports are maintained for backward compatibility during migration.
  */
 
+import { StyleManager } from '../managers/StyleManager'
+
 // Transport mode colors
+/**
+ * @deprecated Use StyleManager.getInstance().getColor('mode.{mode}') for theme-aware colors.
+ * This export maintained for backward compatibility during migration.
+ */
 export const MODE_COLORS: { [mode: string]: string } = {
   car: '#e74c3c',
   pt: '#3498db',
@@ -19,6 +29,10 @@ export const MODE_COLORS: { [mode: string]: string } = {
 }
 
 // Activity type colors
+/**
+ * @deprecated Use StyleManager.getInstance().getColor('activity.{activity}') for theme-aware colors.
+ * This export maintained for backward compatibility during migration.
+ */
 export const ACTIVITY_COLORS: { [activity: string]: string } = {
   home: '#4477ff',
   work: '#ff4477',
@@ -29,6 +43,10 @@ export const ACTIVITY_COLORS: { [activity: string]: string } = {
 }
 
 // Generic categorical color palette (for arbitrary categories)
+/**
+ * @deprecated Use StyleManager.getInstance().getCategoricalColor(index) for theme-aware colors.
+ * This export maintained for backward compatibility during migration.
+ */
 export const CATEGORICAL_COLORS = [
   '#3498db', // Blue
   '#e74c3c', // Red
@@ -47,6 +65,74 @@ export const CATEGORICAL_COLORS = [
   '#7f8c8d', // Gray
 ]
 
+// ============================================================================
+// NEW: StyleManager-based helper functions
+// ============================================================================
+
+/**
+ * Get interaction color from StyleManager
+ * Use this for hover, selected, and dimmed states
+ */
+export function getInteractionColor(state: 'hover' | 'selected'): string {
+  return StyleManager.getInstance().getColor(`interaction.${state}`)
+}
+
+/**
+ * Get cluster color from StyleManager
+ * Use this for origin/destination cluster visualization
+ */
+export function getClusterColor(type: 'origin' | 'destination'): string {
+  return StyleManager.getInstance().getColor(`cluster.${type}`)
+}
+
+/**
+ * Get RGBA for deck.gl with interaction state
+ * Use this for deck.gl layer getFillColor, getLineColor, etc.
+ */
+export function getInteractionColorRGBA(
+  state: 'hover' | 'selected',
+  alpha?: number
+): [number, number, number, number] {
+  return StyleManager.getInstance().getColorRGBA(`interaction.${state}`, alpha)
+}
+
+/**
+ * Get cluster color as RGBA for deck.gl
+ */
+export function getClusterColorRGBA(
+  type: 'origin' | 'destination',
+  alpha?: number
+): [number, number, number, number] {
+  return StyleManager.getInstance().getColorRGBA(`cluster.${type}`, alpha)
+}
+
+/**
+ * Get theme color from StyleManager
+ * Use this for background, text, and border colors
+ *
+ * @example
+ * getThemeColor('background.primary') // returns current mode's primary background
+ * getThemeColor('text.secondary') // returns current mode's secondary text
+ */
+export function getThemeColor(path: string): string {
+  return StyleManager.getInstance().getColor(`theme.${path}`)
+}
+
+/**
+ * Get chart color from StyleManager
+ *
+ * @example
+ * getChartColor('bar.default') // returns current mode's default bar color
+ * getChartColor('grid') // returns current mode's grid line color
+ */
+export function getChartColor(path: string): string {
+  return StyleManager.getInstance().getColor(`chart.${path}`)
+}
+
+// ============================================================================
+// EXISTING: Backward-compatible functions
+// ============================================================================
+
 /**
  * Get color for a transport mode
  */
@@ -58,7 +144,10 @@ export function getModeColor(mode: string): string {
 /**
  * Get RGB array for deck.gl [R, G, B, A]
  */
-export function getModeColorRGB(mode: string, alpha: number = 255): [number, number, number, number] {
+export function getModeColorRGB(
+  mode: string,
+  alpha: number = 255
+): [number, number, number, number] {
   const hex = getModeColor(mode)
   return hexToRgba(hex, alpha)
 }
