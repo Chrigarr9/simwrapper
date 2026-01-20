@@ -8,6 +8,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { getCategoryColor, buildColorMap } from '../../utils/colorSchemes'
+import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 
@@ -69,10 +70,11 @@ const pieData = computed(() => {
 const renderChart = () => {
   if (!plotContainer.value || pieData.value.length === 0) return
 
-  // Theme-aware colors
-  const bgColor = isDarkMode.value ? '#1e293b' : '#ffffff'
-  const textColor = isDarkMode.value ? '#e2e8f0' : '#374151'
-  const lineColor = isDarkMode.value ? '#334155' : '#e5e7eb'
+  // Theme-aware colors from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const textColor = styleManager.getColor('theme.text.primary')
+  const lineColor = styleManager.getColor('theme.border.default')
 
   // Get colors - use color map for each category, darken if selected
   const colors = pieData.value.map(d => {
@@ -91,8 +93,9 @@ const renderChart = () => {
     marker: {
       colors,
       line: {
+        // Selected slices get white border for contrast, others use theme border
         color: pieData.value.map(d =>
-          selectedCategories.value.has(d.label) ? (isDarkMode.value ? '#f8fafc' : '#ffffff') : lineColor
+          selectedCategories.value.has(d.label) ? '#ffffff' : lineColor
         ),
         width: pieData.value.map(d =>
           selectedCategories.value.has(d.label) ? 3 : 1
