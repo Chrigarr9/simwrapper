@@ -29,156 +29,151 @@
     )
 
       //- each card here
-      .dash-card-frame(
-        v-for="card,j in row.cards"
-        :key="`${i}/${j}`"
+      .dash-card-frame(v-for="card,j in row.cards" :key="`${i}/${j}`"
         :style="getCardStyle(card)"
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen-card': fullScreenCardId === card.id}"
+        :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
       )
-        //- Enlarge button - always visible, positioned in top-right corner
-        button.card-enlarge-btn(
-          @click="toggleZoom(card)"
-          :title="fullScreenCardId === card.id ? 'Restore':'Enlarge'"
-        )
-          i.fa(:class="fullScreenCardId === card.id ? 'fa-compress' : 'fa-expand'")
 
         //- card header/title
-        .dash-card-headers(v-if="card.title || card.description" :class="{'fullscreen': !!fullScreenCardId}")
+        .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
           .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
-            h3(v-if="card.title") {{ card.title }}
+            h3 {{ card.title }}
             p(v-if="card.description") {{ card.description }}
 
-          //- info button only
-          .header-buttons(v-if="card.info")
+          //- zoom button
+          .header-buttons
             button.button.is-small.is-white(
+              v-if="card.info"
               @click="handleToggleInfoClick(card)"
               :title="infoToggle[card.id] ? 'Hide Info':'Show Info'"
             )
               i.fa.fa-info-circle
 
-          //- info contents
-          .info(v-show="infoToggle[card.id]")
-            p
-            p {{ card.info }}
+            button.button.is-small.is-white(
+              @click="toggleZoom(card)"
+              :title="fullScreenCardId ? 'Restore':'Enlarge'"
+            )
+              i.fa.fa-expand
 
-          //- card contents
-          .spinner-box(v-if="getCardComponent(card)"
-            :id="card.id"
-            :class="{'is-loaded': card.isLoaded}"
+        //- info contents
+        .info(v-show="infoToggle[card.id]")
+          p
+          p {{ card.info }}
+
+        //- card contents
+        .spinner-box(v-if="getCardComponent(card)"
+          :id="card.id"
+          :class="{'is-loaded': card.isLoaded}"
+        )
+          //- NEW: Wrap cards that have linkage (only if managers are initialized)
+          //- Also wrap map cards that have layers with linkage
+          //- Data-table cards always have linkage
+          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
+            :card="card"
+            :filter-manager="filterManager"
+            :linkage-manager="linkageManager"
+            :data-table-manager="dataTableManager"
           )
-            //- NEW: Wrap cards that have linkage (only if managers are initialized)
-            //- Also wrap map cards that have layers with linkage
-            //- Data-table cards always have linkage
-            linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
-              :card="card"
-              :filter-manager="filterManager"
-              :linkage-manager="linkageManager"
-              :data-table-manager="dataTableManager"
-            )
-              template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
-                //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
-                component.dash-card(v-if="card.visible"
-                  :is="getCardComponent(card)"
-                  :key="card.id"
-                  :class="{'is-data-table': card.type === 'data-table'}"
-                  :fileSystemConfig="fileSystemConfig"
-                  :subfolder="row.subtabFolder || xsubfolder"
-                  :files="fileList"
-                  :yaml="(card.props && card.props.configFile) || ''"
-                  :config="card.props"
-                  :datamanager="datamanager"
-                  :split="split"
-                  :style="{opacity: opacity[card.id]}"
-                  :cardId="card.id"
-                  :cardTitle="card.title"
-                  :allConfigFiles="allConfigFiles"
-                  :column="card.column"
-                  :bin-size="card.binSize"
-                  :title="card.title"
-                  :x-column="card.xColumn"
-                  :y-column="card.yColumn"
-                  :color-column="card.colorColumn"
-                  :size-column="card.sizeColumn"
-                  :marker-size="card.markerSize"
-                  :id-column="yaml.table?.idColumn"
-                  :filtered-data="filteredData"
-                  :hovered-ids="hoveredIds"
-                  :selected-ids="selectedIds"
-                  :linkage="card.linkage"
-                  :layers="getCardLayers(card)"
-                  :center="card.center"
-                  :zoom="card.zoom"
-                  :map-style="card.mapStyle"
-                  :legend="card.legend"
-                  :tooltip="card.tooltip"
-                  :geometry-type="geometryType"
-                  :color-by-attribute="colorByAttribute"
-                  :map-controls-config="yaml.map?.controls"
-                  :geometry-type-options="geometryTypeOptions"
-                  :color-by-options="colorByOptions"
-                  :layer-strategy="layerStrategy"
-                  :table-config="yaml.table"
-                  :data-table-manager="dataTableManager"
-                  :filter-manager="filterManager"
-                  :linkage-manager="linkageManager"
-                  @update:geometry-type="geometryType = $event"
-                  @update:color-by-attribute="colorByAttribute = $event"
-                  @filter="handleFilter"
-                  @hover="handleHover"
-                  @select="handleSelect"
-                  @isLoaded="handleCardIsLoaded(card)"
-                  @dimension-resizer="setDimensionResizer"
-                  @titles="setCardTitles(card, $event)"
-                  @error="setCardError(card, $event)"
-                )
+            template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
+              component.dash-card(v-if="card.visible"
+                :is="getCardComponent(card)"
+                :class="{'is-data-table': card.type === 'data-table'}"
+                :fileSystemConfig="fileSystemConfig"
+                :subfolder="row.subtabFolder || xsubfolder"
+                :files="fileList"
+                :yaml="(card.props && card.props.configFile) || ''"
+                :config="card.props"
+                :datamanager="datamanager"
+                :split="split"
+                :style="{opacity: opacity[card.id]}"
+                :cardId="card.id"
+                :cardTitle="card.title"
+                :allConfigFiles="allConfigFiles"
+                :column="card.column"
+                :bin-size="card.binSize"
+                :title="card.title"
+                :x-column="card.xColumn"
+                :y-column="card.yColumn"
+                :color-column="card.colorColumn"
+                :size-column="card.sizeColumn"
+                :marker-size="card.markerSize"
+                :id-column="yaml.table?.idColumn"
+                :filtered-data="filteredData"
+                :hovered-ids="hoveredIds"
+                :selected-ids="selectedIds"
+                :linkage="card.linkage"
+                :layers="getCardLayers(card)"
+                :center="card.center"
+                :zoom="card.zoom"
+                :map-style="card.mapStyle"
+                :legend="card.legend"
+                :tooltip="card.tooltip"
+                :geometry-type="geometryType"
+                :color-by-attribute="colorByAttribute"
+                :map-controls-config="yaml.map?.controls"
+                :geometry-type-options="geometryTypeOptions"
+                :color-by-options="colorByOptions"
+                :layer-strategy="layerStrategy"
+                :table-config="yaml.table"
+                :data-table-manager="dataTableManager"
+                :filter-manager="filterManager"
+                :linkage-manager="linkageManager"
+                @update:geometry-type="geometryType = $event"
+                @update:color-by-attribute="colorByAttribute = $event"
+                @filter="handleFilter"
+                @hover="handleHover"
+                @select="handleSelect"
+                @isLoaded="handleCardIsLoaded(card)"
+                @dimension-resizer="setDimensionResizer"
+                @titles="setCardTitles(card, $event)"
+                @error="setCardError(card, $event)"
+              )
 
-            //- Standard rendering for cards without linkage
-            //- Key changes on fullscreen toggle to force remount (fixes WebGL context loss for MapCard)
-            component.dash-card(v-else-if="card.visible"
-              :is="getCardComponent(card)"
-              :key="card.id"
-              :fileSystemConfig="fileSystemConfig"
-              :subfolder="row.subtabFolder || xsubfolder"
-              :files="fileList"
-              :yaml="(card.props && card.props.configFile) || ''"
-              :config="card.props"
-              :datamanager="datamanager"
-              :split="split"
-              :style="{opacity: opacity[card.id]}"
-              :cardId="card.id"
-              :cardTitle="card.title"
-              :allConfigFiles="allConfigFiles"
-              :column="card.column"
-              :bin-size="card.binSize"
-              :title="card.title"
-              :x-column="card.xColumn"
-              :y-column="card.yColumn"
-              :color-column="card.colorColumn"
-              :size-column="card.sizeColumn"
-              :marker-size="card.markerSize"
-              :id-column="yaml.table?.idColumn"
-              :layers="getCardLayers(card)"
-              :center="card.center"
-              :zoom="card.zoom"
-              :map-style="card.mapStyle"
-              :legend="card.legend"
-              :tooltip="card.tooltip"
-              :geometry-type="geometryType"
-              :color-by-attribute="colorByAttribute"
-              :map-controls-config="yaml.map?.controls"
-              :geometry-type-options="geometryTypeOptions"
-              :color-by-options="colorByOptions"
-              :layer-strategy="layerStrategy"
-              @update:geometry-type="geometryType = $event"
-              @update:color-by-attribute="colorByAttribute = $event"
-              @isLoaded="handleCardIsLoaded(card)"
-              @dimension-resizer="setDimensionResizer"
-              @titles="setCardTitles(card, $event)"
-              @error="setCardError(card, $event)"
-            )
-            .error-text(v-if="card.errors.length")
-              span.clear-error(@click="card.errors=[]") &times;
-              p(v-for="err,i in card.errors" :key="i") {{ err }}
+          //- Standard rendering for cards without linkage
+          component.dash-card(v-else-if="card.visible"
+            :is="getCardComponent(card)"
+            :fileSystemConfig="fileSystemConfig"
+            :subfolder="row.subtabFolder || xsubfolder"
+            :files="fileList"
+            :yaml="(card.props && card.props.configFile) || ''"
+            :config="card.props"
+            :datamanager="datamanager"
+            :split="split"
+            :style="{opacity: opacity[card.id]}"
+            :cardId="card.id"
+            :cardTitle="card.title"
+            :allConfigFiles="allConfigFiles"
+            :column="card.column"
+            :bin-size="card.binSize"
+            :title="card.title"
+            :x-column="card.xColumn"
+            :y-column="card.yColumn"
+            :color-column="card.colorColumn"
+            :size-column="card.sizeColumn"
+            :marker-size="card.markerSize"
+            :id-column="yaml.table?.idColumn"
+            :layers="getCardLayers(card)"
+            :center="card.center"
+            :zoom="card.zoom"
+            :map-style="card.mapStyle"
+            :legend="card.legend"
+            :tooltip="card.tooltip"
+            :geometry-type="geometryType"
+            :color-by-attribute="colorByAttribute"
+            :map-controls-config="yaml.map?.controls"
+            :geometry-type-options="geometryTypeOptions"
+            :color-by-options="colorByOptions"
+            :layer-strategy="layerStrategy"
+            @update:geometry-type="geometryType = $event"
+            @update:color-by-attribute="colorByAttribute = $event"
+            @isLoaded="handleCardIsLoaded(card)"
+            @dimension-resizer="setDimensionResizer"
+            @titles="setCardTitles(card, $event)"
+            @error="setCardError(card, $event)"
+          )
+          .error-text(v-if="card.errors.length")
+            span.clear-error(@click="card.errors=[]") &times;
+            p(v-for="err,i in card.errors" :key="i") {{ err }}
 
     //- Data Table (if visible in config AND not placed in layout) - styled as a dashboard card
     //- When table.position === 'layout', the table is rendered via a data-table card in the layout
@@ -303,7 +298,6 @@ import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
-// FullscreenPortal removed - using simpler CSS position:fixed approach
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -885,13 +879,12 @@ export default defineComponent({
         style.margin = '0.25rem 0.25rem'
       }
 
-      // Fullscreen mode: use position fixed to cover entire viewport
+      // but no actually, if it's full screen then do this.
       if (this.fullScreenCardId) {
         if (this.fullScreenCardId !== card.id) {
           style.display = 'none'
         } else {
-          // Use position:fixed to cover entire viewport
-          // This works now that contain:layout is removed from SubDashboard
+          // Use position:fixed to cover entire viewport (works in sub-dashboards too)
           style = {
             position: 'fixed',
             top: '0',
@@ -901,9 +894,7 @@ export default defineComponent({
             zIndex: '10000',
             margin: '0',
             padding: '1rem',
-            backgroundColor: 'var(--dashboard-bg-primary, var(--bgBold, #1a1a2e))',
-            maxHeight: 'none',
-            height: 'auto',
+            backgroundColor: 'var(--bgBold)',
           }
         }
       }
@@ -1604,21 +1595,10 @@ export default defineComponent({
         manager.setParentSelection(selectedIds)
       })
     },
-
-    // Handle Escape key to close fullscreen mode
-    handleEscapeKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && this.fullScreenCardId) {
-        this.fullScreenCardId = ''
-        this.$emit('zoom', '')
-      }
-    },
   },
   async mounted() {
     window.addEventListener('resize', this.resizeAllCards)
     this.setupNarrowPanelObserver()
-
-    // Add Escape key handler for fullscreen mode
-    window.addEventListener('keydown', this.handleEscapeKey)
 
     if (this.gist) {
       this.fileSystemConfig = {
@@ -1649,9 +1629,6 @@ export default defineComponent({
     this.isDestroying = true
     this.narrowPanelObserver?.disconnect()
     window.removeEventListener('resize', this.resizeAllCards)
-
-    // NEW: Remove Escape key handler
-    window.removeEventListener('keydown', this.handleEscapeKey)
 
     // NEW: Clean up managers
     this.filterManager = null
@@ -1763,42 +1740,6 @@ export default defineComponent({
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
   overflow: hidden;
-  position: relative; // For absolute positioned enlarge button
-
-  // Enlarge button - always visible in top-right corner
-  .card-enlarge-btn {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 10;
-    background: var(--dashboard-bg-secondary, rgba(0,0,0,0.3));
-    border: none;
-    border-radius: 3px;
-    color: var(--dashboard-text-secondary, #aaa);
-    padding: 4px 6px;
-    cursor: pointer;
-    opacity: 0.6;
-    transition: opacity 0.15s;
-
-    &:hover {
-      opacity: 1;
-      background: var(--dashboard-bg-tertiary, rgba(0,0,0,0.5));
-    }
-  }
-
-  // Fullscreen card mode - covers entire viewport
-  &.is-fullscreen-card {
-    border-radius: 0;
-    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-
-    .card-enlarge-btn {
-      top: 1rem;
-      right: 1rem;
-      opacity: 0.8;
-      padding: 8px 12px;
-      font-size: 1.1rem;
-    }
-  }
 
   .dash-card-headers {
     display: flex;
