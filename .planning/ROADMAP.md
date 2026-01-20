@@ -66,9 +66,11 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 01.1-01-PLAN.md — Create LayerColoringManager with types and role computation logic
-- [ ] 01.1-02-PLAN.md — Integrate into MapCard and InteractiveDashboard with YAML config support
-- [ ] 01.1-03-PLAN.md — Verification and edge case handling
+- [x] 01.1-01-PLAN.md — Create LayerColoringManager with types and role computation logic
+- [x] 01.1-02-PLAN.md — Integrate into MapCard and InteractiveDashboard with YAML config support
+- [x] 01.1-03-PLAN.md — Verification and edge case handling
+
+**Completed:** 2026-01-20
 
 **Details:**
 Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster_id), count visible geometry layers and arc layers per group, apply coloring rule automatically. Configurable via `map.colorBy.layerStrategy` and per-layer `colorByRole` properties.
@@ -183,14 +185,14 @@ Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster
 | Phase | Name | Requirements | Status | Completion |
 |-------|------|--------------|--------|------------|
 | 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Complete | 100% |
-| 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Planned | 0% |
+| 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Not Started | 0% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 1/7 phases complete (14%)
+**Overall Progress:** 2/7 phases complete (29%)
 
 ---
 
@@ -222,4 +224,4 @@ Implementation approach: Detect layers sharing same `geoProperty` (e.g., cluster
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-20 — Phase 1.1 planned (3 plans in 3 waves)*
+*Last updated: 2026-01-20 — Phase 1.1 complete (adaptive layer coloring with selection fix)*

@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Phase 1.1 Testing - Bug fixes during integration testing)
+**Last Updated:** 2026-01-20 (Phase 1.1 Complete - Adaptive Layer Coloring)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 1.1 (Adaptive Layer Coloring) - Plan 02 complete, 1 plan remaining
+**Current Focus:** Ready for Phase 2 (Sub-Dashboard Fix)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,15 +21,15 @@
 
 ## Current Position
 
-**Phase:** 1.1 of 7 (Adaptive Layer Coloring)
-**Plan:** 2 of 3 plans complete + testing session
-**Status:** In progress (testing discovered bugs, all fixed)
-**Last activity:** 2026-01-20 - Integration testing with cluster visualization, multiple bug fixes
+**Phase:** Phase 1.1 complete, ready for Phase 2
+**Plan:** All Phase 1.1 plans complete (3/3)
+**Status:** Phase 1.1 COMPLETE
+**Last activity:** 2026-01-20 - Phase 1.1 verified and complete, selection behavior fixed
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
-Phase 1.1: Adaptive Layer Coloring  [##  ] 67% (2/3 plans)
+Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [    ] 0%
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
@@ -37,7 +37,7 @@ Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 1.1 Plan 02 complete. LayerColoringManager integrated into MapCard with role-aware coloring. Ready for Plan 03 (YAML config and documentation).
+**Overall:** Phase 1.1 complete. Adaptive layer coloring with intelligent role detection. Ready for Phase 2.
 
 ---
 
@@ -45,9 +45,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 6 |
+| Plans completed | 7 |
 | Plans requiring revision | 0 |
-| Requirements completed | 3/14 (REQ-1.1, REQ-1.2, REQ-1.3) |
+| Requirements completed | 7/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04) |
 | Research phases triggered | 0 |
 
 ---
@@ -95,8 +95,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Plan Phase 1.1: Adaptive Layer Coloring
 - [x] Execute Plan 01.1-01: Create LayerColoringManager
 - [x] Execute Plan 01.1-02: Integrate into MapCard
-- [ ] Execute Plan 01.1-03: YAML config and documentation (NEXT)
-- [ ] Plan Phase 2: Sub-Dashboard Fix
+- [x] Execute Plan 01.1-03: Verification and edge case handling
+- [ ] Plan Phase 2: Sub-Dashboard Fix (NEXT)
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
@@ -123,33 +123,31 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Integration testing of Phase 1.1 with cluster visualization. Multiple bugs found and fixed.
+**Where we left off:** Phase 1.1 complete. Adaptive layer coloring fully implemented and verified.
 
-**Next action:** Execute Plan 01.1-03 - YAML configuration and documentation. All code fixes complete.
+**Next action:** Plan Phase 2 (Sub-Dashboard Fix) with `/gsd:plan-phase 2`.
 
-**Testing Session Summary (2026-01-20):**
+**Phase 1.1 Completion Summary (2026-01-20):**
 
-**Bugs Found and Fixed:**
-1. **isLayerVisible() didn't filter by geometryType** - Geometry type selector had no effect
-2. **legendData didn't use dashboard-level colorByAttribute** - Legend showed wrong attribute
-3. **GeoJSON missing colorBy attributes** - Need CSV data join, not just GeoJSON properties
-4. **Data join mismatch** - GeoJSON `cluster_id='0'` didn't match CSV `unique_id='od_0'`
-   - Fix: Created `getFeatureId()` helper to construct compound IDs
-5. **getFeatureFillColor didn't call getBaseColor()** - Fill layers had no colorBy coloring
-6. **OD boundary layers used `type: line`** - LineLayer expects LineString, not Polygon
-   - Fix: Changed to `type: fill` with `fillOpacity: 0` for outline-only rendering
-7. **Tooltip used hardcoded colors** - Should use StyleManager CSS variables
+**Key Deliverables:**
+1. **LayerColoringManager** - Role computation based on layer visibility and relationships
+2. **Adaptive coloring** - Arc gets colorBy when arc+clusters visible, clusters become neutral
+3. **YAML configuration** - `layerStrategy` and per-layer `colorByRole` overrides
+4. **32 test cases** - Comprehensive coverage of all strategies and edge cases
 
-**Code Changes Made (MapCard.vue):**
-- Added `getFeatureId()` helper function for compound ID construction
-- Updated `getFeatureFillColor()` to delegate to `getBaseColor()`
-- Increased default fill opacity from 0.5 to 0.7
-- Added colorBy value display in tooltips with StyleManager CSS styling
+**Selection Behavior Fix (Plan 01.1-03):**
+- Selection no longer dims non-selected features
+- Added `hasActiveSelection` check to distinguish selection from filtering
+- Only chart filters (histogram/pie) trigger dimming, not map selections
+- Selected items: higher alpha (180), thicker outline (6px)
 
-**Adaptive Coloring Behavior (Verified):**
-- Origin clusters alone: colorBy applied (primary)
-- Origin + arcs visible: arcs get colorBy (primary), clusters get neutral styling
-- Multiple geometries without arcs: all get colorBy (all primary)
+**All Phase 1.1 Success Criteria Met:**
+- [x] Origin clusters alone → colored by attribute
+- [x] Destination clusters alone → colored by attribute
+- [x] OD view → arcs colored, clusters neutral
+- [x] `layerStrategy: explicit` → only colorByRole:primary layers colored
+- [x] Per-layer `colorByRole` override works
+- [x] Neutral layers show hover/select interaction
 
 ### Recovery Commands
 
@@ -158,7 +156,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/01.1-adaptive-layer-coloring/01.1-02-SUMMARY.md for latest execution
+Read .planning/phases/01.1-adaptive-layer-coloring/01.1-03-SUMMARY.md for latest execution
 ```
 
 ---
