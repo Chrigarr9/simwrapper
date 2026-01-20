@@ -30,6 +30,14 @@ This roadmap delivers enhanced visualization capabilities for SimWrapper's inter
 3. User configures OD cluster colors once in dashboard YAML and sees those colors in both map layers and legends
 4. Developer can add a new card type and access theme colors via CSS variables without importing colorSchemes.ts directly
 
+**Plans:** 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Create StyleManager class with color definitions and CSS variable generation
+- [ ] 01-02-PLAN.md — Migrate MapCard and ColorLegend to use centralized theme colors
+- [ ] 01-03-PLAN.md — Migrate chart cards (PieChart, Histogram, Scatter) to use StyleManager
+- [ ] 01-04-PLAN.md — Initialize StyleManager in dashboard and update remaining component styles
+
 **Research Flag:** None - patterns well-documented in existing codebase
 
 ---
@@ -139,7 +147,7 @@ This roadmap delivers enhanced visualization capabilities for SimWrapper's inter
 
 | Phase | Name | Requirements | Status | Completion |
 |-------|------|--------------|--------|------------|
-| 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Not Started | 0% |
+| 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Planned | 0% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Not Started | 0% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
