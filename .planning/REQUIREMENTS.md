@@ -84,6 +84,13 @@ Deferred to future release. Tracked but not in current roadmap.
 - **GRPH-02**: Request-to-ride matching graph
 - **GRPH-03**: Interactive graph exploration (click nodes, expand/collapse, drag layout)
 
+### Dashboard Unification
+
+- **UNIF-01**: InteractiveDashboard works without `table` config (managers initialize with empty state)
+- **UNIF-02**: InteractiveDashboard fully replaces standard DashBoard.vue as superset
+- **UNIF-03**: Standard dashboard configs work unchanged in InteractiveDashboard
+- **UNIF-04**: Remove DashBoard.vue after unification complete (single dashboard component)
+
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
@@ -93,7 +100,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | 3D visualizations | Unnecessary complexity for analysis use case |
 | Mobile-specific layouts | Desktop-first for research analysis workflows |
 | Real-time data streaming | Dashboards work with static analysis outputs |
-| Non-interactive dashboard changes | Focus on interactive dashboard plugin only |
+| Separate dashboard codebases | v2 goal: Unify to single InteractiveDashboard (UNIF-01 to UNIF-04) |
 | Upstream SimWrapper contribution | Can be considered later after local validation |
 
 ## Traceability

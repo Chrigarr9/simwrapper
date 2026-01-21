@@ -92,6 +92,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Single-element DashboardCard | Simplified from placeholder/frame wrapper to single .dashboard-card element | 2026-01-21 |
 | CSS-only fullscreen | .is-fullscreen class sets position:fixed to overlay viewport, no DOM restructuring | 2026-01-21 |
 | Single card rendering path | All cards use LinkableCardWrapper - handles no-linkage gracefully by passing unfiltered data | 2026-01-21 |
+| Dashboard unification goal | InteractiveDashboard should be superset of standard Dashboard - work with or without table config | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -134,6 +135,23 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 None currently.
 
+### Architectural Vision
+
+**Goal:** InteractiveDashboard replaces standard Dashboard as a superset.
+
+Current state:
+- Standard Dashboard (`DashBoard.vue`) renders cards inline without DashboardCard component
+- InteractiveDashboard requires `yaml.table` config to function
+- Two separate dashboard components with duplicated logic
+
+Target state:
+- Single InteractiveDashboard component handles all dashboards
+- Works with or without `table` config (no linkage = standard dashboard behavior)
+- Managers initialize unconditionally, handle empty state gracefully
+- Eventually deprecate/remove DashBoard.vue
+
+Requirements: UNIF-01 to UNIF-04 (v2)
+
 ### Lessons Learned
 
 1. **CSS variable fallback chains work well**: The pattern `var(--dashboard-X, var(--app-X, #fallback))` provides graceful degradation.
@@ -167,9 +185,11 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Quick Task 001 complete. Codebase cleaned up.
+**Where we left off:** Quick Task 001 complete. Codebase cleaned up. Documented dashboard unification goal.
 
 **Next action:** Plan Phase 3 (Correlation Analysis) - requires research first.
+
+**Architectural goal documented:** InteractiveDashboard should be a superset of standard Dashboard (v2 requirements UNIF-01 to UNIF-04).
 
 **Quick Task 001 Completed (2026-01-21):**
 
@@ -201,4 +221,4 @@ Read .planning/phases/02.1-dashboard-card-component/02.1-04-SUMMARY.md for verif
 
 ---
 
-*State updated: 2026-01-21 (Quick Task 001)*
+*State updated: 2026-01-21 (Dashboard unification goal documented)*
