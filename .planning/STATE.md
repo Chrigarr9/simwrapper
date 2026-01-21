@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Plan 03-03 Complete - Attribute pair event system)
+**Last Updated:** 2026-01-21 (Phase 3 Complete - Correlation Analysis)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 3 IN PROGRESS - Correlation Analysis (plan 3 of 4 complete)
+**Current Focus:** Phase 3 COMPLETE - Correlation Analysis (all 4 plans done)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 3 of 8 (Correlation Analysis)
-**Plan:** 3/4 complete
-**Status:** Phase 3 IN PROGRESS - Attribute pair event system complete
-**Last activity:** 2026-01-21 - Completed 03-03-PLAN.md (Attribute pair event system)
+**Phase:** 3.1 of 9 (Comparison Mode)
+**Plan:** 1/4 complete
+**Status:** In progress
+**Last activity:** 2026-01-21 - Completed 03.1-01-PLAN.md (Comparison mode foundation)
 
 **Progress:**
 ```
@@ -32,13 +32,14 @@ Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
-Phase 3:   Correlation Analysis     [### ] 75% (3/4 plans)
+Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
+Phase 3.1: Comparison Mode          [#   ] 25% (1/4 plans) IN PROGRESS
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3 nearly complete. Statistics utilities, matrix card, and attribute pair event system ready.
+**Overall:** Phase 3.1 in progress. Comparison mode foundation complete: toggle UI, baseline data propagation, dashboard state management. Ready for card implementations (histogram, pie, scatter/table).
 
 ---
 
@@ -46,10 +47,10 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 15 |
+| Plans completed | 17 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
-| Requirements completed | 13/19 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05) |
+| Requirements completed | 16/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01) |
 | Research phases triggered | 1 (Phase 3 research) |
 
 ---
@@ -105,6 +106,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Debounced correlation calculation | 200ms debounce for filteredData changes avoids excessive recalculation during rapid filtering | 2026-01-21 |
 | Optional onAttributePairSelected in LinkageObserver | Not all observers need attribute pair events - only ScatterCard when enabled | 2026-01-21 |
 | Dynamic axis state in ScatterCard | currentXColumn/currentYColumn refs allow prop overrides without mutation | 2026-01-21 |
+| ComparisonToggle disabled state enforcement | effectiveShowComparison = showComparison AND hasActiveFilters prevents confusing UI where baseline equals filtered data | 2026-01-21 |
+| baselineData as computed property | Single source for unfiltered data; computed ensures reactivity when dataTableManager data changes | 2026-01-21 |
+| Slot prop auto-propagation | LinkableCardWrapper exposes new props via slot; child cards receive them automatically without InteractiveDashboard template changes | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -119,6 +123,11 @@ Phase 6:   Graph Visualization      [    ] 0%
     - Card frame/header/buttons logic scattered across InteractiveDashboard.vue and individual cards
   - Solution: Create unified DashboardCard wrapper component using composition pattern
   - This enables: consistent behavior, single source of truth, future card reordering feature
+
+- Phase 3.1 inserted after Phase 3: Comparison Mode (URGENT) - 2026-01-21
+  - Reason: Filtering currently reduces charts to single data points (e.g., one histogram bar); need to show filtered subset against baseline for context
+  - Reference: Pattern already implemented in commuter-requests plugin (ComparisonToggle, overlay bars, concentric pies)
+  - Requirements: COMP-01 to COMP-06 (6 new requirements)
 
 ### TODOs
 
@@ -143,6 +152,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 03-01: Statistics utility module (COMPLETE)
 - [x] Execute Plan 03-02: CorrelationMatrixCard component (COMPLETE)
 - [x] Execute Plan 03-03: Attribute pair event system (COMPLETE)
+- [x] Execute Plan 03-04: Integration and verification (COMPLETE)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
 
@@ -206,11 +216,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Plan 03-03 complete. Attribute pair event system for correlation matrix → scatter integration ready.
+**Where we left off:** Phase 3.1 Plan 01 complete - comparison mode foundation.
 
-**Next action:** Execute Plan 03-04 (Integration and verification).
+**Next action:** Execute Plan 03.1-02 (HistogramCard overlay bars).
 
-**Phase progress:** Phase 3 (Correlation Analysis) - 3 of 4 plans complete.
+**Phase progress:** Phase 3.1 in progress (1/4 plans complete).
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -289,3 +299,28 @@ Attribute pair event system for correlation matrix → scatter integration:
 - Validates attribute names before updating axes
 - Observer pattern maintains backwards compatibility
 *State updated: 2026-01-21 (Plan 03-03 complete - attribute pair event system)*
+
+**Plan 03-04 Completed (2026-01-21):**
+
+Integration and verification of correlation analysis feature:
+- Registered correlation-matrix card type in `_allPanels.ts`
+- Wired event handler in InteractiveDashboard for attribute pair selection
+- Added comprehensive documentation to README.md
+- Fixed Vue 2 event naming (camelCase → kebab-case)
+- Fixed Plotly shape layering (below → above for visibility)
+- Verified: heatmap rendering, tooltips, cell click → scatter linkage, hover row/column highlighting
+
+*State updated: 2026-01-21 (Phase 3 complete - Correlation Analysis)*
+
+**Plan 03.1-01 Completed (2026-01-21):**
+
+Comparison mode foundation:
+- Created ComparisonToggle component (Vue 3 Composition API, disabled state when no filters)
+- Updated LinkableCardWrapper to pass baselineData (computed from unfiltered dataTableManager)
+- Added showComparison state to InteractiveDashboard with effectiveShowComparison computed
+- ComparisonToggle rendered in table controls (only when yaml.table exists)
+- Inline table comparison count display (X / Y format)
+- All props flow automatically to child cards via slot mechanism
+- Files: ComparisonToggle.vue (created), LinkableCardWrapper.vue, InteractiveDashboard.vue
+
+*State updated: 2026-01-21 (Plan 03.1-01 complete - Comparison mode foundation)*
