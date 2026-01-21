@@ -29,12 +29,13 @@
     )
 
       //- each card here - wrapped with DashboardCard for consistent chrome
+      //- Note: anotherCardFullscreen also includes tableFullScreen to hide cards when table is enlarged
       DashboardCard(
         v-for="card, j in row.cards"
         :key="`${i}/${j}/${cardRenderKey}`"
         :card="card"
         :is-fullscreen="fullScreenCardId === card.id"
-        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== card.id"
+        :another-card-fullscreen="(!!fullScreenCardId && fullScreenCardId !== card.id) || tableFullScreen"
         :is-panel-narrow="isPanelNarrow"
         :is-full-screen-dashboard="isFullScreenDashboard"
         :total-cards-in-row="row.cards.length"
@@ -652,9 +653,9 @@ export default defineComponent({
       const wasFullscreen = this.tableFullScreen
       this.tableFullScreen = !this.tableFullScreen
 
-      // When exiting fullscreen, dispatch resize events so ALL cards resize properly
-      // With sub-dashboards present, layout settling can take longer due to scrollbar changes
-      // Use multiple resize events at staggered intervals to catch all layout shifts
+      // When exiting fullscreen, dispatch resize event so cards resize properly
+      // Cards are hidden (display: none) while table is fullscreen via anotherCardFullscreen prop,
+      // so they need to recalculate dimensions when they become visible again
       this.$nextTick(() => {
         if (wasFullscreen) {
           // Dispatch native resize event for Plotly and other native listeners
@@ -664,28 +665,11 @@ export default defineComponent({
           // Force re-layout of all cards
           this.resizeAllCards()
 
-          // Stage 2: After initial DOM update
+          // Give DOM time to settle after cards become visible again
           setTimeout(() => {
             window.dispatchEvent(new Event('resize'))
             this.resizeAllCards()
-          }, 100)
-
-          // Stage 3: After scrollbar state settles (important for sub-dashboards)
-          setTimeout(() => {
-            window.dispatchEvent(new Event('resize'))
-            this.$store.commit('resize')
-            this.resizeAllCards()
-          }, 300)
-
-          // Stage 4: Final resize and key increment to force card recreation
-          // This ensures cards are fully re-rendered with correct dimensions
-          setTimeout(() => {
-            window.dispatchEvent(new Event('resize'))
-            this.resizeAllCards()
-            // Increment render key to force Vue to recreate DashboardCard components
-            // This is a fallback to ensure proper layout after fullscreen transitions
-            this.cardRenderKey++
-          }, 500)
+          }, 150)
         }
       })
     },
