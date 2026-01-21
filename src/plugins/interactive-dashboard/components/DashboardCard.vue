@@ -265,12 +265,12 @@ export default defineComponent({
         style.margin = '0.25rem 0.25rem'
       }
 
-      // Handle fullscreen state
-      if (props.anotherCardFullscreen) {
-        // Another card is fullscreen - hide this one
-        style.display = 'none'
-      } else if (props.isFullscreen) {
-        // This card is fullscreen - use position:fixed to cover entire viewport
+      // Handle fullscreen state - OVERLAY approach
+      // When a card is fullscreen, it becomes a fixed overlay on TOP of everything.
+      // Other cards stay EXACTLY as they are - no display:none, no style changes.
+      // This prevents any rescaling issues when fullscreen closes.
+      if (props.isFullscreen) {
+        // This card is fullscreen - overlay it on top of everything
         style = {
           position: 'fixed',
           top: '0',
@@ -283,6 +283,8 @@ export default defineComponent({
           backgroundColor: 'var(--bgBold)',
         }
       }
+      // NOTE: We intentionally do NOT hide other cards when one is fullscreen.
+      // They stay rendered underneath the overlay, unchanged.
 
       return style
     })
