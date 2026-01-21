@@ -16,6 +16,8 @@ interface Props {
   title?: string
   column: string
   filteredData?: any[]  // From LinkableCardWrapper (optional for safety)
+  baselineData?: any[]  // All data (unfiltered) - from LinkableCardWrapper
+  showComparison?: boolean  // Whether comparison mode is active
   linkage?: {
     type: 'filter'
     column: string
@@ -24,7 +26,9 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  filteredData: () => []
+  filteredData: () => [],
+  baselineData: () => [],
+  showComparison: false
 })
 const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>]
@@ -68,6 +72,29 @@ const pieData = computed(() => {
   return sorted.map(([label, value]) => ({ label, value }))
 })
 
+const baselinePieData = computed(() => {
+  // Only compute if comparison mode is active and we have baseline data
+  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
+    debugLog('[PieChartCard] No baseline data for comparison')
+    return []
+  }
+
+  debugLog('[PieChartCard] Computing baseline pie from', props.baselineData.length, 'rows')
+
+  const counts = new Map<string, number>()
+  props.baselineData.forEach(row => {
+    const val = row[props.column]
+    if (val !== null && val !== undefined) {
+      counts.set(String(val), (counts.get(String(val)) || 0) + 1)
+    }
+  })
+
+  // Sort by count descending (same as pieData)
+  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+
+  return sorted.map(([label, value]) => ({ label, value }))
+})
+
 const renderChart = () => {
   if (!plotContainer.value || pieData.value.length === 0) return
 
@@ -87,7 +114,10 @@ const renderChart = () => {
     return baseColor
   })
 
-  const trace = {
+  const traces: any[] = []
+
+  // Main pie chart (inner ring when comparison active)
+  const mainTrace = {
     labels: pieData.value.map(d => d.label),
     values: pieData.value.map(d => d.value),
     type: 'pie',
@@ -107,12 +137,37 @@ const renderChart = () => {
     textfont: { color: textColor, size: 11 },
     outsidetextfont: { color: textColor, size: 11 },
     hovertemplate: '%{label}: %{value} (%{percent})<extra></extra>',
-    hole: 0.3,  // Make it a donut chart for better aesthetics
+    hole: props.showComparison ? 0.4 : 0.3,  // Smaller hole for inner ring
+    // Constrain to inner area when comparison active
+    domain: props.showComparison ? { x: [0.15, 0.85], y: [0.15, 0.85] } : undefined,
+  }
+  traces.push(mainTrace)
+
+  // Baseline ring (if comparison mode) - outer ring with transparency
+  if (props.showComparison && baselinePieData.value.length > 0) {
+    // Use same color map but with transparency
+    const baselineColors = baselinePieData.value.map(d => {
+      const baseColor = colorMap.value.get(d.label) || getCategoryColor(d.label)
+      return baseColor + '80' // Add 50% alpha (hex 80 = 128/255)
+    })
+
+    traces.push({
+      labels: baselinePieData.value.map(d => d.label),
+      values: baselinePieData.value.map(d => d.value),
+      type: 'pie',
+      marker: {
+        colors: baselineColors,
+      },
+      textinfo: 'none', // No text on baseline ring
+      hovertemplate: '<b>Baseline: %{label}</b><br>%{value} (%{percent})<extra></extra>',
+      hole: 0.7, // Large hole for outer ring
+      domain: { x: [0, 1], y: [0, 1] }, // Full area
+    })
   }
 
   Plotly.newPlot(
     plotContainer.value,
-    [trace],
+    traces,
     {
       title: {
         text: '',  // Title is shown in card header
@@ -131,6 +186,19 @@ const renderChart = () => {
         xanchor: 'center',
         y: -0.1,
       },
+      annotations: [
+        {
+          text: props.showComparison
+            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:9px">of ${props.baselineData?.length || 0}</span>`
+            : `<b>${pieData.value.reduce((sum, d) => sum + d.value, 0)}</b>`,
+          x: 0.5,
+          y: 0.5,
+          xref: 'paper',
+          yref: 'paper',
+          showarrow: false,
+          font: { size: 14, color: textColor },
+        },
+      ],
     },
     {
       displayModeBar: false,
@@ -138,8 +206,11 @@ const renderChart = () => {
     }
   )
 
-  // Click handler
+  // Click handler - only respond to main pie trace (trace index 0)
   plotContainer.value.on('plotly_click', (data: any) => {
+    // Ignore clicks on baseline trace (trace index 1)
+    if (data.points[0].curveNumber !== 0) return
+
     const category = data.points[0].label
 
     // Toggle category
