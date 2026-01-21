@@ -51,6 +51,7 @@
           :filter-manager="filterManager"
           :linkage-manager="linkageManager"
           :data-table-manager="dataTableManager"
+          :show-comparison="effectiveShowComparison"
         )
           template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
             component.dash-card(v-if="card.visible"
@@ -127,11 +128,23 @@
         @toggle-fullscreen="toggleZoom(inlineTableCard)"
         @clear-errors=""
       )
-        //- Table controls (scroll toggle, filter reset) above the table
+        //- Table controls (scroll toggle, comparison toggle, filter reset) above the table
         .table-controls
           label.scroll-toggle(title="Auto-scroll to hovered row")
             input(type="checkbox" v-model="enableScrollOnHover")
             span.scroll-label Scroll
+
+          //- Comparison count display
+          span.comparison-count(
+            v-if="effectiveShowComparison"
+            title="Filtered rows / Total rows"
+          ) {{ filteredRowIds.size }} / {{ displayData.length }}
+
+          comparison-toggle(
+            v-if="yaml.table"
+            v-model="showComparison"
+            :disabled="!hasActiveFilters"
+          )
 
           button.button.is-small.is-white(
             v-if="filterManager && filterManager.hasActiveFilters()"
@@ -215,6 +228,7 @@ import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
 import DashboardCard from './components/DashboardCard.vue'
+import ComparisonToggle from './components/controls/ComparisonToggle.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -229,7 +243,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -295,6 +309,8 @@ export default defineComponent({
       layerStrategy: 'auto' as 'auto' | 'explicit' | 'all',
       // Key for forcing card re-renders after table fullscreen (fixes layout issues)
       cardRenderKey: 0,
+      // Comparison mode state
+      showComparison: false,
     }
   },
 
@@ -408,6 +424,16 @@ export default defineComponent({
 
     colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
       return this.yaml.map?.colorBy?.attributes || []
+    },
+
+    // Check if any filters are active
+    hasActiveFilters(): boolean {
+      return this.filterManager ? this.filterManager.hasActiveFilters() : false
+    },
+
+    // Effective show comparison: only true if comparison toggle is on AND filters are active
+    effectiveShowComparison(): boolean {
+      return this.showComparison && this.hasActiveFilters
     },
 
     /**
@@ -617,8 +643,12 @@ export default defineComponent({
     },
 
     handleAttributePairSelected(attrX: string, attrY: string) {
+      console.log('[InteractiveDashboard] handleAttributePairSelected:', attrX, attrY)
       if (this.linkageManager) {
+        console.log('[InteractiveDashboard] Calling linkageManager.setSelectedAttributePair')
         this.linkageManager.setSelectedAttributePair(attrX, attrY)
+      } else {
+        console.warn('[InteractiveDashboard] linkageManager is null!')
       }
     },
 
@@ -1714,6 +1744,15 @@ li.is-not-active b a {
   .scroll-label,
   .reset-label {
     margin-left: 0.25rem;
+  }
+
+  .comparison-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--dashboard-interaction-selected, #3b82f6);
+    padding: 0 0.5rem;
+    border-left: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
+    margin-left: auto;
   }
 }
 
