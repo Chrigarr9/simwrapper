@@ -22,7 +22,7 @@ interface Props {
   card: any
   filterManager: FilterManager
   linkageManager: LinkageManager
-  dataTableManager: DataTableManager
+  dataTableManager?: DataTableManager | null  // Optional: null when no table config
 }
 
 const props = defineProps<Props>()
@@ -108,6 +108,12 @@ const handleSelect = (ids: Set<any>) => {
 }
 
 const updateFilteredData = () => {
+  // If no dataTableManager, pass empty array (no central data to filter)
+  // Cards can still render their own content (loaded from their own files)
+  if (!props.dataTableManager) {
+    filteredData.value = []
+    return
+  }
   const allData = props.dataTableManager.getData()
   const filtered = props.filterManager.applyFilters(allData)
   debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,

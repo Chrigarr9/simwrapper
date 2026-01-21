@@ -45,7 +45,8 @@
       )
         //- All cards use LinkableCardWrapper - handles both linkage and non-linkage cases
         //- Cards that don't use filteredData/hoveredIds/selectedIds simply ignore them
-        linkable-card-wrapper(v-if="getCardComponent(card) && filterManager && linkageManager && dataTableManager"
+        //- dataTableManager is optional - cards render even without centralized data table
+        linkable-card-wrapper(v-if="getCardComponent(card) && filterManager && linkageManager"
           :card="card"
           :filter-manager="filterManager"
           :linkage-manager="linkageManager"
