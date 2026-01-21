@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Plan 02.1-01 Complete - DashboardCard Foundation)
+**Last Updated:** 2026-01-21 (Plan 02.1-02 Complete - Fullscreen/Resize Management)
 
 ---
 
@@ -22,23 +22,23 @@
 ## Current Position
 
 **Phase:** 2.1 of 8 (DashboardCard Component Architecture)
-**Plan:** 1/4 complete
-**Status:** Plan 02.1-01 COMPLETE - DashboardCard foundation created
-**Last activity:** 2026-01-21 - Completed Plan 02.1-01 (DashboardCard component with frame, header, buttons)
+**Plan:** 2/4 complete
+**Status:** Plan 02.1-02 COMPLETE - Fullscreen/resize management added
+**Last activity:** 2026-01-21 - Completed Plan 02.1-02 (ResizeObserver, Escape key, window resize dispatch)
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
-Phase 2.1: DashboardCard Component  [#---] 25% (1/4 plans)
+Phase 2.1: DashboardCard Component  [##--] 50% (2/4 plans)
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 2.1 in progress. DashboardCard foundation created with frame, header, and buttons.
+**Overall:** Phase 2.1 50% complete. DashboardCard now has fullscreen/resize management.
 
 ---
 
@@ -46,7 +46,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 9 |
+| Plans completed | 10 |
 | Plans requiring revision | 0 |
 | Requirements completed | 8/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04, SUBD-01) |
 | Research phases triggered | 0 |
@@ -86,6 +86,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Dual Escape key handling | Both portal and dashboard handle Escape for redundancy | 2026-01-20 |
 | Info toggle managed locally by DashboardCard | Encapsulates UI-only state, simplifies InteractiveDashboard | 2026-01-21 |
 | Fullscreen toggle emitted to parent | DashboardCard emits event, parent maintains single source of truth | 2026-01-21 |
+| anotherCardFullscreen prop vs fullscreenCardId | Boolean simpler than string comparison, already implemented in 02.1-01 | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -116,8 +117,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 02-01: FullscreenPortal implementation (partial - issues found)
 - [x] Plan Phase 2.1: DashboardCard Component Architecture
 - [x] Execute Plan 02.1-01: Create DashboardCard component (COMPLETE)
-- [ ] Execute Plan 02.1-02: Add fullscreen/resize management (NEXT)
-- [ ] Execute Plan 02.1-03: Refactor existing cards
+- [x] Execute Plan 02.1-02: Add fullscreen/resize management (COMPLETE)
+- [ ] Execute Plan 02.1-03: Refactor existing cards (NEXT)
 - [ ] Execute Plan 02.1-04: Verify behavior
 - [ ] Plan Phase 3: Correlation Analysis
 - [ ] Research Phase 3 before planning (Web Worker architecture)
@@ -142,6 +143,8 @@ None currently.
 10. **Portal pattern for CSS containment escape**: Use DOM teleportation to document.body to bypass parent `contain: layout` that blocks position:fixed.
 11. **display:contents for layout-neutral wrappers**: Components that wrap content without affecting layout should use `display: contents`.
 12. **Local state for UI-only concerns**: Info toggle in DashboardCard is UI-only, no need to emit to parent; reduces coupling.
+13. **Window resize for Plotly charts**: When exiting fullscreen, dispatch `window.dispatchEvent(new Event('resize'))` so Plotly charts (ScatterCard, HistogramCard) resize correctly.
+14. **ResizeObserver with nextTick debounce**: Wrap emitResize in nextTick to avoid excessive resize events during rapid container changes.
 
 ---
 
@@ -149,24 +152,22 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Plan 02.1-01 complete. DashboardCard foundation created.
+**Where we left off:** Plan 02.1-02 complete. DashboardCard has fullscreen/resize management.
 
-**Next action:** Execute Plan 02.1-02 (Add fullscreen/resize management to DashboardCard).
+**Next action:** Execute Plan 02.1-03 (Refactor existing cards to use DashboardCard wrapper).
 
-**Plan 02.1-01 Completed (2026-01-21):**
+**Plan 02.1-02 Completed (2026-01-21):**
 
-Created DashboardCard component with:
-- Card frame with consistent styling using CSS variables
-- Header with title, description, info button, enlarge button
-- Collapsible info panel with LOCAL state management (showInfo ref)
-- Content slot for visualization components
-- Error display overlay
-- cardStyle computed ported from InteractiveDashboard.getCardStyle()
+Added to DashboardCard:
+- ResizeObserver for container size changes
+- `card-resize` event emitted with dimensions when container resizes
+- `window.dispatchEvent(new Event('resize'))` on fullscreen exit for Plotly charts
+- Escape key handler to exit fullscreen mode
+- Cleanup in onUnmounted for ResizeObserver and keydown listener
 
-Key files created:
-- `src/plugins/interactive-dashboard/components/DashboardCard.vue` (383 lines)
-- `src/plugins/interactive-dashboard/types/dashboardCard.ts` (100 lines)
-- `src/plugins/interactive-dashboard/components/index.ts` (14 lines)
+Key modifications:
+- `src/plugins/interactive-dashboard/components/DashboardCard.vue` (+81 lines)
+- `src/plugins/interactive-dashboard/types/dashboardCard.ts` (+9 lines)
 
 ### Recovery Commands
 
@@ -176,7 +177,7 @@ Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
 Read .planning/phases/02.1-dashboard-card-component/ for Phase 2.1 plans
-Read .planning/phases/02.1-dashboard-card-component/02.1-01-SUMMARY.md for Plan 01 summary
+Read .planning/phases/02.1-dashboard-card-component/02.1-02-SUMMARY.md for Plan 02 summary
 ```
 
 ---
