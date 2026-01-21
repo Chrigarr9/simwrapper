@@ -44,6 +44,8 @@ interface Props {
   tableConfig?: TableConfig // From InteractiveDashboard - contains column formats
   listenToAttributePairSelection?: boolean  // Enable dynamic axis updates from correlation matrix
   linkageManager?: LinkageManager           // Manager instance for observing events
+  baselineData?: any[]      // All data (unfiltered) for comparison mode
+  showComparison?: boolean  // Whether comparison mode is active
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -53,6 +55,8 @@ const props = withDefaults(defineProps<Props>(), {
   markerSize: 8,
   idColumn: '',
   listenToAttributePairSelection: false,
+  baselineData: () => [],
+  showComparison: false,
 })
 
 const emit = defineEmits<{
@@ -213,6 +217,37 @@ const scatterData = computed(() => {
   return { x, y, ids, colors, sizes, text, categories }
 })
 
+const baselineScatterData = computed(() => {
+  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
+    return { x: [], y: [], ids: [], text: [] }
+  }
+
+  debugLog('[ScatterCard] Computing baseline scatter from', props.baselineData.length, 'rows')
+
+  const x: number[] = []
+  const y: number[] = []
+  const ids: any[] = []
+  const text: string[] = []
+
+  props.baselineData.forEach(row => {
+    const xVal = row[currentXColumn.value]
+    const yVal = row[currentYColumn.value]
+
+    if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+      x.push(xVal)
+      y.push(yVal)
+      const id = props.idColumn ? row[props.idColumn] : null
+      ids.push(id)
+
+      const xFormatted = formatValue(xVal, currentXColumn.value)
+      const yFormatted = formatValue(yVal, currentYColumn.value)
+      text.push(`${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`)
+    }
+  })
+
+  return { x, y, ids, text }
+})
+
 const renderChart = () => {
   if (!plotContainer.value || scatterData.value.x.length === 0) return
 
@@ -230,6 +265,28 @@ const renderChart = () => {
   const traces: any[] = []
   const categories = scatterData.value.categories
   const hasCategories = props.colorColumn && categories.length > 0
+
+  // Baseline trace (if comparison mode) - gray points behind
+  if (props.showComparison && baselineScatterData.value.x.length > 0) {
+    traces.unshift({  // unshift to add at beginning
+      x: baselineScatterData.value.x,
+      y: baselineScatterData.value.y,
+      mode: 'markers',
+      type: 'scatter',
+      name: 'Baseline (All Data)',
+      text: baselineScatterData.value.text,
+      hoverinfo: 'text',
+      marker: {
+        color: 'rgba(156, 163, 175, 0.3)', // Gray with 30% opacity
+        size: props.markerSize * 0.8,      // Slightly smaller
+        line: {
+          color: 'rgba(156, 163, 175, 0.5)',
+          width: 0.5,
+        },
+      },
+      showlegend: true,
+    })
+  }
 
   if (hasCategories) {
     // Create separate traces for each category (enables proper legend)
@@ -356,8 +413,8 @@ const renderChart = () => {
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     hovermode: 'closest',
-    showlegend: hasCategories,
-    legend: hasCategories ? {
+    showlegend: hasCategories || props.showComparison,
+    legend: hasCategories || props.showComparison ? {
       x: 1.02,
       y: 1,
       xanchor: 'left',
@@ -375,9 +432,16 @@ const renderChart = () => {
 
   // Click handler for point selection
   plotContainer.value.on('plotly_click', (data: any) => {
+    const curveNumber = data.points[0].curveNumber
+
+    // Ignore clicks on baseline trace (always trace 0 when comparison mode is on)
+    if (props.showComparison && curveNumber === 0) {
+      return
+    }
+
     const pointIndex = data.points[0].pointIndex
     const id = scatterData.value.ids[pointIndex]
-    
+
     if (!id) return
 
     // Toggle point in selection
@@ -419,6 +483,7 @@ const linkageObserver: LinkageObserver = {
   onHoveredIdsChange: () => {},      // Not used in scatter
   onSelectedIdsChange: () => {},     // Not used in scatter
   onAttributePairSelected: (attrX: string, attrY: string) => {
+    console.log('[ScatterCard] onAttributePairSelected called:', attrX, attrY, 'listening:', props.listenToAttributePairSelection)
     if (!props.listenToAttributePairSelection) return
 
     // Check if attributes exist in data
@@ -428,7 +493,7 @@ const linkageObserver: LinkageObserver = {
       const hasY = attrY in sampleRow
 
       if (hasX && hasY) {
-        debugLog('[ScatterCard] Updating axes to:', attrX, attrY)
+        console.log('[ScatterCard] Updating axes to:', attrX, attrY)
         currentXColumn.value = attrX
         currentYColumn.value = attrY
         // Re-render will happen via watch on currentXColumn/currentYColumn
@@ -496,7 +561,9 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 
   // Register observer if listening is enabled
+  console.log('[ScatterCard] onMounted - listenToAttributePairSelection:', props.listenToAttributePairSelection, 'linkageManager:', !!props.linkageManager)
   if (props.listenToAttributePairSelection && props.linkageManager) {
+    console.log('[ScatterCard] Registering as observer for attribute pair events')
     props.linkageManager.addObserver(linkageObserver)
   }
 
