@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Phase 2.1 Complete - DashboardCard Component Architecture)
+**Last Updated:** 2026-01-21 (Quick Task 001 Complete - Legacy component cleanup)
 
 ---
 
@@ -24,7 +24,7 @@
 **Phase:** 2.1 of 8 (DashboardCard Component Architecture)
 **Plan:** 4/4 complete
 **Status:** Phase 2.1 COMPLETE - All cards use DashboardCard wrapper, verified
-**Last activity:** 2026-01-21 - Completed Plan 02.1-04 (Verified content components and fullscreen behavior)
+**Last activity:** 2026-01-21 - Completed Quick Task 001 (Remove legacy components, consolidate rendering)
 
 **Progress:**
 ```
@@ -47,6 +47,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Metric | Value |
 |--------|-------|
 | Plans completed | 12 |
+| Quick tasks completed | 1 |
 | Plans requiring revision | 0 |
 | Requirements completed | 13/19 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05) |
 | Research phases triggered | 0 |
@@ -90,6 +91,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 | DashboardCard handles card styling | getCardStyle() moved from InteractiveDashboard to DashboardCard.cardStyle computed | 2026-01-21 |
 | Single-element DashboardCard | Simplified from placeholder/frame wrapper to single .dashboard-card element | 2026-01-21 |
 | CSS-only fullscreen | .is-fullscreen class sets position:fixed to overlay viewport, no DOM restructuring | 2026-01-21 |
+| Single card rendering path | All cards use LinkableCardWrapper - handles no-linkage gracefully by passing unfiltered data | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -149,6 +151,15 @@ None currently.
 13. **Window resize for Plotly charts**: When exiting fullscreen, dispatch `window.dispatchEvent(new Event('resize'))` so Plotly charts (ScatterCard, HistogramCard) resize correctly.
 14. **ResizeObserver with nextTick debounce**: Wrap emitResize in nextTick to avoid excessive resize events during rapid container changes.
 15. **Composition pattern for card wrapper**: DashboardCard receives content via slot, avoiding inheritance; cards don't need to extend a base class.
+16. **LinkableCardWrapper handles no-linkage**: Wrapper passes through all data when no filters active; non-interactive cards simply ignore the props they don't use.
+
+---
+
+## Quick Tasks Completed
+
+| ID | Name | Date | Lines Removed |
+|----|------|------|---------------|
+| 001 | Remove legacy components and consolidate rendering | 2026-01-21 | ~987 |
 
 ---
 
@@ -156,9 +167,18 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Phase 2.1 complete. All cards use unified DashboardCard wrapper.
+**Where we left off:** Quick Task 001 complete. Codebase cleaned up.
 
 **Next action:** Plan Phase 3 (Correlation Analysis) - requires research first.
+
+**Quick Task 001 Completed (2026-01-21):**
+
+Legacy component removal and template consolidation:
+- Deleted FullscreenPortal.vue (superseded by CSS-only fullscreen)
+- Deleted LinkedTableCard.vue and LinkedTableManager.ts (unused feature)
+- Consolidated dual card rendering paths into single unified path
+- All cards now use LinkableCardWrapper (handles no-linkage gracefully)
+- ~987 lines of dead code removed
 
 **Phase 2.1 Completed (2026-01-21):**
 
@@ -168,12 +188,6 @@ DashboardCard component architecture:
 - Content components render only their visualization
 - Works identically in main dashboard and sub-dashboards
 - Verified on ScatterCard, HistogramCard, MapCard, DataTableCard
-
-Key accomplishments:
-- Consistent card appearance across all types
-- No duplicate fullscreen buttons
-- Proper resize handling on fullscreen exit
-- Sub-dashboards automatically inherit architecture
 
 ### Recovery Commands
 
@@ -187,4 +201,4 @@ Read .planning/phases/02.1-dashboard-card-component/02.1-04-SUMMARY.md for verif
 
 ---
 
-*State updated: 2026-01-21*
+*State updated: 2026-01-21 (Quick Task 001)*
