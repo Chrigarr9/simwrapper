@@ -475,6 +475,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
 }
 
 .plot-container {

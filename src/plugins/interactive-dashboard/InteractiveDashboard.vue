@@ -660,6 +660,13 @@ export default defineComponent({
           this.$store.commit('resize')
           // Force re-layout of all cards
           this.resizeAllCards()
+
+          // Plotly needs extra time for DOM to settle after fullscreen transitions
+          // Dispatch another resize after a delay for reliable chart resizing
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'))
+            this.resizeAllCards()
+          }, 150)
         }
       })
     },

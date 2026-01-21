@@ -401,6 +401,7 @@ onUnmounted(() => {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
 }
 
 .table-controls {
