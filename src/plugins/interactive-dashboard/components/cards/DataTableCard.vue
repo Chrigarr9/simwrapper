@@ -364,12 +364,14 @@ watch(() => props.hoveredIds, async (newVal) => {
   }
 }, { deep: true })
 
-// Register filter observer on mount
+// Register filter observer on mount and emit loaded
 onMounted(() => {
   if (props.filterManager) {
     debugLog('[DataTableCard] Registering filter observer')
     props.filterManager.addObserver(filterObserver)
   }
+  // Emit isLoaded to hide the spinner in the dashboard card frame
+  emit('isLoaded')
 })
 
 // Unregister filter observer on unmount
@@ -379,9 +381,6 @@ onUnmounted(() => {
     props.filterManager.removeObserver(filterObserver)
   }
 })
-
-// Emit loaded
-emit('isLoaded')
 </script>
 
 <style scoped>

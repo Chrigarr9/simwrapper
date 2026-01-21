@@ -421,11 +421,20 @@ watch(isDarkMode, () => {
 
 // Resize observer for responsive chart sizing
 let resizeObserver: ResizeObserver | null = null
+let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 
 function handleResize() {
-  if (plotContainer.value) {
-    Plotly.Plots.resize(plotContainer.value)
+  // Debounce resize calls to allow DOM to settle (especially after fullscreen transitions)
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout)
   }
+  resizeTimeout = setTimeout(() => {
+    if (plotContainer.value) {
+      debugLog('[ScatterCard] Executing Plotly resize')
+      Plotly.Plots.resize(plotContainer.value)
+    }
+    resizeTimeout = null
+  }, 100)
 }
 
 onMounted(() => {
@@ -448,10 +457,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Clean up resize observer
+  // Clean up resize observer and timeout
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout)
+    resizeTimeout = null
   }
   window.removeEventListener('resize', handleResize)
 })
