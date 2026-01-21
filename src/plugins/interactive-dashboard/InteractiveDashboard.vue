@@ -76,6 +76,10 @@
               :size-column="card.sizeColumn"
               :marker-size="card.markerSize"
               :id-column="yaml.table?.idColumn"
+              :attributes="card.attributes"
+              :show-values="card.showValues"
+              :p-value-threshold="card.pValueThreshold"
+              :listen-to-attribute-pair-selection="card.listenToAttributePairSelection"
               :filtered-data="filteredData"
               :hovered-ids="hoveredIds"
               :selected-ids="selectedIds"
@@ -101,6 +105,7 @@
               @filter="handleFilter"
               @hover="handleHover"
               @select="handleSelect"
+              @attribute-pair-selected="handleAttributePairSelected"
               @isLoaded="handleCardIsLoaded(card)"
               @dimension-resizer="setDimensionResizer"
               @titles="setCardTitles(card, $event)"
@@ -608,6 +613,12 @@ export default defineComponent({
       }
       if (this.linkageManager) {
         this.linkageManager.setSelectedIds(new Set())
+      }
+    },
+
+    handleAttributePairSelected(attrX: string, attrY: string) {
+      if (this.linkageManager) {
+        this.linkageManager.setSelectedAttributePair(attrX, attrY)
       }
     },
 
