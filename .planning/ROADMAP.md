@@ -217,10 +217,12 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 03.1-01-PLAN.md — Create ComparisonToggle component and wire comparison state through dashboard
-- [ ] 03.1-02-PLAN.md — Add comparison mode to HistogramCard with overlay bars
-- [ ] 03.1-03-PLAN.md — Add comparison mode to PieChartCard with concentric rings
-- [ ] 03.1-04-PLAN.md — Add comparison mode to ScatterCard and DataTableCard count display
+- [x] 03.1-01-PLAN.md — Create ComparisonToggle component and wire comparison state through dashboard
+- [x] 03.1-02-PLAN.md — Add comparison mode to HistogramCard with overlay bars
+- [x] 03.1-03-PLAN.md — Add comparison mode to PieChartCard with concentric rings
+- [x] 03.1-04-PLAN.md — Add comparison mode to ScatterCard and DataTableCard count display
+
+**Completed:** 2026-01-21
 
 **Details:**
 Generalizes the comparison mode pattern from commuter-requests plugin to the interactive dashboard:
@@ -313,12 +315,12 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Partial | 50% |
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
-| 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Not Started | 0% |
+| 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 4/9 phases complete (44%)
+**Overall Progress:** 5/9 phases complete (56%)
 
 ---
 
@@ -361,4 +363,4 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 3.1 plans created*
+*Last updated: 2026-01-21 — Phase 3.1 complete (Comparison Mode)*

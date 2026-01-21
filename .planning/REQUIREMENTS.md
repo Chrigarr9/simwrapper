@@ -28,8 +28,17 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Correlation Analysis
 
-- [ ] **CORR-01**: Correlation matrix card showing pairwise Pearson correlations as heatmap
-- [ ] **CORR-02**: Attribute selector allows choosing which columns to include in correlation matrix
+- [x] **CORR-01**: Correlation matrix card showing pairwise Pearson correlations as heatmap
+- [x] **CORR-02**: Attribute selector allows choosing which columns to include in correlation matrix
+
+### Comparison Mode
+
+- [x] **COMP-01**: ComparisonToggle control enables/disables comparison mode dashboard-wide
+- [x] **COMP-02**: HistogramCard shows baseline bars (gray, low opacity) behind filtered bars when comparison mode active
+- [x] **COMP-03**: PieChartCard shows baseline as outer ring around filtered inner ring when comparison mode active
+- [x] **COMP-04**: ScatterCard shows baseline points (gray, low opacity) behind filtered points when comparison mode active
+- [x] **COMP-05**: DataTableCard shows "Filtered / Baseline" count when comparison mode active
+- [x] **COMP-06**: Comparison mode only activates when filters are active (no meaningless comparison of all vs all)
 
 ### Dual Maps
 
@@ -119,8 +128,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CARD-03 | Phase 2.1: DashboardCard Component | Complete |
 | CARD-04 | Phase 2.1: DashboardCard Component | Complete |
 | CARD-05 | Phase 2.1: DashboardCard Component | Complete |
-| CORR-01 | Phase 3: Correlation Analysis | Pending |
-| CORR-02 | Phase 3: Correlation Analysis | Pending |
+| CORR-01 | Phase 3: Correlation Analysis | Complete |
+| CORR-02 | Phase 3: Correlation Analysis | Complete |
+| COMP-01 | Phase 3.1: Comparison Mode | Complete |
+| COMP-02 | Phase 3.1: Comparison Mode | Complete |
+| COMP-03 | Phase 3.1: Comparison Mode | Complete |
+| COMP-04 | Phase 3.1: Comparison Mode | Complete |
+| COMP-05 | Phase 3.1: Comparison Mode | Complete |
+| COMP-06 | Phase 3.1: Comparison Mode | Complete |
 | DMAP-01 | Phase 4: Dual Maps | Pending |
 | DMAP-02 | Phase 4: Dual Maps | Pending |
 | DMAP-03 | Phase 4: Dual Maps | Pending |
@@ -130,10 +145,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRPH-01 | Phase 6: Graph Visualization | Pending |
 
 **Coverage:**
-- v1 requirements: 19 total (including 5 new CARD-* requirements)
-- Mapped to phases: 19
+- v1 requirements: 25 total (including 5 CARD-*, 6 COMP-* requirements)
+- Mapped to phases: 25
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 2.1 complete (CARD-01 to CARD-05 verified)*
+*Last updated: 2026-01-21 — Phase 3.1 complete (COMP-01 to COMP-06 verified)*
