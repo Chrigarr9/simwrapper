@@ -2,7 +2,7 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 7 (including 1 inserted)
+**Total Phases:** 8 (including 2 inserted)
 **Total v1 Requirements:** 18
 
 ---
@@ -105,6 +105,61 @@ Plans:
 
 ---
 
+## Phase 2.1: DashboardCard Component Architecture (INSERTED)
+
+**Goal:** Create a unified DashboardCard wrapper component that consolidates all card frame logic (header, buttons, fullscreen, resize) so content components only handle their visualization
+
+**Dependencies:** Phase 2 (reveals architectural issues with scattered card logic)
+
+**Requirements:**
+- CARD-01: DashboardCard component handles card frame, header, title/description display
+- CARD-02: DashboardCard component handles enlarge/restore button and fullscreen state
+- CARD-03: DashboardCard component handles resize events and notifies child content
+- CARD-04: Content components (ScatterCard, HistogramCard, MapCard, DataTableCard) render only their visualization, not frame/buttons
+- CARD-05: DashboardCard works identically in main dashboard and sub-dashboards
+
+**Success Criteria:**
+1. User sees consistent card frame appearance across all card types (scatter, histogram, map, table)
+2. User clicks enlarge on any card type and it expands to fullscreen correctly
+3. User exits fullscreen and all cards resize properly (no scatter plot overflow, no missing buttons)
+4. Developer adds a new card type by creating content-only component and wrapping with DashboardCard
+5. Cards in sub-dashboards behave identically to cards in main dashboard
+6. Fullscreen state is managed by DashboardCard, not duplicated in individual cards
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02.1-01-PLAN.md — Create DashboardCard component with frame, header, buttons, and TypeScript interfaces
+- [ ] 02.1-02-PLAN.md — Add fullscreen CSS management and resize event propagation
+- [ ] 02.1-03-PLAN.md — Refactor InteractiveDashboard to use DashboardCard wrapper
+- [ ] 02.1-04-PLAN.md — Verify content components and fullscreen behavior across all card types
+
+**Details:**
+The current architecture has card frame/header/buttons rendered inline in InteractiveDashboard.vue template, with fullscreen logic in getCardStyle(). Individual cards (DataTableCard, ScatterCard) have tried to implement their own fullscreen/resize handling, causing:
+- Duplicate enlarge buttons (DataTableCard had its own)
+- Inconsistent resize behavior (scatter plots scaling incorrectly after fullscreen toggle)
+- Buttons disappearing in certain state transitions
+- Scattered, hard-to-maintain code
+
+The DashboardCard component will:
+1. Render the card frame (.dash-card-frame equivalent)
+2. Render the header with title, description, info button, enlarge button
+3. Manage fullscreen state and apply appropriate CSS
+4. Dispatch resize events to children when exiting fullscreen
+5. Provide a slot for card-specific content
+
+Content components will:
+1. Receive filteredData, hoveredIds, selectedIds via props (unchanged)
+2. Render only their visualization (chart, map, table)
+3. Listen for resize events from parent DashboardCard
+4. NOT handle their own frame, header, buttons, or fullscreen
+
+This is the composition pattern that enables future features like card reordering.
+
+**Research Flag:** None - Vue slot/composition patterns well-documented
+
+---
+
 ## Phase 3: Correlation Analysis
 
 **Goal:** User can visualize pairwise correlations between cluster attributes to identify relationships
@@ -192,13 +247,14 @@ Plans:
 |-------|------|--------------|--------|------------|
 | 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Complete | 100% |
 | 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
-| 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Planned | 0% |
+| 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Partial | 50% |
+| 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Not Started | 0% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 2/7 phases complete (29%)
+**Overall Progress:** 2/8 phases complete (25%)
 
 ---
 
@@ -215,6 +271,11 @@ Plans:
 | ALYR-04 | Phase 1.1 | Yes |
 | SUBD-01 | Phase 2 | Yes |
 | SUBD-02 | Phase 2 | Yes |
+| CARD-01 | Phase 2.1 | Yes |
+| CARD-02 | Phase 2.1 | Yes |
+| CARD-03 | Phase 2.1 | Yes |
+| CARD-04 | Phase 2.1 | Yes |
+| CARD-05 | Phase 2.1 | Yes |
 | CORR-01 | Phase 3 | Yes |
 | CORR-02 | Phase 3 | Yes |
 | DMAP-01 | Phase 4 | Yes |
@@ -225,9 +286,9 @@ Plans:
 | TIME-02 | Phase 5 | Yes |
 | GRPH-01 | Phase 6 | Yes |
 
-**Coverage:** 18/18 requirements mapped (100%)
+**Coverage:** 23/23 requirements mapped (100%)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-20 — Phase 2 planned (sub-dashboard fullscreen fix)*
+*Last updated: 2026-01-21 — Phase 2.1 plans created (DashboardCard component architecture)*
