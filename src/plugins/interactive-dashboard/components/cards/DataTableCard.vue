@@ -1,5 +1,5 @@
 <template>
-  <div class="data-table-card" :class="{ 'is-fullscreen': isFullScreen }">
+  <div class="data-table-card">
     <!-- Header buttons -->
     <div class="table-controls">
       <!-- Auto-scroll toggle -->
@@ -18,15 +18,7 @@
         <i class="fa fa-times-circle"></i>
         <span class="reset-label"> Reset</span>
       </button>
-
-      <!-- Fullscreen toggle -->
-      <button
-        class="button is-small is-white"
-        @click="toggleFullScreen"
-        :title="isFullScreen ? 'Restore' : 'Enlarge'"
-      >
-        <i class="fa" :class="isFullScreen ? 'fa-compress' : 'fa-expand'"></i>
-      </button>
+      <!-- Note: Fullscreen is handled by dashboard-level card header, not here -->
     </div>
 
     <!-- Table contents -->
@@ -116,7 +108,6 @@ const tableWrapper = ref<HTMLElement | null>(null)
 const sortColumn = ref('')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 const enableScrollOnHover = ref(true)
-const isFullScreen = ref(false)
 const isHoverFromTable = ref(false)
 
 // Reactive counter to trigger recomputation when filters change
@@ -329,11 +320,6 @@ function sortByColumn(column: string) {
   }
 }
 
-// Toggle fullscreen
-function toggleFullScreen() {
-  isFullScreen.value = !isFullScreen.value
-}
-
 // Handle row hover
 function handleRowHover(row: any) {
   isHoverFromTable.value = true
@@ -416,30 +402,6 @@ emit('isLoaded')
   height: 100%;
   width: 100%;
   overflow: hidden;
-}
-
-.data-table-card.is-fullscreen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9999;
-  background-color: var(--dashboard-bg-primary, var(--bgBold));
-}
-
-/* Adjust absolute children in fullscreen mode to add margin */
-.data-table-card.is-fullscreen .table-controls {
-  top: 1rem;
-  left: 1rem;
-  right: 1rem;
-}
-
-.data-table-card.is-fullscreen .table-wrapper {
-  top: calc(1rem + 28px);
-  left: 1rem;
-  right: 1rem;
-  bottom: 1rem;
 }
 
 .table-controls {

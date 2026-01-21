@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
@@ -238,9 +238,39 @@ watch(isDarkMode, () => {
   renderChart()
 })
 
+// Resize observer for responsive chart sizing (matches ScatterCard pattern)
+let resizeObserver: ResizeObserver | null = null
+
+function handleResize() {
+  if (plotContainer.value) {
+    Plotly.Plots.resize(plotContainer.value)
+  }
+}
+
 onMounted(() => {
   previousFilteredDataLength.value = props.filteredData.length
   renderChart()
+
+  // Set up resize observer to handle container size changes
+  if (plotContainer.value) {
+    resizeObserver = new ResizeObserver(() => {
+      // Debounce resize calls
+      nextTick(() => handleResize())
+    })
+    resizeObserver.observe(plotContainer.value)
+  }
+
+  // Also listen for window resize events (for fullscreen)
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  // Clean up resize observer
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
