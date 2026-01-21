@@ -97,6 +97,66 @@ Map layers can also be linked:
         onSelect: filter
 ```
 
+### Correlation Matrix Card
+
+Displays a Pearson correlation matrix as an interactive heatmap, showing relationships between numeric attributes.
+
+**YAML Configuration:**
+```yaml
+- type: correlation-matrix
+  title: "Attribute Correlations"
+  attributes:              # Required: list of columns to correlate
+    - travel_time
+    - distance
+    - wait_time
+    - detour_factor
+  width: 2
+  height: 4
+  showValues: auto         # Optional: 'always', 'never', 'auto' (default: auto)
+  pValueThreshold: 0.05    # Optional: significance threshold (default: 0.05)
+  linkage:                 # Optional: link to ScatterCard
+    type: attributePair
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `attributes` | string[] | (required) | Column names to include in correlation matrix |
+| `showValues` | string | `'auto'` | When to show r values in cells: `'always'`, `'never'`, or `'auto'` (hide when >20 attributes) |
+| `pValueThreshold` | number | `0.05` | Significance threshold; correlations with p < threshold marked with asterisk |
+| `linkage.type` | string | - | Set to `'attributePair'` to enable clicking cells to update linked ScatterCard |
+
+**Visual Features:**
+- Blue-white-red diverging color scale (blue=negative, white=zero, red=positive)
+- Asterisk (*) on significant correlations when cell values visible
+- Hover tooltip shows: correlation (r), p-value, and sample size (n)
+- Sample size displayed in header
+- Loading indicator during calculation
+
+**Linking to ScatterCard:**
+
+To have clicking a correlation cell update a ScatterCard's axes:
+
+1. Add `linkage.type: attributePair` to the correlation-matrix card
+2. Add `listenToAttributePairSelection: true` to the ScatterCard
+
+```yaml
+layout:
+  row1:
+    - type: correlation-matrix
+      attributes: [travel_time, distance, wait_time]
+      linkage:
+        type: attributePair
+
+    - type: scatter-plot
+      xColumn: travel_time
+      yColumn: distance
+      listenToAttributePairSelection: true
+```
+
+When user clicks a cell in the matrix, the ScatterCard updates to show that attribute pair.
+
 ## Examples
 
 See the `examples/` directory for:
