@@ -28,152 +28,126 @@
       :style="{'flex': rowFlexWeights[i] || 1}"
     )
 
-      //- each card here
-      .dash-card-frame(v-for="card,j in row.cards" :key="`${i}/${j}`"
-        :style="getCardStyle(card)"
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
+      //- each card here - wrapped with DashboardCard for consistent chrome
+      DashboardCard(
+        v-for="card, j in row.cards"
+        :key="`${i}/${j}`"
+        :card="card"
+        :is-fullscreen="fullScreenCardId === card.id"
+        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== card.id"
+        :is-panel-narrow="isPanelNarrow"
+        :is-full-screen-dashboard="isFullScreenDashboard"
+        :total-cards-in-row="row.cards.length"
+        :total-rows="rows.length"
+        @toggle-fullscreen="toggleZoom(card)"
+        @clear-errors="card.errors = []"
+        @card-resize="handleCardResize"
       )
-
-        //- card header/title
-        .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
-          .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
-            h3 {{ card.title }}
-            p(v-if="card.description") {{ card.description }}
-
-          //- zoom button
-          .header-buttons
-            button.button.is-small.is-white(
-              v-if="card.info"
-              @click="handleToggleInfoClick(card)"
-              :title="infoToggle[card.id] ? 'Hide Info':'Show Info'"
-            )
-              i.fa.fa-info-circle
-
-            button.button.is-small.is-white(
-              @click="toggleZoom(card)"
-              :title="fullScreenCardId ? 'Restore':'Enlarge'"
-            )
-              i.fa.fa-expand
-
-        //- info contents
-        .info(v-show="infoToggle[card.id]")
-          p
-          p {{ card.info }}
-
-        //- card contents
-        .spinner-box(v-if="getCardComponent(card)"
-          :id="card.id"
-          :class="{'is-loaded': card.isLoaded}"
+        //- Card contents rendered in DashboardCard slot
+        //- Linkable cards with managers (have linkage, layer linkage, or data-table type)
+        linkable-card-wrapper(v-if="getCardComponent(card) && (card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
+          :card="card"
+          :filter-manager="filterManager"
+          :linkage-manager="linkageManager"
+          :data-table-manager="dataTableManager"
         )
-          //- NEW: Wrap cards that have linkage (only if managers are initialized)
-          //- Also wrap map cards that have layers with linkage
-          //- Data-table cards always have linkage
-          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
-            :card="card"
-            :filter-manager="filterManager"
-            :linkage-manager="linkageManager"
-            :data-table-manager="dataTableManager"
-          )
-            template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
-              component.dash-card(v-if="card.visible"
-                :is="getCardComponent(card)"
-                :class="{'is-data-table': card.type === 'data-table'}"
-                :fileSystemConfig="fileSystemConfig"
-                :subfolder="row.subtabFolder || xsubfolder"
-                :files="fileList"
-                :yaml="(card.props && card.props.configFile) || ''"
-                :config="card.props"
-                :datamanager="datamanager"
-                :split="split"
-                :style="{opacity: opacity[card.id]}"
-                :cardId="card.id"
-                :cardTitle="card.title"
-                :allConfigFiles="allConfigFiles"
-                :column="card.column"
-                :bin-size="card.binSize"
-                :title="card.title"
-                :x-column="card.xColumn"
-                :y-column="card.yColumn"
-                :color-column="card.colorColumn"
-                :size-column="card.sizeColumn"
-                :marker-size="card.markerSize"
-                :id-column="yaml.table?.idColumn"
-                :filtered-data="filteredData"
-                :hovered-ids="hoveredIds"
-                :selected-ids="selectedIds"
-                :linkage="card.linkage"
-                :layers="getCardLayers(card)"
-                :center="card.center"
-                :zoom="card.zoom"
-                :map-style="card.mapStyle"
-                :legend="card.legend"
-                :tooltip="card.tooltip"
-                :geometry-type="geometryType"
-                :color-by-attribute="colorByAttribute"
-                :map-controls-config="yaml.map?.controls"
-                :geometry-type-options="geometryTypeOptions"
-                :color-by-options="colorByOptions"
-                :layer-strategy="layerStrategy"
-                :table-config="yaml.table"
-                :data-table-manager="dataTableManager"
-                :filter-manager="filterManager"
-                :linkage-manager="linkageManager"
-                @update:geometry-type="geometryType = $event"
-                @update:color-by-attribute="colorByAttribute = $event"
-                @filter="handleFilter"
-                @hover="handleHover"
-                @select="handleSelect"
-                @isLoaded="handleCardIsLoaded(card)"
-                @dimension-resizer="setDimensionResizer"
-                @titles="setCardTitles(card, $event)"
-                @error="setCardError(card, $event)"
-              )
+          template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
+            component.dash-card(v-if="card.visible"
+              :is="getCardComponent(card)"
+              :class="{'is-data-table': card.type === 'data-table'}"
+              :fileSystemConfig="fileSystemConfig"
+              :subfolder="row.subtabFolder || xsubfolder"
+              :files="fileList"
+              :yaml="(card.props && card.props.configFile) || ''"
+              :config="card.props"
+              :datamanager="datamanager"
+              :split="split"
+              :style="{opacity: opacity[card.id]}"
+              :cardId="card.id"
+              :cardTitle="card.title"
+              :allConfigFiles="allConfigFiles"
+              :column="card.column"
+              :bin-size="card.binSize"
+              :title="card.title"
+              :x-column="card.xColumn"
+              :y-column="card.yColumn"
+              :color-column="card.colorColumn"
+              :size-column="card.sizeColumn"
+              :marker-size="card.markerSize"
+              :id-column="yaml.table?.idColumn"
+              :filtered-data="filteredData"
+              :hovered-ids="hoveredIds"
+              :selected-ids="selectedIds"
+              :linkage="card.linkage"
+              :layers="getCardLayers(card)"
+              :center="card.center"
+              :zoom="card.zoom"
+              :map-style="card.mapStyle"
+              :legend="card.legend"
+              :tooltip="card.tooltip"
+              :geometry-type="geometryType"
+              :color-by-attribute="colorByAttribute"
+              :map-controls-config="yaml.map?.controls"
+              :geometry-type-options="geometryTypeOptions"
+              :color-by-options="colorByOptions"
+              :layer-strategy="layerStrategy"
+              :table-config="yaml.table"
+              :data-table-manager="dataTableManager"
+              :filter-manager="filterManager"
+              :linkage-manager="linkageManager"
+              @update:geometry-type="geometryType = $event"
+              @update:color-by-attribute="colorByAttribute = $event"
+              @filter="handleFilter"
+              @hover="handleHover"
+              @select="handleSelect"
+              @isLoaded="handleCardIsLoaded(card)"
+              @dimension-resizer="setDimensionResizer"
+              @titles="setCardTitles(card, $event)"
+              @error="setCardError(card, $event)"
+            )
 
-          //- Standard rendering for cards without linkage
-          component.dash-card(v-else-if="card.visible"
-            :is="getCardComponent(card)"
-            :fileSystemConfig="fileSystemConfig"
-            :subfolder="row.subtabFolder || xsubfolder"
-            :files="fileList"
-            :yaml="(card.props && card.props.configFile) || ''"
-            :config="card.props"
-            :datamanager="datamanager"
-            :split="split"
-            :style="{opacity: opacity[card.id]}"
-            :cardId="card.id"
-            :cardTitle="card.title"
-            :allConfigFiles="allConfigFiles"
-            :column="card.column"
-            :bin-size="card.binSize"
-            :title="card.title"
-            :x-column="card.xColumn"
-            :y-column="card.yColumn"
-            :color-column="card.colorColumn"
-            :size-column="card.sizeColumn"
-            :marker-size="card.markerSize"
-            :id-column="yaml.table?.idColumn"
-            :layers="getCardLayers(card)"
-            :center="card.center"
-            :zoom="card.zoom"
-            :map-style="card.mapStyle"
-            :legend="card.legend"
-            :tooltip="card.tooltip"
-            :geometry-type="geometryType"
-            :color-by-attribute="colorByAttribute"
-            :map-controls-config="yaml.map?.controls"
-            :geometry-type-options="geometryTypeOptions"
-            :color-by-options="colorByOptions"
-            :layer-strategy="layerStrategy"
-            @update:geometry-type="geometryType = $event"
-            @update:color-by-attribute="colorByAttribute = $event"
-            @isLoaded="handleCardIsLoaded(card)"
-            @dimension-resizer="setDimensionResizer"
-            @titles="setCardTitles(card, $event)"
-            @error="setCardError(card, $event)"
-          )
-          .error-text(v-if="card.errors.length")
-            span.clear-error(@click="card.errors=[]") &times;
-            p(v-for="err,i in card.errors" :key="i") {{ err }}
+        //- Standard rendering for cards without linkage
+        component.dash-card(v-else-if="getCardComponent(card) && card.visible"
+          :is="getCardComponent(card)"
+          :fileSystemConfig="fileSystemConfig"
+          :subfolder="row.subtabFolder || xsubfolder"
+          :files="fileList"
+          :yaml="(card.props && card.props.configFile) || ''"
+          :config="card.props"
+          :datamanager="datamanager"
+          :split="split"
+          :style="{opacity: opacity[card.id]}"
+          :cardId="card.id"
+          :cardTitle="card.title"
+          :allConfigFiles="allConfigFiles"
+          :column="card.column"
+          :bin-size="card.binSize"
+          :title="card.title"
+          :x-column="card.xColumn"
+          :y-column="card.yColumn"
+          :color-column="card.colorColumn"
+          :size-column="card.sizeColumn"
+          :marker-size="card.markerSize"
+          :id-column="yaml.table?.idColumn"
+          :layers="getCardLayers(card)"
+          :center="card.center"
+          :zoom="card.zoom"
+          :map-style="card.mapStyle"
+          :legend="card.legend"
+          :tooltip="card.tooltip"
+          :geometry-type="geometryType"
+          :color-by-attribute="colorByAttribute"
+          :map-controls-config="yaml.map?.controls"
+          :geometry-type-options="geometryTypeOptions"
+          :color-by-options="colorByOptions"
+          :layer-strategy="layerStrategy"
+          @update:geometry-type="geometryType = $event"
+          @update:color-by-attribute="colorByAttribute = $event"
+          @isLoaded="handleCardIsLoaded(card)"
+          @dimension-resizer="setDimensionResizer"
+          @titles="setCardTitles(card, $event)"
+          @error="setCardError(card, $event)"
+        )
 
     //- Data Table (if visible in config AND not placed in layout) - styled as a dashboard card
     //- When table.position === 'layout', the table is rendered via a data-table card in the layout
@@ -298,6 +272,7 @@ import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
+import DashboardCard from './components/DashboardCard.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -312,7 +287,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard, DashboardCard }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -340,7 +315,7 @@ export default defineComponent({
       fileSystemConfig: {} as FileSystemConfig,
       fullScreenCardId: '',
       resizers: {} as { [id: string]: any },
-      infoToggle: {} as { [id: string]: boolean },
+      // Note: infoToggle removed - now managed locally by DashboardCard component
       isDestroying: false,
       isFullScreenDashboard: false,
       isResizing: false,
@@ -672,7 +647,16 @@ export default defineComponent({
 
     // Toggle table fullscreen
     toggleTableFullScreen() {
+      const wasFullscreen = this.tableFullScreen
       this.tableFullScreen = !this.tableFullScreen
+
+      // When exiting fullscreen, dispatch resize event so ALL cards resize properly
+      // This is needed for charts like Plotly that listen for resize events
+      this.$nextTick(() => {
+        if (wasFullscreen) {
+          window.dispatchEvent(new Event('resize'))
+        }
+      })
     },
 
     handleTableRowClick(row: any) {
@@ -782,9 +766,7 @@ export default defineComponent({
       this.isResizing = false
     },
 
-    handleToggleInfoClick(card: any) {
-      this.infoToggle[card.id] = !this.infoToggle[card.id]
-    },
+    // Note: handleToggleInfoClick removed - info toggle now managed locally by DashboardCard
 
     async getFiles() {
       const folderContents = await this.fileApi.getDirectory(this.xsubfolder)
@@ -829,7 +811,19 @@ export default defineComponent({
       this.updateDimensions(options.id)
     },
 
+    /**
+     * Handle card resize events from DashboardCard component
+     * This is called when the card's container resizes (via ResizeObserver)
+     */
+    handleCardResize(cardId: string, dimensions: { width: number; height: number }) {
+      // If a card has registered a resizer, call it with the new dimensions
+      if (this.resizers[cardId]) {
+        this.resizers[cardId](dimensions)
+      }
+    },
+
     async toggleZoom(card: any) {
+      const wasFullscreen = !!this.fullScreenCardId
       if (this.fullScreenCardId) {
         this.fullScreenCardId = ''
       } else {
@@ -840,6 +834,12 @@ export default defineComponent({
       await this.$nextTick()
       // tell plotly to resize everything
       this.updateDimensions(card.id)
+
+      // When exiting fullscreen, dispatch resize event so ALL cards resize properly
+      // This is needed for charts like Plotly that listen for resize events
+      if (wasFullscreen) {
+        window.dispatchEvent(new Event('resize'))
+      }
     },
 
     updateDimensions(cardId: string) {
@@ -852,55 +852,7 @@ export default defineComponent({
       if (!this.isResizing) globalStore.commit('resize')
     },
 
-    getCardStyle(card: any) {
-      // figure out height. If card has registered a resizer with changeDimensions(),
-      // then it needs a default height (300)
-
-      // markdown does not want a default height
-      const defaultHeight = card.type === 'text' ? undefined : 300
-
-      const height = card.height ? card.height * 60 : defaultHeight
-      const flex = card.width || 1
-
-      let style: any = { flex: flex }
-
-      if (card.backgroundColor || card.background) {
-        style.backgroundColor = card.backgroundColor || card.background
-      }
-
-      if (height && !this.isFullScreenDashboard) {
-        style.minHeight = `${height}px`
-        style.maxHeight = `${height}px`
-        style.height = `${height}px`
-      }
-
-      // if there is only a single card on this panel, shrink its margin
-      if (this.rows.length == 1 && this.rows[0].cards.length == 1) {
-        style.margin = '0.25rem 0.25rem'
-      }
-
-      // but no actually, if it's full screen then do this.
-      if (this.fullScreenCardId) {
-        if (this.fullScreenCardId !== card.id) {
-          style.display = 'none'
-        } else {
-          // Use position:fixed to cover entire viewport (works in sub-dashboards too)
-          style = {
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            right: '0',
-            bottom: '0',
-            zIndex: '10000',
-            margin: '0',
-            padding: '1rem',
-            backgroundColor: 'var(--bgBold)',
-          }
-        }
-      }
-
-      return style
-    },
+    // Note: getCardStyle removed - card styling now handled by DashboardCard component
 
     getFileSystem(name: string): FileSystemConfig {
       const svnProject: FileSystemConfig[] = this.$store.state.svnProjects.filter(
@@ -1156,7 +1108,7 @@ export default defineComponent({
 
           // Vue 2 is weird about new properties: use Vue.set() instead
           Vue.set(this.opacity, card.id, 0.5)
-          Vue.set(this.infoToggle, card.id, false)
+          // Note: Info toggle is now managed locally by DashboardCard component
           Vue.set(card, 'errors', [] as string[])
           Vue.set(card, 'visible', false)
 
@@ -1731,79 +1683,7 @@ export default defineComponent({
 
 // --end--
 
-.dash-card-frame {
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-rows: auto auto 1fr;
-  margin: 0 $cardSpacing $cardSpacing 0;
-  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
-  padding: 2px 3px 3px 3px;
-  border-radius: 4px;
-  overflow: hidden;
-
-  .dash-card-headers {
-    display: flex;
-    flex-direction: row;
-    line-height: 1.2rem;
-    padding: 3px 3px 2px 3px;
-    p {
-      margin-bottom: 0.1rem;
-      color: var(--dashboard-text-secondary, var(--textFaint));
-    }
-  }
-
-  .dash-card-headers.fullscreen {
-    padding-top: 0;
-  }
-
-  .header-buttons {
-    display: flex;
-    flex-direction: row;
-    margin-left: auto;
-
-    button {
-      background-color: #00000000;
-      color: var(--dashboard-interaction-selected, var(--link));
-      opacity: 0.5;
-    }
-    button:hover {
-      background-color: var(--dashboard-bg-tertiary, #ffffff20);
-      opacity: 1;
-    }
-  }
-
-  h3 {
-    grid-row: 1 / 2;
-    font-size: 1.1rem;
-    line-height: 1.5rem;
-    margin-bottom: 0.5rem;
-    color: var(--dashboard-interaction-selected, var(--link));
-  }
-
-  // if there is a description, fix the margins
-  p {
-    grid-row: 2 / 3;
-    margin-top: -0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .spinner-box {
-    grid-row: 3 / 4;
-    position: relative;
-    background: url('../assets/simwrapper-logo/SW_logo_icon_anim.gif');
-    background-size: 8rem;
-    background-repeat: no-repeat;
-    background-position: center center;
-  }
-
-  .spinner-box.is-loaded {
-    background: none;
-  }
-}
-
-// .dash-card-frame.wiide {
-//   // margin-right: 2rem;
-// }
+// Note: .dash-card-frame styles moved to DashboardCard.vue component
 
 .dash-card {
   transition: opacity 0.5s;
@@ -1833,9 +1713,7 @@ export default defineComponent({
   flex-direction: column;
 }
 
-.dash-card-frame.is-panel-narrow {
-  margin: 0rem 0.5rem 1rem 0;
-}
+// Note: .dash-card-frame.is-panel-narrow moved to DashboardCard.vue component
 
 ul.tab-row {
   padding: 0 0;
@@ -1856,40 +1734,7 @@ li.is-not-active b a {
   color: var(--text);
 }
 
-.error-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: var(--bgError);
-  color: #800;
-  border: 1px solid var(--bgCream4);
-  border-radius: 3px;
-  margin-bottom: 0px;
-  padding: 0.5rem 0.5rem;
-  z-index: 25000;
-  font-size: 0.9rem;
-  font-weight: bold;
-  max-height: 50%;
-  overflow-y: auto;
-  p {
-    line-height: 1.2rem;
-    margin: 0 0;
-  }
-}
-
-.clear-error {
-  float: right;
-  font-weight: bold;
-  margin-right: 2px;
-  padding: 0px 5px;
-}
-
-.clear-error:hover {
-  cursor: pointer;
-  color: red;
-  background-color: #88888833;
-}
+// Note: .error-text and .clear-error styles moved to DashboardCard.vue component
 
 .favorite-icon {
   margin: auto -0.5rem auto 1rem;
