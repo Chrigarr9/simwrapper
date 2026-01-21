@@ -10,6 +10,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   area: defineAsyncComponent(() => import('./area.vue')),
   bar: defineAsyncComponent(() => import('./bar.vue')),
   bubble: defineAsyncComponent(() => import('./bubble.vue')),
+  'correlation-matrix': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/CorrelationMatrixCard.vue')),
   csv: defineAsyncComponent(() => import('./table.vue')),
   gridmap: defineAsyncComponent(() => import('./gridmap.vue')),
   heatmap: defineAsyncComponent(() => import('./heatmap.vue')),
