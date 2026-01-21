@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 3.1 of 9 (Comparison Mode)
-**Plan:** 3/4 complete
-**Status:** In progress
-**Last activity:** 2026-01-21 - Completed 03.1-03-PLAN.md (PieChartCard comparison mode)
+**Plan:** 4/4 complete
+**Status:** Phase complete
+**Last activity:** 2026-01-21 - Completed 03.1-04-PLAN.md (ScatterCard and DataTableCard comparison)
 
 **Progress:**
 ```
@@ -33,13 +33,13 @@ Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
-Phase 3.1: Comparison Mode          [### ] 75% (3/4 plans) IN PROGRESS
+Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3.1 in progress. Comparison mode foundation, HistogramCard, and PieChartCard complete. PieChartCard shows concentric donut with semi-transparent baseline outer ring. Next: ScatterCard overlay and DataTableCard count display (Plan 03.1-04).
+**Overall:** Phase 3.1 COMPLETE. All comparison mode features implemented: toggle UI, baseline data propagation, overlay bars (histogram), concentric rings (pie), baseline points (scatter), and count display (table). All cards support comparison mode visualization.
 
 ---
 
@@ -47,7 +47,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 19 |
+| Plans completed | 20 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 16/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01) |
@@ -355,3 +355,20 @@ HistogramCard comparison mode with overlay bars:
 - Commit: c64c0b3a
 
 *State updated: 2026-01-21 (Plan 03.1-02 complete - HistogramCard comparison mode)*
+
+**Plan 03.1-04 Completed (2026-01-21):**
+
+ScatterCard and DataTableCard comparison mode:
+- Added baselineData and showComparison props to ScatterCard
+- Implemented baselineScatterData computed property for baseline point computation
+- Baseline trace rendered first (unshift) with gray color (rgba 156, 163, 175, 0.3)
+- Baseline points slightly smaller (markerSize * 0.8) and behind filtered points
+- Legend shows when comparison active (showlegend: hasCategories || props.showComparison)
+- Click handler ignores baseline trace via curveNumber check (curveNumber === 0)
+- Added baselineData and showComparison props to DataTableCard
+- Implemented comparisonCountText computed property ("X / Y" format)
+- Comparison count displayed in table-controls with blue selected color styling
+- Files: ScatterCard.vue (67 lines changed), DataTableCard.vue (32 lines changed)
+- Commits: d280b4dd (scatter), 75d8b109 (table)
+
+*State updated: 2026-01-21 (Phase 3.1 complete - Comparison Mode)*
