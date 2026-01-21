@@ -1,44 +1,32 @@
 <template lang="pug">
-//- Card placeholder - ALWAYS maintains its size in the layout
-//- This prevents layout shifts when another card goes fullscreen
-.dash-card-placeholder(:style="placeholderStyle" :class="frameClasses")
-  //- Actual card content - becomes fullscreen overlay when isFullscreen
-  .dash-card-frame(:class="{'is-fullscreen': isFullscreen}")
-    //- Card header with title/description and buttons
-    .dash-card-headers(v-if="showHeader" :class="{'fullscreen': isFullscreen}")
-      .header-labels(:style="{paddingLeft: card.type === 'text' ? '4px' : ''}")
-        h3 {{ card.title }}
-        p(v-if="card.description") {{ card.description }}
+//- DashboardCard - a simple card container
+//- Has a size, displays content, can go fullscreen
+.dashboard-card(:style="cardStyle" :class="cardClasses")
+  //- Header with title and buttons
+  .card-header(v-if="showHeader")
+    .header-labels(:style="{paddingLeft: card.type === 'text' ? '4px' : ''}")
+      h3 {{ card.title }}
+      p(v-if="card.description") {{ card.description }}
 
-      .header-buttons
-        //- Info button (only if card has info)
-        button.button.is-small.is-white(
-          v-if="card.info"
-          @click="toggleInfo"
-          :title="showInfo ? 'Hide Info' : 'Show Info'"
-        )
-          i.fa.fa-info-circle
+    .header-buttons
+      button.btn-icon(v-if="card.info" @click="toggleInfo" :title="showInfo ? 'Hide Info' : 'Show Info'")
+        i.fa.fa-info-circle
 
-        //- Enlarge/restore button
-        button.button.is-small.is-white(
-          @click="handleFullscreenClick"
-          :title="isFullscreen ? 'Restore' : 'Enlarge'"
-        )
-          i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
+      button.btn-icon(@click="handleFullscreenClick" :title="isFullscreen ? 'Restore' : 'Enlarge'")
+        i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
 
-    //- Info panel (collapsible) - state managed LOCALLY
-    .info(v-show="showInfo")
-      p
-      p {{ card.info }}
+  //- Info panel
+  .info-panel(v-show="showInfo")
+    p {{ card.info }}
 
-    //- Content slot
-    .card-content-wrapper(ref="contentWrapper" :id="card.id" :class="{'is-loaded': card.isLoaded}")
-      slot
+  //- Content
+  .card-content(ref="contentWrapper" :id="card.id" :class="{'is-loaded': card.isLoaded}")
+    slot
 
-    //- Error display
-    .error-text(v-if="card.errors && card.errors.length")
-      span.clear-error(@click="clearErrors") &times;
-      p(v-for="err, i in card.errors" :key="i") {{ err }}
+  //- Errors
+  .card-errors(v-if="card.errors && card.errors.length")
+    span.close-btn(@click="clearErrors") ×
+    p(v-for="err, i in card.errors" :key="i") {{ err }}
 </template>
 
 <script lang="ts">
@@ -223,25 +211,19 @@ export default defineComponent({
     })
 
     /**
-     * CSS classes for the placeholder (outer wrapper)
-     * Note: is-fullscreen is NOT here - it's on the inner .dash-card-frame
+     * CSS classes for the card
      */
-    const frameClasses = computed(() => {
+    const cardClasses = computed(() => {
       return {
-        wiide: true, // Always apply wiide class for consistency
+        'is-fullscreen': props.isFullscreen,
         'is-panel-narrow': props.isPanelNarrow,
       }
     })
 
     /**
-     * Placeholder style - maintains the card's normal dimensions
-     * The frame ALWAYS stays in place with its normal size, even when fullscreen.
-     * This prevents layout shifts that would cause other cards to resize.
-     *
-     * When fullscreen, the content is teleported to body via <Teleport>,
-     * but this placeholder keeps the card's space reserved in the layout.
+     * Card style - size and appearance
      */
-    const placeholderStyle = computed(() => {
+    const cardStyle = computed(() => {
       const card = props.card
 
       // Figure out height. If card has registered a resizer with changeDimensions(),
@@ -270,9 +252,8 @@ export default defineComponent({
         style.margin = '0.25rem 0.25rem'
       }
 
-      // NOTE: No fullscreen styling here - the placeholder ALWAYS maintains
-      // its normal size. Fullscreen is handled by teleporting content to body
-      // with the .fullscreen-overlay CSS class.
+      // NOTE: Fullscreen styling is handled via CSS .is-fullscreen class,
+      // which uses position:fixed to overlay the viewport
 
       return style
     })
@@ -284,8 +265,8 @@ export default defineComponent({
       handleFullscreenClick,
       clearErrors,
       showHeader,
-      frameClasses,
-      placeholderStyle,
+      cardClasses,
+      cardStyle,
     }
   },
 })
@@ -295,50 +276,31 @@ export default defineComponent({
 @import '@/styles.scss';
 
 /*
- * DashboardCard component styles
- * Uses CSS variables from StyleManager for theme-aware colors:
- * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
- * - --dashboard-text-primary, --dashboard-text-secondary
- * - --dashboard-border-default, --dashboard-border-subtle
- * - --dashboard-interaction-hover, --dashboard-interaction-selected
+ * DashboardCard - Simple card container
  *
- * Fallback pattern: var(--dashboard-X, var(--app-X, #fallback))
+ * A card has a size (flex + height), displays content, and can go fullscreen.
+ * Uses CSS variables from StyleManager for theme-aware colors.
+ *
+ * Normal state: sized by flex layout in parent row
+ * Fullscreen state: position:fixed overlay covering viewport
  */
 
-/*
- * Placeholder - ALWAYS maintains its position and size in the layout.
- * This wrapper never changes when fullscreen - it keeps the card's "slot"
- * in the flex layout, preventing other cards from shifting.
- */
-.dash-card-placeholder {
-  // Placeholder maintains the card's position in the layout
-  // It uses the same styles as the old .dash-card-frame for sizing
+.dashboard-card {
+  // Layout and sizing - controlled by cardStyle computed
+  display: flex;
+  flex-direction: column;
   margin: 0 $cardSpacing $cardSpacing 0;
-  position: relative; // Anchor for the absolute-positioned frame inside
-}
 
-/*
- * Card frame - the actual visible card content.
- * When not fullscreen: fills the placeholder completely.
- * When fullscreen: becomes position:fixed overlay covering viewport.
- */
-.dash-card-frame {
-  // Normal state: fill the placeholder completely
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-rows: auto auto 1fr;
+  // Appearance
   background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
   padding: 2px 3px 3px 3px;
   border-radius: 4px;
   overflow: hidden;
 
-  // Fullscreen state: become fixed overlay covering viewport
+  // For positioning child elements
+  position: relative;
+
+  // Fullscreen state: overlay covering entire viewport
   &.is-fullscreen {
     position: fixed;
     top: 0;
@@ -347,101 +309,105 @@ export default defineComponent({
     bottom: 0;
     z-index: 10000;
     padding: 1rem;
+    margin: 0;
     border-radius: 0;
     background-color: var(--bgBold);
+    // Override any inline height constraints when fullscreen
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    height: 100vh !important;
   }
 
-  .dash-card-headers {
-    display: flex;
-    flex-direction: row;
-    line-height: 1.2rem;
-    padding: 3px 3px 2px 3px;
-    overflow: visible;  // Prevent header buttons from being clipped
-
-    p {
-      margin-bottom: 0.1rem;
-      color: var(--dashboard-text-secondary, var(--textFaint));
-    }
+  // Responsive - narrow panels
+  &.is-panel-narrow {
+    margin: 0rem 0.5rem 1rem 0;
   }
+}
 
-  .dash-card-headers.fullscreen {
-    padding-top: 0;
-  }
-
-  .header-labels {
-    flex: 1;
-  }
-
-  .header-buttons {
-    display: flex;
-    flex-direction: row;
-    margin-left: auto;
-    flex-shrink: 0;  // Prevent buttons from being squeezed out
-    min-width: fit-content;  // Ensure buttons always have enough space
-
-    button {
-      background-color: #00000000;
-      color: var(--dashboard-interaction-selected, var(--link));
-      opacity: 0.5;
-    }
-
-    button:hover {
-      background-color: var(--dashboard-bg-tertiary, #ffffff20);
-      opacity: 1;
-    }
-  }
+// Header - contains title, description, and action buttons
+.card-header {
+  display: flex;
+  flex-direction: row;
+  line-height: 1.2rem;
+  padding: 3px 3px 2px 3px;
+  flex-shrink: 0;
 
   h3 {
-    grid-row: 1 / 2;
     font-size: 1.1rem;
     line-height: 1.5rem;
     margin-bottom: 0.5rem;
     color: var(--dashboard-interaction-selected, var(--link));
   }
 
-  // If there is a description, fix the margins
   p {
-    grid-row: 2 / 3;
     margin-top: -0.5rem;
     margin-bottom: 0.5rem;
+    color: var(--dashboard-text-secondary, var(--textFaint));
   }
 }
 
-// Content wrapper - provides positioning context for content
-.card-content-wrapper {
-  grid-row: 3 / 4;
-  position: relative;
-  background: url('../../../assets/simwrapper-logo/SW_logo_icon_anim.gif');
-  background-size: 8rem;
-  background-repeat: no-repeat;
-  background-position: center center;
+.header-labels {
+  flex: 1;
 }
 
-.card-content-wrapper.is-loaded {
-  background: none;
+.header-buttons {
+  display: flex;
+  flex-direction: row;
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: fit-content;
+
+  .btn-icon {
+    background-color: transparent;
+    border: none;
+    color: var(--dashboard-interaction-selected, var(--link));
+    opacity: 0.5;
+    padding: 4px 8px;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--dashboard-bg-tertiary, #ffffff20);
+      opacity: 1;
+    }
+  }
 }
 
-// Info panel styles
-.info {
+// Info panel - collapsible additional information
+.info-panel {
   padding: 0.5rem;
   background-color: var(--dashboard-bg-tertiary, var(--bgPanel2));
   border-radius: 3px;
   margin: 0 3px 3px 3px;
   font-size: 0.9rem;
   color: var(--dashboard-text-secondary, var(--textFaint));
+  flex-shrink: 0;
 
   p {
     margin: 0;
     line-height: 1.4;
   }
+}
 
-  p:first-child {
-    margin-bottom: 0;
+// Content area - fills remaining space, holds the slot content
+.card-content {
+  flex: 1;
+  position: relative;
+  min-height: 0; // Important for flex children to shrink properly
+  overflow: hidden;
+
+  // Loading state - animated logo background
+  background: url('../../../assets/simwrapper-logo/SW_logo_icon_anim.gif');
+  background-size: 8rem;
+  background-repeat: no-repeat;
+  background-position: center center;
+
+  &.is-loaded {
+    background: none;
   }
 }
 
-// Error display overlay
-.error-text {
+// Error display - positioned at bottom of card
+.card-errors {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -450,9 +416,8 @@ export default defineComponent({
   color: #800;
   border: 1px solid var(--bgCream4);
   border-radius: 3px;
-  margin-bottom: 0px;
-  padding: 0.5rem 0.5rem;
-  z-index: 25000;
+  padding: 0.5rem;
+  z-index: 100;
   font-size: 0.9rem;
   font-weight: bold;
   max-height: 50%;
@@ -460,25 +425,19 @@ export default defineComponent({
 
   p {
     line-height: 1.2rem;
-    margin: 0 0;
+    margin: 0;
   }
-}
 
-.clear-error {
-  float: right;
-  font-weight: bold;
-  margin-right: 2px;
-  padding: 0px 5px;
-}
+  .close-btn {
+    float: right;
+    font-weight: bold;
+    padding: 0 5px;
+    cursor: pointer;
 
-.clear-error:hover {
-  cursor: pointer;
-  color: red;
-  background-color: #88888833;
-}
-
-// Responsive styles for narrow panels
-.dash-card-placeholder.is-panel-narrow {
-  margin: 0rem 0.5rem 1rem 0;
+    &:hover {
+      color: red;
+      background-color: #88888833;
+    }
+  }
 }
 </style>
