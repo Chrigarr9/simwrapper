@@ -1196,8 +1196,10 @@ export default defineComponent({
       })
 
       // Check if table config exists in YAML
+      // If no table config, dashboard runs in "standard mode" - cards render without centralized data
+      // FilterManager and LinkageManager are already initialized above
       if (!this.yaml.table) {
-        console.warn('[InteractiveDashboard] No table configuration found in YAML')
+        console.log('[InteractiveDashboard] No table configuration - running in standard dashboard mode')
         return
       }
 
