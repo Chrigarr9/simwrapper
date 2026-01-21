@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-20 (Phase 2 Plan 01 Complete - Sub-Dashboard Fullscreen Fix)
+**Last Updated:** 2026-01-21 (Plan 02.1-01 Complete - DashboardCard Foundation)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 2 in progress (Sub-Dashboard Fix)
+**Current Focus:** Phase 2.1 in progress (DashboardCard Component Architecture)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,23 +21,24 @@
 
 ## Current Position
 
-**Phase:** 2 of 6 (Sub-Dashboard Fix)
-**Plan:** 1/1 complete
-**Status:** Phase 2 Plan 01 COMPLETE
-**Last activity:** 2026-01-20 - Completed 02-01-PLAN.md (FullscreenPortal implementation)
+**Phase:** 2.1 of 8 (DashboardCard Component Architecture)
+**Plan:** 1/4 complete
+**Status:** Plan 02.1-01 COMPLETE - DashboardCard foundation created
+**Last activity:** 2026-01-21 - Completed Plan 02.1-01 (DashboardCard component with frame, header, buttons)
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
-Phase 2:   Sub-Dashboard Fix        [#] 100% (1/1 plans) COMPLETE
+Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
+Phase 2.1: DashboardCard Component  [#---] 25% (1/4 plans)
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 2 complete. Sub-dashboard cards can now expand to fullscreen via portal pattern.
+**Overall:** Phase 2.1 in progress. DashboardCard foundation created with frame, header, and buttons.
 
 ---
 
@@ -45,7 +46,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 8 |
+| Plans completed | 9 |
 | Plans requiring revision | 0 |
 | Requirements completed | 8/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04, SUBD-01) |
 | Research phases triggered | 0 |
@@ -83,11 +84,22 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Portal always rendered, conditionally active | Avoids duplicating template code; active only when embedded && fullScreenCardId matches | 2026-01-20 |
 | z-index 10000 for fullscreen portal | Higher than DataTableCard's 9999 for proper stacking | 2026-01-20 |
 | Dual Escape key handling | Both portal and dashboard handle Escape for redundancy | 2026-01-20 |
+| Info toggle managed locally by DashboardCard | Encapsulates UI-only state, simplifies InteractiveDashboard | 2026-01-21 |
+| Fullscreen toggle emitted to parent | DashboardCard emits event, parent maintains single source of truth | 2026-01-21 |
 
 ### Roadmap Evolution
 
 - Phase 1.1 inserted after Phase 1: Adaptive Layer Coloring (URGENT) - 2026-01-20
   - Reason: Cluster visualization issues - colorBy not affecting clusters/arcs, need intelligent layer coloring based on visibility
+
+- Phase 2.1 inserted after Phase 2: DashboardCard Component Architecture (URGENT) - 2026-01-21
+  - Reason: Phase 2 execution revealed fundamental architectural issues:
+    - Duplicate fullscreen buttons (DataTableCard had its own)
+    - Scatter plots scaling incorrectly after fullscreen toggle
+    - Buttons disappearing in certain state transitions
+    - Card frame/header/buttons logic scattered across InteractiveDashboard.vue and individual cards
+  - Solution: Create unified DashboardCard wrapper component using composition pattern
+  - This enables: consistent behavior, single source of truth, future card reordering feature
 
 ### TODOs
 
@@ -101,8 +113,13 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 01.1-02: Integrate into MapCard
 - [x] Execute Plan 01.1-03: Verification and edge case handling
 - [x] Plan Phase 2: Sub-Dashboard Fix
-- [x] Execute Plan 02-01: FullscreenPortal implementation
-- [ ] Plan Phase 3: Correlation Analysis (NEXT)
+- [x] Execute Plan 02-01: FullscreenPortal implementation (partial - issues found)
+- [x] Plan Phase 2.1: DashboardCard Component Architecture
+- [x] Execute Plan 02.1-01: Create DashboardCard component (COMPLETE)
+- [ ] Execute Plan 02.1-02: Add fullscreen/resize management (NEXT)
+- [ ] Execute Plan 02.1-03: Refactor existing cards
+- [ ] Execute Plan 02.1-04: Verify behavior
+- [ ] Plan Phase 3: Correlation Analysis
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
@@ -124,6 +141,7 @@ None currently.
 9. **isLayerVisible must filter by geometryType**: Geometry type selector only works if visibility function considers layerConfig.geometryType.
 10. **Portal pattern for CSS containment escape**: Use DOM teleportation to document.body to bypass parent `contain: layout` that blocks position:fixed.
 11. **display:contents for layout-neutral wrappers**: Components that wrap content without affecting layout should use `display: contents`.
+12. **Local state for UI-only concerns**: Info toggle in DashboardCard is UI-only, no need to emit to parent; reduces coupling.
 
 ---
 
@@ -131,22 +149,24 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Phase 2 complete. Sub-dashboard fullscreen functionality implemented via FullscreenPortal.
+**Where we left off:** Plan 02.1-01 complete. DashboardCard foundation created.
 
-**Next action:** Plan Phase 3 (Correlation Analysis) with `/gsd:plan-phase 3`.
+**Next action:** Execute Plan 02.1-02 (Add fullscreen/resize management to DashboardCard).
 
-**Phase 2 Completion Summary (2026-01-20):**
+**Plan 02.1-01 Completed (2026-01-21):**
 
-**Key Deliverables:**
-1. **FullscreenPortal component** - Teleports slot content to document.body when active
-2. **InteractiveDashboard integration** - Portal wraps card frames, active only when embedded
-3. **SubDashboard CSS fix** - Removed `contain: layout` that blocked position:fixed
+Created DashboardCard component with:
+- Card frame with consistent styling using CSS variables
+- Header with title, description, info button, enlarge button
+- Collapsible info panel with LOCAL state management (showInfo ref)
+- Content slot for visualization components
+- Error display overlay
+- cardStyle computed ported from InteractiveDashboard.getCardStyle()
 
-**Success Criteria Met:**
-- [x] SUBD-01: Enlarge button visible on sub-dashboard card headers
-- [x] SUBD-02: Enlarged card breaks out to full viewport
-- [x] Escape key closes fullscreen view
-- [x] Card maintains interactivity in fullscreen mode
+Key files created:
+- `src/plugins/interactive-dashboard/components/DashboardCard.vue` (383 lines)
+- `src/plugins/interactive-dashboard/types/dashboardCard.ts` (100 lines)
+- `src/plugins/interactive-dashboard/components/index.ts` (14 lines)
 
 ### Recovery Commands
 
@@ -155,9 +175,10 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/02-sub-dashboard-fix/02-01-SUMMARY.md for latest execution
+Read .planning/phases/02.1-dashboard-card-component/ for Phase 2.1 plans
+Read .planning/phases/02.1-dashboard-card-component/02.1-01-SUMMARY.md for Plan 01 summary
 ```
 
 ---
 
-*State updated: 2026-01-20*
+*State updated: 2026-01-21*
