@@ -35,10 +35,14 @@ interface Props {
     behavior: 'toggle'
   }
   tableConfig?: TableConfig   // From InteractiveDashboard - contains column formats
+  baselineData?: any[]        // All data (unfiltered) - from LinkableCardWrapper
+  showComparison?: boolean    // Whether comparison mode is active
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  filteredData: () => []
+  filteredData: () => [],
+  baselineData: () => [],
+  showComparison: false
 })
 const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>, filterType: string, binSize?: number]
@@ -129,6 +133,31 @@ const histogramData = computed(() => {
     .map(([bin, count]) => ({ bin, count }))
 })
 
+const baselineHistogramData = computed(() => {
+  // Only compute if comparison mode is active and we have baseline data
+  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
+    return []
+  }
+
+  debugLog('[HistogramCard] Computing baseline histogram from', props.baselineData.length, 'rows')
+
+  const values = props.baselineData.map(row => row[props.column])
+  const binSize = props.binSize || 1
+
+  // Create bins using same logic as histogramData
+  const bins = new Map<number, number>()
+  values.forEach(val => {
+    if (val !== null && val !== undefined) {
+      const bin = Math.floor(val / binSize) * binSize
+      bins.set(bin, (bins.get(bin) || 0) + 1)
+    }
+  })
+
+  return Array.from(bins.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bin, count]) => ({ bin, count }))
+})
+
 const renderChart = () => {
   if (!plotContainer.value || histogramData.value.length === 0) return
 
@@ -145,10 +174,29 @@ const renderChart = () => {
   const tickvals = histogramData.value.map(d => d.bin)
   const ticktext = tickvals.map(v => formatTickValue(v))
 
-  const trace = {
+  // Build traces array for dual-trace rendering
+  const traces: any[] = []
+
+  // Baseline trace (if comparison mode) - shown in background with low opacity
+  if (props.showComparison && baselineHistogramData.value.length > 0) {
+    traces.push({
+      x: baselineHistogramData.value.map(d => d.bin),
+      y: baselineHistogramData.value.map(d => d.count),
+      type: 'bar',
+      name: 'Baseline (All Data)',
+      marker: {
+        color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
+      },
+      hovertemplate: '<b>%{x}</b><br>Baseline: %{y}<extra></extra>',
+    })
+  }
+
+  // Filtered trace - on top with full colors
+  traces.push({
     x: histogramData.value.map(d => d.bin),
     y: histogramData.value.map(d => d.count),
     type: 'bar',
+    name: props.showComparison ? 'Filtered' : 'Count',
     marker: {
       color: histogramData.value.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor
@@ -159,7 +207,8 @@ const renderChart = () => {
         width: 1,
       },
     },
-  }
+    hovertemplate: '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
+  })
 
   // Build xaxis config with optional tick formatting
   const xaxisConfig: any = {
@@ -195,15 +244,34 @@ const renderChart = () => {
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     bargap: 0.1,
+    barmode: 'overlay',  // Always overlay mode - baseline behind filtered
+    showlegend: props.showComparison,  // Show legend only in comparison mode
+    legend: {
+      x: 1,
+      xanchor: 'right',
+      y: 1,
+      font: { color: textColor, size: 10 },
+    },
   }
 
-  Plotly.newPlot(plotContainer.value, [trace], layout, {
+  Plotly.newPlot(plotContainer.value, traces, layout, {
     displayModeBar: false,
     responsive: true,
   })
 
-  // Click handler
+  // Click handler - only respond to filtered trace clicks
   plotContainer.value.on('plotly_click', (data: any) => {
+    // In multi-trace mode, curveNumber indicates which trace was clicked
+    // curveNumber 0 = baseline (don't respond), curveNumber 1 = filtered (respond)
+    // In single-trace mode, curveNumber is 0 and that's the filtered trace
+    const clickedTraceIndex = data.points[0].curveNumber
+    const isBaselineTrace = props.showComparison && clickedTraceIndex === 0
+
+    if (isBaselineTrace) {
+      // Don't respond to baseline trace clicks
+      return
+    }
+
     const bin = data.points[0].x
 
     // Toggle bin in selection
