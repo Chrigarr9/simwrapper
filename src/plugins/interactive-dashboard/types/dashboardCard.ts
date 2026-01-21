@@ -80,6 +80,15 @@ export interface DashboardCardProps {
 
   /** Whether the dashboard is in fullscreen mode */
   isFullScreenDashboard: boolean
+
+  /** Total number of cards in the current row (used for margin adjustment) */
+  totalCardsInRow: number
+
+  /** Total number of rows in the dashboard (used for margin adjustment) */
+  totalRows: number
+
+  /** Whether another card (not this one) is fullscreen - hides this card */
+  anotherCardFullscreen: boolean
 }
 
 /**

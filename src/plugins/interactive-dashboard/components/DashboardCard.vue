@@ -31,7 +31,7 @@
     p {{ card.info }}
 
   //- Content slot
-  .card-content-wrapper(:id="card.id" :class="{'is-loaded': card.isLoaded}")
+  .card-content-wrapper(ref="contentWrapper" :id="card.id" :class="{'is-loaded': card.isLoaded}")
     slot
 
   //- Error display
@@ -70,7 +70,7 @@
  * </DashboardCard>
  * ```
  */
-import { defineComponent, ref, computed, PropType } from 'vue'
+import { defineComponent, ref, computed, PropType, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import type { CardConfig } from '../types/dashboardCard'
 
 export default defineComponent({
@@ -121,6 +121,12 @@ export default defineComponent({
     // This is managed locally by DashboardCard, NOT by the parent
     const showInfo = ref(false)
 
+    // Ref for content wrapper element (used by ResizeObserver)
+    const contentWrapper = ref<HTMLElement | null>(null)
+
+    // ResizeObserver instance (cleaned up on unmount)
+    let resizeObserver: ResizeObserver | null = null
+
     /**
      * Toggle info panel visibility
      */
@@ -142,6 +148,71 @@ export default defineComponent({
     function clearErrors() {
       emit('clear-errors', props.card.id)
     }
+
+    /**
+     * Emit resize event with current dimensions
+     * Called by ResizeObserver and fullscreen transitions
+     */
+    function emitResize() {
+      if (!contentWrapper.value) return
+      const { clientWidth, clientHeight } = contentWrapper.value
+      emit('card-resize', props.card.id, { width: clientWidth, height: clientHeight })
+    }
+
+    /**
+     * Handle keyboard events - Escape to exit fullscreen
+     * Only responds when this card is fullscreen
+     */
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && props.isFullscreen) {
+        emit('toggle-fullscreen', props.card.id)
+      }
+    }
+
+    // Watch for fullscreen changes to dispatch resize events
+    // This ensures Plotly charts and other visualizations resize correctly
+    watch(
+      () => props.isFullscreen,
+      (isNowFullscreen, wasFullscreen) => {
+        if (wasFullscreen && !isNowFullscreen) {
+          // Exiting fullscreen - trigger global resize for all charts
+          nextTick(() => {
+            window.dispatchEvent(new Event('resize'))
+            emitResize() // Also emit specific card resize
+          })
+        } else if (isNowFullscreen) {
+          // Entering fullscreen - also need resize
+          nextTick(() => emitResize())
+        }
+      }
+    )
+
+    // Setup ResizeObserver and keyboard listener on mount
+    onMounted(() => {
+      // Add keyboard listener for Escape key
+      window.addEventListener('keydown', handleKeydown)
+
+      // Setup ResizeObserver for container size changes
+      if (contentWrapper.value) {
+        resizeObserver = new ResizeObserver(() => {
+          // Debounce slightly using nextTick to avoid excessive updates
+          nextTick(() => emitResize())
+        })
+        resizeObserver.observe(contentWrapper.value)
+      }
+    })
+
+    // Cleanup on unmount
+    onUnmounted(() => {
+      // Remove keyboard listener
+      window.removeEventListener('keydown', handleKeydown)
+
+      // Disconnect ResizeObserver
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+      }
+    })
 
     /**
      * Whether to show the card header
@@ -218,6 +289,7 @@ export default defineComponent({
 
     return {
       showInfo,
+      contentWrapper,
       toggleInfo,
       handleFullscreenClick,
       clearErrors,
