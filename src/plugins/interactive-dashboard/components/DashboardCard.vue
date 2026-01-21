@@ -330,6 +330,7 @@ export default defineComponent({
     flex-direction: row;
     line-height: 1.2rem;
     padding: 3px 3px 2px 3px;
+    overflow: visible;  // Prevent header buttons from being clipped
 
     p {
       margin-bottom: 0.1rem;
@@ -349,6 +350,8 @@ export default defineComponent({
     display: flex;
     flex-direction: row;
     margin-left: auto;
+    flex-shrink: 0;  // Prevent buttons from being squeezed out
+    min-width: fit-content;  // Ensure buttons always have enough space
 
     button {
       background-color: #00000000;
