@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Plan 03-01 Complete - Statistics utility module)
+**Last Updated:** 2026-01-21 (Plan 03-03 Complete - Attribute pair event system)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 3 IN PROGRESS - Correlation Analysis (plan 1 of 4 complete)
+**Current Focus:** Phase 3 IN PROGRESS - Correlation Analysis (plan 3 of 4 complete)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 3 of 8 (Correlation Analysis)
-**Plan:** 1/4 complete
-**Status:** Phase 3 IN PROGRESS - Statistics utility module complete
-**Last activity:** 2026-01-21 - Completed 03-01-PLAN.md (Statistics utility module)
+**Plan:** 3/4 complete
+**Status:** Phase 3 IN PROGRESS - Attribute pair event system complete
+**Last activity:** 2026-01-21 - Completed 03-03-PLAN.md (Attribute pair event system)
 
 **Progress:**
 ```
@@ -32,13 +32,13 @@ Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
-Phase 3:   Correlation Analysis     [#   ] 25% (1/4 plans)
+Phase 3:   Correlation Analysis     [### ] 75% (3/4 plans)
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3 started. Statistics utility module complete with correlation calculation and p-values.
+**Overall:** Phase 3 nearly complete. Statistics utilities, matrix card, and attribute pair event system ready.
 
 ---
 
@@ -46,7 +46,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 13 |
+| Plans completed | 15 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 13/19 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05) |
@@ -98,6 +98,13 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Clamp |r| to 0.9999 before p-value | Prevents division by zero in t-statistic when r near ±1; statistically acceptable | 2026-01-21 |
 | Two-tailed p-value for correlation | Standard practice for H0: ρ=0 vs H1: ρ≠0; p = 2 * (1 - CDF(\|t\|, df)) | 2026-01-21 |
 | Custom t-distribution CDF approximation | Avoids mathjs import; normal approximation for df≥30, simplified beta for df<30 | 2026-01-21 |
+| Blue-white-red diverging colorscale for correlation | Standard for correlation heatmaps; blue=negative, red=positive, white=zero; colorblind-safe | 2026-01-21 |
+| Significance threshold configurable via prop | pValueThreshold prop (default 0.05) allows YAML override; asterisk marks significant correlations | 2026-01-21 |
+| Auto mode for correlation cell text | Show values if ≤20 attributes (readable), hide if >20 (avoids clutter); manual override available | 2026-01-21 |
+| Text color adaptation in correlation heatmap | White text on dark cells (|r| > 0.5), black on light cells for readability | 2026-01-21 |
+| Debounced correlation calculation | 200ms debounce for filteredData changes avoids excessive recalculation during rapid filtering | 2026-01-21 |
+| Optional onAttributePairSelected in LinkageObserver | Not all observers need attribute pair events - only ScatterCard when enabled | 2026-01-21 |
+| Dynamic axis state in ScatterCard | currentXColumn/currentYColumn refs allow prop overrides without mutation | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -134,6 +141,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Plan Phase 3: Correlation Analysis
 - [x] Research Phase 3 before planning (Web Worker architecture)
 - [x] Execute Plan 03-01: Statistics utility module (COMPLETE)
+- [x] Execute Plan 03-02: CorrelationMatrixCard component (COMPLETE)
+- [x] Execute Plan 03-03: Attribute pair event system (COMPLETE)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
 
@@ -180,6 +189,7 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 18. **Clamping prevents numerical instability in correlation**: When r is near ±1, clamping to 0.9999 prevents division by zero in t-statistic without affecting statistical interpretation.
 19. **Two-tailed tests are standard for correlation**: Always use 2 × (1 - CDF) for p-value calculation in Pearson correlation, not one-tailed.
 20. **Missing data filtration essential**: Filtering null/undefined/NaN before correlation calculation prevents cascading NaN results and provides transparency via sample size reporting.
+21. **Optional interface methods for extensibility**: Adding optional methods to existing interfaces (onAttributePairSelected?) maintains backwards compatibility while enabling new features.
 
 ---
 
@@ -196,11 +206,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Plan 03-01 complete. Statistics utility module created with correlation functions.
+**Where we left off:** Plan 03-03 complete. Attribute pair event system for correlation matrix → scatter integration ready.
 
-**Next action:** Execute Plan 03-02 (CorrelationMatrixCard component).
+**Next action:** Execute Plan 03-04 (Integration and verification).
 
-**Phase progress:** Phase 3 (Correlation Analysis) - 1 of 4 plans complete.
+**Phase progress:** Phase 3 (Correlation Analysis) - 3 of 4 plans complete.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -212,6 +222,19 @@ Statistics utility module with correlation calculation:
 - Clamps |r| to 0.9999 for numerical stability
 - 20 comprehensive unit tests (all passing)
 - Files: statistics.ts (246 lines), statistics.test.ts (324 lines)
+
+**Plan 03-02 Completed (2026-01-21):**
+
+CorrelationMatrixCard component with Plotly heatmap:
+- Interactive correlation matrix heatmap with diverging blue-white-red colorscale
+- Hover tooltips show r value, p-value, and sample size
+- Significant correlations (p < 0.05) marked with asterisk when cell text visible
+- Auto mode hides cell text if >20 attributes (configurable via showValues prop)
+- White text on dark cells (|r| > 0.5), black on light cells for readability
+- Debounced calculation (200ms) for filteredData changes
+- Cell click emits attributePairSelected event for scatter plot coordination
+- Resize handling with ResizeObserver and window resize listener
+- File: CorrelationMatrixCard.vue (329 lines)
 
 **Quick Task 002 Completed (2026-01-21):**
 
@@ -249,8 +272,20 @@ Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
 Read .planning/phases/02.1-dashboard-card-component/02.1-04-SUMMARY.md for verification summary
 Read .planning/phases/03-correlation-analysis/03-01-SUMMARY.md for statistics module details
+Read .planning/phases/03-correlation-analysis/03-02-SUMMARY.md for CorrelationMatrixCard component details
 ```
 
 ---
 
-*State updated: 2026-01-21 (Plan 03-01 complete - statistics utility module)*
+*State updated: 2026-01-21 (Plan 03-02 complete - CorrelationMatrixCard component)*
+
+**Plan 03-03 Completed (2026-01-21):**
+
+Attribute pair event system for correlation matrix → scatter integration:
+- Extended LinkageManager with optional onAttributePairSelected handler
+- Added setSelectedAttributePair(), getSelectedAttributePair(), clearAttributePairSelection() methods
+- ScatterCard accepts listenToAttributePairSelection and linkageManager props
+- Dynamic axis state (currentXColumn/currentYColumn) allows runtime overrides
+- Validates attribute names before updating axes
+- Observer pattern maintains backwards compatibility
+- Files: LinkageManager.ts (+29 lines), ScatterCard.vue (+61/-8 lines)
