@@ -178,7 +178,15 @@ This is the composition pattern that enables future features like card reorderin
 3. User opens the attribute selector and toggles which of the 70+ available attributes appear in the matrix
 4. User applies a filter via another card (e.g., HistogramCard) and the correlation matrix recalculates for filtered rows only
 
-**Research Flag:** Yes - Web Worker architecture and attribute limit optimization needed
+**Plans:** 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Create statistics utilities and install simple-statistics dependency
+- [ ] 03-02-PLAN.md — Create CorrelationMatrixCard component with Plotly heatmap
+- [ ] 03-03-PLAN.md — Extend LinkageManager and integrate ScatterCard axis updates
+- [ ] 03-04-PLAN.md — Register card type and verification
+
+**Research Flag:** Completed - Web Worker architecture deferred, Plotly.js + simple-statistics selected
 
 ---
 
@@ -251,7 +259,7 @@ This is the composition pattern that enables future features like card reorderin
 | 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Partial | 50% |
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
-| 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
+| 3 | Correlation Analysis | CORR-01, CORR-02 | Planned | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
@@ -293,4 +301,4 @@ This is the composition pattern that enables future features like card reorderin
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 2.1 complete (DashboardCard component architecture verified)*
+*Last updated: 2026-01-21 — Phase 3 planned (4 plans in 3 waves)*
