@@ -222,21 +222,6 @@
         :initial-collapsed="false"
       )
 
-    //- Legacy: Linked Tables Section (simpler table+map pairs)
-    .linked-tables-section(v-if="linkedTableManagers.length > 0 && tableSelectedIds.size > 0 && !yaml.subDashboards?.length")
-      linked-table-card(
-        v-for="(manager, idx) in linkedTableManagers"
-        :key="idx"
-        :title="getLinkedTableConfig(idx).name || 'Linked Table'"
-        :table-manager="manager"
-        :id-column="manager.getIdColumn()"
-        :columns="getLinkedTableConfig(idx).columns"
-        :map-config="getLinkedTableConfig(idx).map"
-        :file-system-config="fileSystemConfig"
-        :subfolder="xsubfolder"
-        :initial-collapsed="false"
-      )
-
 </template>
 
 <script lang="ts">
@@ -261,11 +246,9 @@ import DashboardDataManager from '@/js/DashboardDataManager'
 import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
-import { LinkedTableManager } from './managers/LinkedTableManager'
 import { StyleManager, initializeTheme } from './managers/StyleManager'
 import { debugLog } from './utils/debug'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
-import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
 import DashboardCard from './components/DashboardCard.vue'
@@ -283,7 +266,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard, DashboardCard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -329,7 +312,6 @@ export default defineComponent({
       filterManager: null as FilterManager | null,
       linkageManager: null as LinkageManager | null,
       dataTableManager: null as DataTableManager | null,
-      linkedTableManagers: [] as LinkedTableManager[],
       // NEW: Sub-dashboard data (pre-loaded for SubDashboard components)
       subDashboardData: {} as Record<string, any[]>,
       // Selected value from parent table (used to filter sub-dashboards)
@@ -665,17 +647,6 @@ export default defineComponent({
       console.log('[InteractiveDashboard] subDashboards count:', this.yaml.subDashboards?.length || 0)
       console.log('[InteractiveDashboard] subDashboardData:', Object.keys(this.subDashboardData))
       debugLog('[InteractiveDashboard] Parent selection:', this.parentSelectedValue)
-      
-      // Legacy: Update linked tables when parent selection changes
-      this.handleParentTableSelect(this.tableSelectedIds)
-    },
-
-    // NEW: Get linked table config from YAML by index
-    getLinkedTableConfig(index: number): any {
-      if (!this.yaml.linkedTables || index >= this.yaml.linkedTables.length) {
-        return {}
-      }
-      return this.yaml.linkedTables[index]
     },
 
     handleClearAllFilters() {
@@ -1317,10 +1288,7 @@ export default defineComponent({
         }
       }
 
-      // NEW: Initialize linked tables if configured
-      await this.initializeLinkedTables()
-
-      // NEW: Initialize sub-dashboards if configured
+      // Initialize sub-dashboards if configured
       await this.initializeSubDashboards()
     },
 
@@ -1495,45 +1463,6 @@ export default defineComponent({
       return result
     },
 
-    // NEW: Initialize secondary linked tables
-    async initializeLinkedTables() {
-      if (!this.yaml.linkedTables || !Array.isArray(this.yaml.linkedTables)) {
-        debugLog('[InteractiveDashboard] No linkedTables configuration found')
-        return
-      }
-
-      const parentIdColumn = this.yaml.table?.idColumn || 'id'
-
-      for (const linkedConfig of this.yaml.linkedTables) {
-        try {
-          const config = {
-            name: linkedConfig.name || linkedConfig.dataset,
-            dataset: linkedConfig.dataset,
-            idColumn: linkedConfig.idColumn || 'id',
-            linkColumn: linkedConfig.linkColumn || parentIdColumn,
-            visible: linkedConfig.visible !== false,
-            columns: linkedConfig.columns || {},
-          }
-
-          debugLog('[InteractiveDashboard] Initializing LinkedTableManager:', config.name)
-          const manager = new LinkedTableManager(config)
-          await manager.loadData(this.fileApi, this.xsubfolder)
-          
-          this.linkedTableManagers.push(manager)
-          debugLog('[InteractiveDashboard] Linked table loaded:', config.name, manager.getAllData().length, 'rows')
-        } catch (e) {
-          console.error('[InteractiveDashboard] Failed to load linked table:', linkedConfig.name, e)
-        }
-      }
-    },
-
-    // NEW: Handle parent table selection to filter linked tables
-    handleParentTableSelect(selectedIds: Set<any>) {
-      debugLog('[InteractiveDashboard] Parent selection changed:', selectedIds.size, 'ids')
-      this.linkedTableManagers.forEach(manager => {
-        manager.setParentSelection(selectedIds)
-      })
-    },
   },
   async mounted() {
     window.addEventListener('resize', this.resizeAllCards)
@@ -1569,11 +1498,10 @@ export default defineComponent({
     this.narrowPanelObserver?.disconnect()
     window.removeEventListener('resize', this.resizeAllCards)
 
-    // NEW: Clean up managers
+    // Clean up managers
     this.filterManager = null
     this.linkageManager = null
     this.dataTableManager = null
-    this.linkedTableManagers = []
   },
 })
 </script>
@@ -1923,20 +1851,6 @@ li.is-not-active b a {
         color: var(--dashboard-text-primary, var(--text));
       }
     }
-  }
-}
-
-// Linked tables section styles
-.linked-tables-section {
-  padding: 1rem 0;
-  margin-top: 1rem;
-  border-top: 2px solid var(--dashboard-border-default, var(--bgBold));
-
-  h4 {
-    margin: 0 0 1rem 0;
-    font-size: 0.9rem;
-    color: var(--dashboard-text-secondary, var(--textFancy));
-    font-weight: 600;
   }
 }
 </style>
