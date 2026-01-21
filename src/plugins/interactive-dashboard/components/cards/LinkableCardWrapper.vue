@@ -2,6 +2,8 @@
   <div class="linkable-card-wrapper">
     <slot
       :filtered-data="filteredData"
+      :baseline-data="baselineData"
+      :show-comparison="showComparison"
       :hovered-ids="hoveredIds"
       :selected-ids="selectedIds"
       :handle-filter="handleFilter"
@@ -12,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
@@ -23,13 +25,24 @@ interface Props {
   filterManager: FilterManager
   linkageManager: LinkageManager
   dataTableManager?: DataTableManager | null  // Optional: null when no table config
+  showComparison?: boolean  // Whether comparison mode is active
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showComparison: false,
+})
 
 const hoveredIds = ref<Set<any>>(new Set())
 const selectedIds = ref<Set<any>>(new Set())
 const filteredData = ref<any[]>([])
+
+// Baseline data: all data from data table manager (unfiltered)
+const baselineData = computed(() => {
+  if (!props.dataTableManager) {
+    return []
+  }
+  return props.dataTableManager.getData()
+})
 
 const filterObserver: FilterObserver = {
   onFilterChange: (filters) => {
