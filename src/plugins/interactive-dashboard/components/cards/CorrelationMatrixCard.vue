@@ -69,25 +69,190 @@ const shouldShowValues = computed(() => {
   return props.attributes.length <= 20
 })
 
-// Placeholder functions (implemented in next task)
+// Calculate correlations from filtered data
 function calculateCorrelations() {
-  // To be implemented in Task 2
-  console.log('[CorrelationMatrixCard] calculateCorrelations placeholder')
+  isCalculating.value = true
+
+  // Guard: No attributes or no data
+  if (!props.attributes || props.attributes.length === 0 || !props.filteredData || props.filteredData.length === 0) {
+    correlationData.value = null
+    isCalculating.value = false
+    return
+  }
+
+  // Compute correlation matrix
+  try {
+    correlationData.value = computeCorrelationMatrix(props.filteredData, props.attributes)
+    renderChart()
+  } catch (error) {
+    console.error('[CorrelationMatrixCard] Error computing correlation matrix:', error)
+    correlationData.value = null
+  } finally {
+    isCalculating.value = false
+  }
 }
 
+// Debounced version for filtered data changes
+let debounceTimeout: ReturnType<typeof setTimeout> | null = null
+function debouncedCalculate() {
+  if (debounceTimeout) clearTimeout(debounceTimeout)
+  debounceTimeout = setTimeout(() => {
+    calculateCorrelations()
+    debounceTimeout = null
+  }, 200)
+}
+
+// Build hover template for Plotly
+function buildHoverTemplate(): string {
+  return '<b>%{x} vs %{y}</b><br>' +
+         'r = %{customdata[0]:.3f}<br>' +
+         'p = %{customdata[1]:.4f}<br>' +
+         'n = %{customdata[2]}<extra></extra>'
+}
+
+// Build custom data for hover (p-values and sample sizes)
+function buildCustomData(): any[][][] {
+  if (!correlationData.value) return []
+  const n = correlationData.value.matrix.length
+  const customData: any[][][] = []
+
+  for (let i = 0; i < n; i++) {
+    customData[i] = []
+    for (let j = 0; j < n; j++) {
+      customData[i][j] = [
+        correlationData.value.matrix[i][j],     // r value
+        correlationData.value.pValues[i][j],    // p-value
+        correlationData.value.sampleSizes[i][j] // sample size
+      ]
+    }
+  }
+
+  return customData
+}
+
+// Render Plotly heatmap
 function renderChart() {
-  // To be implemented in Task 2
-  console.log('[CorrelationMatrixCard] renderChart placeholder')
+  if (!plotContainer.value || !correlationData.value) return
+
+  // Theme colors from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const textColor = styleManager.getColor('theme.text.primary')
+
+  const matrix = correlationData.value.matrix
+  const pValues = correlationData.value.pValues
+  const n = matrix.length
+
+  // Build annotations if showing values
+  const annotations: any[] = []
+  if (shouldShowValues.value) {
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const r = matrix[i][j]
+        const p = pValues[i][j]
+        const isSignificant = p < props.pValueThreshold
+
+        // Format: correlation value with asterisk if significant
+        let text = r.toFixed(2)
+        if (isSignificant && i !== j) {
+          text += '*'
+        }
+
+        // Text color: white on dark cells, black on light cells
+        const textColorAnnotation = Math.abs(r) > 0.5 ? '#ffffff' : '#000000'
+
+        annotations.push({
+          x: props.attributes[j],
+          y: props.attributes[i],
+          text: text,
+          showarrow: false,
+          font: {
+            color: textColorAnnotation,
+            size: 10
+          }
+        })
+      }
+    }
+  }
+
+  // Plotly heatmap trace
+  const trace = {
+    z: matrix,
+    x: props.attributes,
+    y: props.attributes,
+    type: 'heatmap',
+    colorscale: [
+      [0.0, '#3b4cc0'],  // Blue for -1 (negative)
+      [0.5, '#f7f7f7'],  // White for 0
+      [1.0, '#b40426']   // Red for +1 (positive)
+    ],
+    zmid: 0,
+    zmin: -1,
+    zmax: 1,
+    hovertemplate: buildHoverTemplate(),
+    customdata: buildCustomData(),
+    showscale: true,
+    colorbar: {
+      title: { text: 'r', font: { color: textColor } },
+      tickfont: { color: textColor },
+    }
+  }
+
+  // Layout
+  const layout = {
+    xaxis: {
+      tickfont: { color: textColor, size: 10 },
+      tickangle: -45,
+      side: 'bottom'
+    },
+    yaxis: {
+      tickfont: { color: textColor, size: 10 },
+      autorange: 'reversed'  // Top-to-bottom matches matrix convention
+    },
+    margin: { l: 100, r: 50, t: 20, b: 100 },
+    paper_bgcolor: bgColor,
+    plot_bgcolor: bgColor,
+    annotations: annotations,
+  }
+
+  Plotly.newPlot(plotContainer.value, [trace], layout, {
+    displayModeBar: false,
+    responsive: true,
+  })
+
+  // Click handler for cell selection
+  plotContainer.value.on('plotly_click', (data: any) => {
+    const point = data.points[0]
+    const attrX = point.x
+    const attrY = point.y
+
+    emit('attributePairSelected', attrX, attrY)
+  })
+
+  // Hover handler (update hoveredCell state)
+  plotContainer.value.on('plotly_hover', (data: any) => {
+    const point = data.points[0]
+    hoveredCell.value = { row: point.pointIndex[0], col: point.pointIndex[1] }
+  })
+
+  // Unhover handler
+  plotContainer.value.on('plotly_unhover', () => {
+    hoveredCell.value = null
+  })
 }
 
-// Lifecycle hooks (basic setup)
+// Watch handlers
+watch(() => props.filteredData, debouncedCalculate, { deep: true })
+watch(isDarkMode, renderChart)
+
+// Lifecycle hooks
 onMounted(() => {
-  console.log('[CorrelationMatrixCard] Mounted with', props.attributes.length, 'attributes')
+  calculateCorrelations()
   emit('isLoaded')
 })
 
 onUnmounted(() => {
-  console.log('[CorrelationMatrixCard] Unmounted')
+  if (debounceTimeout) clearTimeout(debounceTimeout)
 })
 </script>
 
