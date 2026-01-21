@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 3.1 of 9 (Comparison Mode)
-**Plan:** 1/4 complete
+**Plan:** 2/4 complete
 **Status:** In progress
-**Last activity:** 2026-01-21 - Completed 03.1-01-PLAN.md (Comparison mode foundation)
+**Last activity:** 2026-01-21 - Completed 03.1-02-PLAN.md (HistogramCard comparison mode)
 
 **Progress:**
 ```
@@ -33,13 +33,13 @@ Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
-Phase 3.1: Comparison Mode          [#   ] 25% (1/4 plans) IN PROGRESS
+Phase 3.1: Comparison Mode          [##  ] 50% (2/4 plans) IN PROGRESS
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3.1 in progress. Comparison mode foundation complete: toggle UI, baseline data propagation, dashboard state management. Ready for card implementations (histogram, pie, scatter/table).
+**Overall:** Phase 3.1 in progress. Comparison mode foundation and HistogramCard complete. HistogramCard shows gray baseline bars behind filtered bars when comparison active. Next: PieChartCard concentric rings.
 
 ---
 
@@ -47,7 +47,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 17 |
+| Plans completed | 18 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 16/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01) |
@@ -216,11 +216,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 3.1 Plan 01 complete - comparison mode foundation.
+**Where we left off:** Phase 3.1 Plan 02 complete - HistogramCard comparison mode.
 
-**Next action:** Execute Plan 03.1-02 (HistogramCard overlay bars).
+**Next action:** Execute Plan 03.1-03 (PieChartCard concentric rings).
 
-**Phase progress:** Phase 3.1 in progress (1/4 plans complete).
+**Phase progress:** Phase 3.1 in progress (2/4 plans complete).
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -324,3 +324,18 @@ Comparison mode foundation:
 - Files: ComparisonToggle.vue (created), LinkableCardWrapper.vue, InteractiveDashboard.vue
 
 *State updated: 2026-01-21 (Plan 03.1-01 complete - Comparison mode foundation)*
+
+**Plan 03.1-02 Completed (2026-01-21):**
+
+HistogramCard comparison mode with overlay bars:
+- Added baselineData and showComparison props to HistogramCard interface
+- Implemented baselineHistogramData computed property (same binning logic as histogramData)
+- Updated renderChart() for dual-trace rendering (baseline + filtered)
+- Baseline bars in gray (rgba 156, 163, 175, 0.3) behind filtered bars
+- barmode: 'overlay' for layered rendering, legend visible only when comparison active
+- Click handler updated to ignore baseline trace clicks (curveNumber check)
+- When comparison mode active, users see filtered histogram overlaid on baseline
+- File: HistogramCard.vue (modified)
+- Commit: c64c0b3a
+
+*State updated: 2026-01-21 (Plan 03.1-02 complete - HistogramCard comparison mode)*
