@@ -29,13 +29,12 @@
     )
 
       //- each card here - wrapped with DashboardCard for consistent chrome
-      //- Note: anotherCardFullscreen also includes tableFullScreen to hide cards when table is enlarged
       DashboardCard(
         v-for="card, j in row.cards"
         :key="`${i}/${j}/${cardRenderKey}`"
         :card="card"
         :is-fullscreen="fullScreenCardId === card.id"
-        :another-card-fullscreen="(!!fullScreenCardId && fullScreenCardId !== card.id) || tableFullScreen"
+        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== card.id"
         :is-panel-narrow="isPanelNarrow"
         :is-full-screen-dashboard="isFullScreenDashboard"
         :total-cards-in-row="row.cards.length"
@@ -150,40 +149,36 @@
           @error="setCardError(card, $event)"
         )
 
-    //- Data Table (if visible in config AND not placed in layout) - styled as a dashboard card
-    //- When table.position === 'layout', the table is rendered via a data-table card in the layout
-    .dash-row(v-if="yaml.table && yaml.table.visible && yaml.table.position !== 'layout' && dataTableManager" :style="tableFullScreen ? tableFullScreenStyle : {}")
-      .dash-card-frame.table-card-frame(
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen': tableFullScreen}"
+    //- Inline Data Table - wrapped in DashboardCard for unified fullscreen behavior
+    //- When table.position === 'layout', the table is rendered via DataTableCard in the layout instead
+    .dash-row(v-if="inlineTableCard")
+      DashboardCard(
+        :key="'inline-table'"
+        :card="inlineTableCard"
+        :is-fullscreen="fullScreenCardId === inlineTableCard.id"
+        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== inlineTableCard.id"
+        :is-panel-narrow="isPanelNarrow"
+        :is-full-screen-dashboard="isFullScreenDashboard"
+        :total-cards-in-row="1"
+        :total-rows="rows.length + 1"
+        @toggle-fullscreen="toggleZoom(inlineTableCard)"
+        @clear-errors=""
       )
-        //- card header/title
-        .dash-card-headers
-          .header-labels
-            h3 {{ yaml.table.name || 'Data Table' }}
-            p(v-if="yaml.table.description") {{ yaml.table.description }}
-          .header-buttons
-            //- Auto-scroll toggle
-            label.scroll-toggle(title="Auto-scroll to hovered row")
-              input(type="checkbox" v-model="enableScrollOnHover")
-              span.scroll-label Scroll
+        //- Table controls (scroll toggle, filter reset) above the table
+        .table-controls
+          label.scroll-toggle(title="Auto-scroll to hovered row")
+            input(type="checkbox" v-model="enableScrollOnHover")
+            span.scroll-label Scroll
 
-            //- Filter reset button
-            button.button.is-small.is-white(
-              v-if="filterManager && filterManager.hasActiveFilters()"
-              @click="handleClearAllFilters"
-              title="Clear all filters"
-            )
-              i.fa.fa-times-circle
-              span.reset-label  Reset
+          button.button.is-small.is-white(
+            v-if="filterManager && filterManager.hasActiveFilters()"
+            @click="handleClearAllFilters"
+            title="Clear all filters"
+          )
+            i.fa.fa-times-circle
+            span.reset-label  Reset
 
-            //- Fullscreen toggle
-            button.button.is-small.is-white(
-              @click="toggleTableFullScreen"
-              :title="tableFullScreen ? 'Restore' : 'Enlarge'"
-            )
-              i.fa(:class="tableFullScreen ? 'fa-compress' : 'fa-expand'")
-
-        //- table contents
+        //- Table contents
         .table-wrapper(ref="tableWrapper")
           table.data-table
             thead
@@ -348,7 +343,6 @@ export default defineComponent({
       sortDirection: 'asc' as 'asc' | 'desc',
       enableScrollOnHover: true,
       isHoverFromTable: false,
-      tableFullScreen: false,
       // Map controls
       geometryType: 'all' as string,  // 'origin', 'destination', 'all', or custom values
       colorByAttribute: '' as string,  // Will be initialized from YAML default
@@ -458,20 +452,6 @@ export default defineComponent({
       return allColumns.filter(col => !hiddenColumns.includes(col))
     },
 
-    tableFullScreenStyle(): any {
-      return {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        right: '0',
-        bottom: '0',
-        zIndex: '9999',
-        margin: '0',
-        padding: '1rem',
-        backgroundColor: 'var(--bgBold)',
-      }
-    },
-
     // Map control options from YAML
     geometryTypeOptions(): Array<{ value: string; label: string }> {
       return this.yaml.map?.geometryTypes || [
@@ -483,6 +463,24 @@ export default defineComponent({
 
     colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
       return this.yaml.map?.colorBy?.attributes || []
+    },
+
+    /**
+     * Card config object for the inline data table.
+     * Used when yaml.table.position !== 'layout' (table not placed in layout cards).
+     * This allows the table to be wrapped in DashboardCard for unified fullscreen behavior.
+     */
+    inlineTableCard(): any {
+      if (!this.yaml.table || !this.yaml.table.visible || this.yaml.table.position === 'layout' || !this.dataTableManager) {
+        return null
+      }
+      return {
+        id: 'inline-table-card',
+        title: this.yaml.table.name || 'Data Table',
+        description: this.yaml.table.description || '',
+        type: 'inline-table',
+        isLoaded: true,  // Table is always loaded once dataTableManager exists
+      }
     },
   },
 
@@ -646,32 +644,6 @@ export default defineComponent({
         this.sortColumn = column
         this.sortDirection = 'asc'
       }
-    },
-
-    // Toggle table fullscreen
-    toggleTableFullScreen() {
-      const wasFullscreen = this.tableFullScreen
-      this.tableFullScreen = !this.tableFullScreen
-
-      // When exiting fullscreen, dispatch resize event so cards resize properly
-      // Cards are hidden (display: none) while table is fullscreen via anotherCardFullscreen prop,
-      // so they need to recalculate dimensions when they become visible again
-      this.$nextTick(() => {
-        if (wasFullscreen) {
-          // Dispatch native resize event for Plotly and other native listeners
-          window.dispatchEvent(new Event('resize'))
-          // Also trigger Vuex resize for dashboard-aware components
-          this.$store.commit('resize')
-          // Force re-layout of all cards
-          this.resizeAllCards()
-
-          // Give DOM time to settle after cards become visible again
-          setTimeout(() => {
-            window.dispatchEvent(new Event('resize'))
-            this.resizeAllCards()
-          }, 150)
-        }
-      })
     },
 
     handleTableRowClick(row: any) {
@@ -1815,6 +1787,39 @@ li.is-not-active b a {
     &:hover {
       opacity: 1;
     }
+  }
+}
+
+// Table controls (scroll toggle, filter reset) - now inside DashboardCard slot
+.table-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--dashboard-bg-tertiary, var(--bgPanel2));
+  border-radius: 3px;
+  margin-bottom: 0.25rem;
+
+  .scroll-toggle {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--dashboard-text-primary, var(--text));
+    cursor: pointer;
+    opacity: 0.7;
+
+    input {
+      margin-right: 0.25rem;
+    }
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .scroll-label,
+  .reset-label {
+    margin-left: 0.25rem;
   }
 }
 
