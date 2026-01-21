@@ -43,9 +43,9 @@
         @clear-errors="card.errors = []"
         @card-resize="handleCardResize"
       )
-        //- Card contents rendered in DashboardCard slot
-        //- Linkable cards with managers (have linkage, layer linkage, or data-table type)
-        linkable-card-wrapper(v-if="getCardComponent(card) && (card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
+        //- All cards use LinkableCardWrapper - handles both linkage and non-linkage cases
+        //- Cards that don't use filteredData/hoveredIds/selectedIds simply ignore them
+        linkable-card-wrapper(v-if="getCardComponent(card) && filterManager && linkageManager && dataTableManager"
           :card="card"
           :filter-manager="filterManager"
           :linkage-manager="linkageManager"
@@ -105,49 +105,6 @@
               @titles="setCardTitles(card, $event)"
               @error="setCardError(card, $event)"
             )
-
-        //- Standard rendering for cards without linkage
-        component.dash-card(v-else-if="getCardComponent(card) && card.visible"
-          :is="getCardComponent(card)"
-          :fileSystemConfig="fileSystemConfig"
-          :subfolder="row.subtabFolder || xsubfolder"
-          :files="fileList"
-          :yaml="(card.props && card.props.configFile) || ''"
-          :config="card.props"
-          :datamanager="datamanager"
-          :split="split"
-          :style="{opacity: opacity[card.id]}"
-          :cardId="card.id"
-          :cardTitle="card.title"
-          :allConfigFiles="allConfigFiles"
-          :column="card.column"
-          :bin-size="card.binSize"
-          :title="card.title"
-          :x-column="card.xColumn"
-          :y-column="card.yColumn"
-          :color-column="card.colorColumn"
-          :size-column="card.sizeColumn"
-          :marker-size="card.markerSize"
-          :id-column="yaml.table?.idColumn"
-          :layers="getCardLayers(card)"
-          :center="card.center"
-          :zoom="card.zoom"
-          :map-style="card.mapStyle"
-          :legend="card.legend"
-          :tooltip="card.tooltip"
-          :geometry-type="geometryType"
-          :color-by-attribute="colorByAttribute"
-          :map-controls-config="yaml.map?.controls"
-          :geometry-type-options="geometryTypeOptions"
-          :color-by-options="colorByOptions"
-          :layer-strategy="layerStrategy"
-          @update:geometry-type="geometryType = $event"
-          @update:color-by-attribute="colorByAttribute = $event"
-          @isLoaded="handleCardIsLoaded(card)"
-          @dimension-resizer="setDimensionResizer"
-          @titles="setCardTitles(card, $event)"
-          @error="setCardError(card, $event)"
-        )
 
     //- Inline Data Table - wrapped in DashboardCard for unified fullscreen behavior
     //- When table.position === 'layout', the table is rendered via DataTableCard in the layout instead
@@ -527,11 +484,6 @@ export default defineComponent({
       }
       
       return String(value)
-    },
-
-    // Check if a card has any layers with linkage defined
-    hasLayerLinkage(card: any): boolean {
-      return card.layers?.some((layer: any) => layer.linkage) || false
     },
 
     // Get layers for a card, filtering by geometry type if applicable
