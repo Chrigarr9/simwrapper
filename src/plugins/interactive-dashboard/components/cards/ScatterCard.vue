@@ -8,6 +8,7 @@
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
+import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 
@@ -41,6 +42,8 @@ interface Props {
     behavior: 'toggle'
   }
   tableConfig?: TableConfig // From InteractiveDashboard - contains column formats
+  listenToAttributePairSelection?: boolean  // Enable dynamic axis updates from correlation matrix
+  linkageManager?: LinkageManager           // Manager instance for observing events
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -48,7 +51,8 @@ const props = withDefaults(defineProps<Props>(), {
   hoveredIds: () => new Set(),
   selectedIds: () => new Set(),
   markerSize: 8,
-  idColumn: ''
+  idColumn: '',
+  listenToAttributePairSelection: false,
 })
 
 const emit = defineEmits<{
@@ -63,6 +67,14 @@ const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
 const plotContainer = ref<HTMLElement>()
 const selectedPoints = ref<Set<any>>(new Set())
+
+// Current axis columns (can be overridden by attribute pair selection)
+const currentXColumn = ref(props.xColumn)
+const currentYColumn = ref(props.yColumn)
+
+// Watch for prop changes to reset defaults
+watch(() => props.xColumn, (newVal) => { currentXColumn.value = newVal })
+watch(() => props.yColumn, (newVal) => { currentYColumn.value = newVal })
 
 // Get format config for a column
 function getColumnFormat(column: string): ColumnFormat | undefined {
@@ -157,8 +169,8 @@ const scatterData = computed(() => {
   const categoryColors = generateCategoryColors(categories)
 
   props.filteredData.forEach(row => {
-    const xVal = row[props.xColumn]
-    const yVal = row[props.yColumn]
+    const xVal = row[currentXColumn.value]
+    const yVal = row[currentYColumn.value]
     
     if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
       x.push(xVal)
@@ -185,9 +197,9 @@ const scatterData = computed(() => {
       }
 
       // Hover text
-      const xFormatted = formatValue(xVal, props.xColumn)
-      const yFormatted = formatValue(yVal, props.yColumn)
-      let hoverText = `${props.xColumn}: ${xFormatted}<br>${props.yColumn}: ${yFormatted}`
+      const xFormatted = formatValue(xVal, currentXColumn.value)
+      const yFormatted = formatValue(yVal, currentYColumn.value)
+      let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`
       if (props.colorColumn && row[props.colorColumn]) {
         hoverText += `<br>${props.colorColumn}: ${row[props.colorColumn]}`
       }
@@ -326,14 +338,14 @@ const renderChart = () => {
 
   const layout = {
     xaxis: {
-      title: { text: props.xColumn, font: { color: textColor, size: 11 } },
+      title: { text: currentXColumn.value, font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
     },
     yaxis: {
-      title: { text: props.yColumn, font: { color: textColor, size: 11 } },
+      title: { text: currentYColumn.value, font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
@@ -402,6 +414,37 @@ const renderChart = () => {
   })
 }
 
+// LinkageObserver for attribute pair selection
+const linkageObserver: LinkageObserver = {
+  onHoveredIdsChange: () => {},      // Not used in scatter
+  onSelectedIdsChange: () => {},     // Not used in scatter
+  onAttributePairSelected: (attrX: string, attrY: string) => {
+    if (!props.listenToAttributePairSelection) return
+
+    // Check if attributes exist in data
+    if (props.filteredData && props.filteredData.length > 0) {
+      const sampleRow = props.filteredData[0]
+      const hasX = attrX in sampleRow
+      const hasY = attrY in sampleRow
+
+      if (hasX && hasY) {
+        debugLog('[ScatterCard] Updating axes to:', attrX, attrY)
+        currentXColumn.value = attrX
+        currentYColumn.value = attrY
+        // Re-render will happen via watch on currentXColumn/currentYColumn
+      } else {
+        console.warn(`[ScatterCard] Attributes not found in data: ${attrX}, ${attrY}`)
+      }
+    }
+  }
+}
+
+// Watch for current axis column changes
+watch([currentXColumn, currentYColumn], () => {
+  debugLog('[ScatterCard] Axes changed to:', currentXColumn.value, currentYColumn.value)
+  renderChart()
+})
+
 // Watch for data changes
 watch(() => props.filteredData, () => {
   debugLog('[ScatterCard] filteredData changed, re-rendering')
@@ -452,6 +495,11 @@ onMounted(() => {
   // Also listen for window resize events (for fullscreen)
   window.addEventListener('resize', handleResize)
 
+  // Register observer if listening is enabled
+  if (props.listenToAttributePairSelection && props.linkageManager) {
+    props.linkageManager.addObserver(linkageObserver)
+  }
+
   // Notify parent that card is loaded (hides loading spinner)
   emit('isLoaded')
 })
@@ -467,6 +515,11 @@ onUnmounted(() => {
     resizeTimeout = null
   }
   window.removeEventListener('resize', handleResize)
+
+  // Unregister observer
+  if (props.linkageManager) {
+    props.linkageManager.removeObserver(linkageObserver)
+  }
 })
 </script>
 
