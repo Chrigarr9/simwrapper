@@ -22,6 +22,16 @@
         )
           b: a(@click="switchTab(index)") {{ subtab.title }}
 
+    //- Dashboard toolbar with comparison toggle (visible when table config exists)
+    .dashboard-toolbar(v-if="yaml.table && !fullScreenCardId")
+      .toolbar-left
+        span.toolbar-label(v-if="effectiveShowComparison") {{ filteredRowIds.size }} / {{ displayData.length }} rows
+      .toolbar-right
+        comparison-toggle(
+          v-model="showComparison"
+          :disabled="!hasActiveFilters"
+        )
+
     //- start row here
     .dash-row(v-for="row,i in rows" :key="i"
       :class="getRowClass(row)"
@@ -1618,6 +1628,34 @@ export default defineComponent({
 
 .dashboard-header.is-panel-narrow {
   margin: 1rem 1rem 1rem 0rem;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  margin: 0 0 0.75rem 0;
+  background: var(--dashboard-bg-subtle, var(--bgBold, #f5f5f5));
+  border-radius: 4px;
+  font-size: 0.8rem;
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .toolbar-label {
+    color: var(--dashboard-interaction-selected, #3b82f6);
+    font-weight: 600;
+  }
 }
 
 .dash-row.is-panel-narrow {
