@@ -8,12 +8,15 @@ export interface LinkageConfig {
 export interface LinkageObserver {
   onHoveredIdsChange: (ids: Set<any>) => void
   onSelectedIdsChange: (ids: Set<any>) => void
+  // Optional handler for attribute pair selection (from correlation matrix)
+  onAttributePairSelected?: (attrX: string, attrY: string) => void
 }
 
 export class LinkageManager {
   private hoveredIds: Set<any> = new Set()
   private selectedIds: Set<any> = new Set()
   private observers: Set<LinkageObserver> = new Set()
+  private selectedAttributePair: { x: string; y: string } | null = null
 
   addObserver(observer: LinkageObserver): void {
     this.observers.add(observer)
@@ -64,5 +67,31 @@ export class LinkageManager {
 
   private notifySelection(): void {
     this.observers.forEach(obs => obs.onSelectedIdsChange(this.selectedIds))
+  }
+
+  setSelectedAttributePair(attrX: string, attrY: string): void {
+    this.selectedAttributePair = { x: attrX, y: attrY }
+    this.notifyAttributePairSelection()
+  }
+
+  getSelectedAttributePair(): { x: string; y: string } | null {
+    return this.selectedAttributePair
+  }
+
+  clearAttributePairSelection(): void {
+    this.selectedAttributePair = null
+  }
+
+  private notifyAttributePairSelection(): void {
+    if (!this.selectedAttributePair) return
+
+    this.observers.forEach(obs => {
+      if (obs.onAttributePairSelected) {
+        obs.onAttributePairSelected(
+          this.selectedAttributePair!.x,
+          this.selectedAttributePair!.y
+        )
+      }
+    })
   }
 }
