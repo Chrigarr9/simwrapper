@@ -241,6 +241,20 @@ function renderChart() {
   })
 }
 
+// Resize handling for responsive chart sizing
+let resizeObserver: ResizeObserver | null = null
+let resizeTimeout: ReturnType<typeof setTimeout> | null = null
+
+function handleResize() {
+  if (resizeTimeout) clearTimeout(resizeTimeout)
+  resizeTimeout = setTimeout(() => {
+    if (plotContainer.value) {
+      Plotly.Plots.resize(plotContainer.value)
+    }
+    resizeTimeout = null
+  }, 100)
+}
+
 // Watch handlers
 watch(() => props.filteredData, debouncedCalculate, { deep: true })
 watch(isDarkMode, renderChart)
@@ -248,11 +262,31 @@ watch(isDarkMode, renderChart)
 // Lifecycle hooks
 onMounted(() => {
   calculateCorrelations()
+
+  // Set up resize observer to handle container size changes
+  if (plotContainer.value) {
+    resizeObserver = new ResizeObserver(() => nextTick(() => handleResize()))
+    resizeObserver.observe(plotContainer.value)
+  }
+
+  // Also listen for window resize events (for fullscreen)
+  window.addEventListener('resize', handleResize)
+
   emit('isLoaded')
 })
 
 onUnmounted(() => {
+  // Clean up debounce timeout
   if (debounceTimeout) clearTimeout(debounceTimeout)
+
+  // Clean up resize observer and timeout
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  if (resizeTimeout) clearTimeout(resizeTimeout)
+
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
