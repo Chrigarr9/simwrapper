@@ -1,50 +1,44 @@
 <template lang="pug">
-//- Card frame stays in place as a PLACEHOLDER - never changes size
-//- This prevents layout shifts that cause other cards to resize
-.dash-card-frame(
-  :style="placeholderStyle"
-  :class="frameClasses"
-)
-  //- Teleport wraps ALL card content - moves to body when fullscreen
-  //- When disabled (not fullscreen), content renders here in the frame
-  Teleport(to="body" :disabled="!isFullscreen")
-    //- Wrapper that becomes fullscreen overlay when teleported
-    .card-content-container(:class="{'fullscreen-overlay': isFullscreen}" @click.self="handleFullscreenClick")
-      //- Card header with title/description and buttons
-      .dash-card-headers(v-if="showHeader" :class="{'fullscreen': isFullscreen}")
-        .header-labels(:style="{paddingLeft: card.type === 'text' ? '4px' : ''}")
-          h3 {{ card.title }}
-          p(v-if="card.description") {{ card.description }}
+//- Card placeholder - ALWAYS maintains its size in the layout
+//- This prevents layout shifts when another card goes fullscreen
+.dash-card-placeholder(:style="placeholderStyle" :class="frameClasses")
+  //- Actual card content - becomes fullscreen overlay when isFullscreen
+  .dash-card-frame(:class="{'is-fullscreen': isFullscreen}")
+    //- Card header with title/description and buttons
+    .dash-card-headers(v-if="showHeader" :class="{'fullscreen': isFullscreen}")
+      .header-labels(:style="{paddingLeft: card.type === 'text' ? '4px' : ''}")
+        h3 {{ card.title }}
+        p(v-if="card.description") {{ card.description }}
 
-        .header-buttons
-          //- Info button (only if card has info)
-          button.button.is-small.is-white(
-            v-if="card.info"
-            @click="toggleInfo"
-            :title="showInfo ? 'Hide Info' : 'Show Info'"
-          )
-            i.fa.fa-info-circle
+      .header-buttons
+        //- Info button (only if card has info)
+        button.button.is-small.is-white(
+          v-if="card.info"
+          @click="toggleInfo"
+          :title="showInfo ? 'Hide Info' : 'Show Info'"
+        )
+          i.fa.fa-info-circle
 
-          //- Enlarge/restore button
-          button.button.is-small.is-white(
-            @click="handleFullscreenClick"
-            :title="isFullscreen ? 'Restore' : 'Enlarge'"
-          )
-            i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
+        //- Enlarge/restore button
+        button.button.is-small.is-white(
+          @click="handleFullscreenClick"
+          :title="isFullscreen ? 'Restore' : 'Enlarge'"
+        )
+          i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
 
-      //- Info panel (collapsible) - state managed LOCALLY
-      .info(v-show="showInfo")
-        p
-        p {{ card.info }}
+    //- Info panel (collapsible) - state managed LOCALLY
+    .info(v-show="showInfo")
+      p
+      p {{ card.info }}
 
-      //- Content slot
-      .card-content-wrapper(ref="contentWrapper" :id="card.id" :class="{'is-loaded': card.isLoaded}")
-        slot
+    //- Content slot
+    .card-content-wrapper(ref="contentWrapper" :id="card.id" :class="{'is-loaded': card.isLoaded}")
+      slot
 
-      //- Error display
-      .error-text(v-if="card.errors && card.errors.length")
-        span.clear-error(@click="clearErrors") &times;
-        p(v-for="err, i in card.errors" :key="i") {{ err }}
+    //- Error display
+    .error-text(v-if="card.errors && card.errors.length")
+      span.clear-error(@click="clearErrors") &times;
+      p(v-for="err, i in card.errors" :key="i") {{ err }}
 </template>
 
 <script lang="ts">
@@ -229,13 +223,13 @@ export default defineComponent({
     })
 
     /**
-     * CSS classes for the card frame
+     * CSS classes for the placeholder (outer wrapper)
+     * Note: is-fullscreen is NOT here - it's on the inner .dash-card-frame
      */
     const frameClasses = computed(() => {
       return {
         wiide: true, // Always apply wiide class for consistency
         'is-panel-narrow': props.isPanelNarrow,
-        'is-fullscreen': props.isFullscreen,
       }
     })
 
@@ -312,17 +306,40 @@ export default defineComponent({
  */
 
 /*
- * Card content container - wraps all card content
- * When not fullscreen: renders inside .dash-card-frame
- * When fullscreen: teleported to body with .fullscreen-overlay class
+ * Placeholder - ALWAYS maintains its position and size in the layout.
+ * This wrapper never changes when fullscreen - it keeps the card's "slot"
+ * in the flex layout, preventing other cards from shifting.
  */
-.card-content-container {
-  display: contents; // When inside frame, don't add extra wrapper
+.dash-card-placeholder {
+  // Placeholder maintains the card's position in the layout
+  // It uses the same styles as the old .dash-card-frame for sizing
+  margin: 0 $cardSpacing $cardSpacing 0;
+  position: relative; // Anchor for the absolute-positioned frame inside
+}
 
-  &.fullscreen-overlay {
-    // When teleported to body, become fullscreen overlay
-    display: flex;
-    flex-direction: column;
+/*
+ * Card frame - the actual visible card content.
+ * When not fullscreen: fills the placeholder completely.
+ * When fullscreen: becomes position:fixed overlay covering viewport.
+ */
+.dash-card-frame {
+  // Normal state: fill the placeholder completely
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-rows: auto auto 1fr;
+  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
+  padding: 2px 3px 3px 3px;
+  border-radius: 4px;
+  overflow: hidden;
+
+  // Fullscreen state: become fixed overlay covering viewport
+  &.is-fullscreen {
     position: fixed;
     top: 0;
     left: 0;
@@ -330,33 +347,9 @@ export default defineComponent({
     bottom: 0;
     z-index: 10000;
     padding: 1rem;
+    border-radius: 0;
     background-color: var(--bgBold);
-
-    // Click outside content to close (handled by @click.self)
-    cursor: pointer;
-
-    // Content area should not trigger close
-    > * {
-      cursor: default;
-    }
-
-    .card-content-wrapper {
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-    }
   }
-}
-
-.dash-card-frame {
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-rows: auto auto 1fr;
-  margin: 0 $cardSpacing $cardSpacing 0;
-  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
-  padding: 2px 3px 3px 3px;
-  border-radius: 4px;
-  overflow: hidden;
 
   .dash-card-headers {
     display: flex;
@@ -485,7 +478,7 @@ export default defineComponent({
 }
 
 // Responsive styles for narrow panels
-.dash-card-frame.is-panel-narrow {
+.dash-card-placeholder.is-panel-narrow {
   margin: 0rem 0.5rem 1rem 0;
 }
 </style>
