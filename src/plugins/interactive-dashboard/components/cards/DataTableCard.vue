@@ -8,6 +8,15 @@
         <span class="scroll-label">Scroll</span>
       </label>
 
+      <!-- Comparison count display -->
+      <span
+        v-if="showComparison && comparisonCountText"
+        class="comparison-count"
+        title="Filtered rows / Total rows"
+      >
+        {{ comparisonCountText }}
+      </span>
+
       <!-- Filter reset button -->
       <button
         v-if="hasActiveFilters"
@@ -93,12 +102,18 @@ interface Props {
   dataTableManager?: DataTableManager | null
   filterManager?: FilterManager | null
   linkageManager?: LinkageManager | null
+
+  // Comparison mode
+  baselineData?: any[]      // All data (unfiltered) for comparison mode
+  showComparison?: boolean  // Whether comparison mode is active
 }
 
 const props = withDefaults(defineProps<Props>(), {
   filteredData: () => [],
   hoveredIds: () => new Set(),
   selectedIds: () => new Set(),
+  baselineData: () => [],
+  showComparison: false,
 })
 
 const emit = defineEmits(['filter', 'hover', 'select', 'isLoaded'])
@@ -150,26 +165,34 @@ const visibleColumns = computed(() => {
   if (!props.dataTableManager || displayData.value.length === 0) return []
   const allColumns = Object.keys(displayData.value[0])
   const columnsConfig = props.tableConfig?.columns
-  
+
   // If 'show' is specified, only show those columns (in that order)
   if (columnsConfig?.show && columnsConfig.show.length > 0) {
     const showList = columnsConfig.show.filter(col => allColumns.includes(col))
     debugLog('[DataTableCard] Using explicit show list:', showList.length, 'columns')
     return showList
   }
-  
+
   // Otherwise, filter out hidden columns
   const hiddenColumns = columnsConfig?.hide || []
   let filtered = allColumns.filter(col => !hiddenColumns.includes(col))
-  
+
   // Apply maxColumns limit (default: 50 for performance)
   const maxColumns = columnsConfig?.maxColumns ?? 50
   if (filtered.length > maxColumns) {
     debugLog('[DataTableCard] Limiting columns from', filtered.length, 'to', maxColumns)
     filtered = filtered.slice(0, maxColumns)
   }
-  
+
   return filtered
+})
+
+// Comparison count text
+const comparisonCountText = computed(() => {
+  if (!props.showComparison) return ''
+  const filteredCount = props.filteredData?.length || 0
+  const baselineCount = props.baselineData?.length || 0
+  return `${filteredCount} / ${baselineCount}`
 })
 
 // Sort and arrange data: filtered rows on top, then unfiltered
@@ -435,6 +458,15 @@ onUnmounted(() => {
 .scroll-label,
 .reset-label {
   font-size: 0.7rem;
+}
+
+.comparison-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dashboard-interaction-selected, #3b82f6);
+  padding: 0 0.5rem;
+  border-left: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
+  margin-left: auto;  /* Push to right side */
 }
 
 .table-wrapper {
