@@ -28,6 +28,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>]
+  isLoaded: []
 }>()
 
 // Dark mode access from global store
@@ -176,6 +177,9 @@ watch(isDarkMode, () => {
 onMounted(() => {
   previousFilteredDataLength.value = props.filteredData.length
   renderChart()
+
+  // Notify parent that card is loaded (hides loading spinner)
+  emit('isLoaded')
 })
 </script>
 

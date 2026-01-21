@@ -55,6 +55,7 @@ const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>, filterType: string]
   hover: [ids: Set<any>]
   select: [ids: Set<any>]
+  isLoaded: []
 }>()
 
 // Dark mode access from global store
@@ -441,6 +442,9 @@ onMounted(() => {
 
   // Also listen for window resize events (for fullscreen)
   window.addEventListener('resize', handleResize)
+
+  // Notify parent that card is loaded (hides loading spinner)
+  emit('isLoaded')
 })
 
 onUnmounted(() => {

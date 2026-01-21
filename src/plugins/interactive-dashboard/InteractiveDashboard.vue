@@ -654,7 +654,12 @@ export default defineComponent({
       // This is needed for charts like Plotly that listen for resize events
       this.$nextTick(() => {
         if (wasFullscreen) {
+          // Dispatch native resize event for Plotly and other native listeners
           window.dispatchEvent(new Event('resize'))
+          // Also trigger Vuex resize for dashboard-aware components
+          this.$store.commit('resize')
+          // Force re-layout of all cards
+          this.resizeAllCards()
         }
       })
     },

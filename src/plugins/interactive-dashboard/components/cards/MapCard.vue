@@ -215,6 +215,7 @@ const emit = defineEmits<{
   select: [ids: Set<any>]
   'update:geometry-type': [value: string]
   'update:color-by-attribute': [value: string]
+  isLoaded: []
 }>()
 
 // Component state
@@ -345,6 +346,7 @@ async function initMap(): Promise<void> {
     await new Promise<void>((resolve) => {
       map.value!.on('load', () => {
         isLoading.value = false
+        emit('isLoaded')  // Notify parent that card is loaded (hides loading spinner)
         resolve()
       })
     })
@@ -353,6 +355,7 @@ async function initMap(): Promise<void> {
   } catch (error) {
     console.error('[MapCard] Failed to initialize map:', error)
     isLoading.value = false
+    emit('isLoaded')  // Still emit on error to hide spinner
     throw error
   }
 }
