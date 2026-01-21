@@ -2,7 +2,7 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 8 (including 2 inserted)
+**Total Phases:** 9 (including 3 inserted)
 **Total v1 Requirements:** 18
 
 ---
@@ -181,12 +181,65 @@ This is the composition pattern that enables future features like card reorderin
 **Plans:** 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Create statistics utilities and install simple-statistics dependency
-- [ ] 03-02-PLAN.md — Create CorrelationMatrixCard component with Plotly heatmap
-- [ ] 03-03-PLAN.md — Extend LinkageManager and integrate ScatterCard axis updates
-- [ ] 03-04-PLAN.md — Register card type and verification
+- [x] 03-01-PLAN.md — Create statistics utilities and install simple-statistics dependency
+- [x] 03-02-PLAN.md — Create CorrelationMatrixCard component with Plotly heatmap
+- [x] 03-03-PLAN.md — Extend LinkageManager and integrate ScatterCard axis updates
+- [x] 03-04-PLAN.md — Register card type and verification
+
+**Completed:** 2026-01-21
 
 **Research Flag:** Completed - Web Worker architecture deferred, Plotly.js + simple-statistics selected
+
+---
+
+## Phase 3.1: Comparison Mode (INSERTED)
+
+**Goal:** User can toggle comparison mode to see filtered data overlaid against baseline (all data), enabling visual assessment of filter impact across all cards
+
+**Dependencies:** Phase 3 (Correlation Analysis - comparison works with filtered correlation calculations)
+
+**Requirements:**
+- COMP-01: ComparisonToggle control enables/disables comparison mode dashboard-wide
+- COMP-02: HistogramCard shows baseline bars (gray, low opacity) behind filtered bars when comparison mode active
+- COMP-03: PieChartCard shows baseline as outer ring around filtered inner ring when comparison mode active
+- COMP-04: ScatterCard shows baseline points (gray, low opacity) behind filtered points when comparison mode active
+- COMP-05: DataTableCard shows "Filtered / Baseline" count when comparison mode active
+- COMP-06: Comparison mode only activates when filters are active (no meaningless comparison of all vs all)
+
+**Success Criteria:**
+1. User toggles comparison mode ON and sees baseline data (gray/transparent) behind filtered data in all chart cards
+2. User applies a histogram filter and sees filtered bars overlaid on baseline bars (Plotly barmode: 'overlay')
+3. User applies a filter and sees pie chart with inner ring (filtered) and outer ring (baseline, semi-transparent)
+4. User applies a filter and sees scatter plot with gray baseline points behind colored filtered points
+5. User sees "15 / 48" style ratio in table header showing filtered vs baseline count
+6. Comparison mode toggle is disabled (or does nothing) when no filters are active
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 03.1-01-PLAN.md — Create ComparisonToggle component and wire comparison state through dashboard
+- [ ] 03.1-02-PLAN.md — Add comparison mode to HistogramCard with overlay bars
+- [ ] 03.1-03-PLAN.md — Add comparison mode to PieChartCard with concentric rings
+- [ ] 03.1-04-PLAN.md — Add comparison mode to ScatterCard and DataTableCard count display
+
+**Details:**
+Generalizes the comparison mode pattern from commuter-requests plugin to the interactive dashboard:
+
+**Reference Implementation:** `src/plugins/commuter-requests/`
+- `components/controls/ComparisonToggle.vue` - Toggle UI component
+- `CommuterRequests.vue` - `effectiveShowComparison = showComparison && hasActiveFilters`
+- `components/stats/ActiveTimeHistogramPlotly.vue` - Overlay bar pattern
+- `components/stats/MainModePieChartPlotly.vue` - Concentric ring pattern
+
+**Key Patterns to Generalize:**
+1. **Dual-dataset architecture**: Pass both `baselineData` and `filteredData` to all visualization cards
+2. **Conditional display**: `effectiveShowComparison = showComparison && hasActiveFilters`
+3. **Overlay histograms**: Plotly `barmode: 'overlay'`, baseline with 0.3 opacity
+4. **Concentric pies**: Inner ring (filtered, hole: 0.4), outer ring (baseline, hole: 0.7, transparent)
+5. **Scatter overlay**: Baseline points rendered first (gray), filtered points rendered on top
+6. **Summary stats**: "Filtered / Baseline" ratio display
+
+**Research Flag:** None - pattern already implemented in commuter-requests plugin, just needs generalization
 
 ---
 
@@ -259,12 +312,13 @@ Plans:
 | 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Partial | 50% |
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
-| 3 | Correlation Analysis | CORR-01, CORR-02 | Planned | 0% |
+| 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
+| 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 3/8 phases complete (37.5%)
+**Overall Progress:** 4/9 phases complete (44%)
 
 ---
 
@@ -288,6 +342,12 @@ Plans:
 | CARD-05 | Phase 2.1 | Yes |
 | CORR-01 | Phase 3 | Yes |
 | CORR-02 | Phase 3 | Yes |
+| COMP-01 | Phase 3.1 | Yes |
+| COMP-02 | Phase 3.1 | Yes |
+| COMP-03 | Phase 3.1 | Yes |
+| COMP-04 | Phase 3.1 | Yes |
+| COMP-05 | Phase 3.1 | Yes |
+| COMP-06 | Phase 3.1 | Yes |
 | DMAP-01 | Phase 4 | Yes |
 | DMAP-02 | Phase 4 | Yes |
 | DMAP-03 | Phase 4 | Yes |
@@ -296,9 +356,9 @@ Plans:
 | TIME-02 | Phase 5 | Yes |
 | GRPH-01 | Phase 6 | Yes |
 
-**Coverage:** 23/23 requirements mapped (100%)
+**Coverage:** 29/29 requirements mapped (100%)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 3 planned (4 plans in 3 waves)*
+*Last updated: 2026-01-21 — Phase 3.1 plans created*
