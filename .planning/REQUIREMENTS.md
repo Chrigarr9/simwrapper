@@ -15,8 +15,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Sub-Dashboard
 
-- [ ] **SUBD-01**: Enlarge button appears on sub-dashboard card headers
-- [ ] **SUBD-02**: Enlarged card breaks out of sub-dashboard container to full viewport
+- [~] **SUBD-01**: Enlarge button appears on sub-dashboard card headers (partial - issues found)
+- [~] **SUBD-02**: Enlarged card breaks out of sub-dashboard container to full viewport (partial - issues found)
+
+### Card Component Architecture
+
+- [x] **CARD-01**: DashboardCard component handles card frame, header, title/description display
+- [x] **CARD-02**: DashboardCard component handles enlarge/restore button and fullscreen state
+- [x] **CARD-03**: DashboardCard component handles resize events and notifies child content
+- [x] **CARD-04**: Content components (ScatterCard, HistogramCard, MapCard, DataTableCard) render only their visualization, not frame/buttons
+- [x] **CARD-05**: DashboardCard works identically in main dashboard and sub-dashboards
 
 ### Correlation Analysis
 
@@ -97,8 +105,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | THEME-01 | Phase 1: Theming Foundation | Complete |
 | THEME-02 | Phase 1: Theming Foundation | Complete |
 | THEME-03 | Phase 1: Theming Foundation | Complete |
-| SUBD-01 | Phase 2: Sub-Dashboard Fix | Pending |
-| SUBD-02 | Phase 2: Sub-Dashboard Fix | Pending |
+| SUBD-01 | Phase 2: Sub-Dashboard Fix | Partial (blocked by architecture) |
+| SUBD-02 | Phase 2: Sub-Dashboard Fix | Partial (blocked by architecture) |
+| CARD-01 | Phase 2.1: DashboardCard Component | Complete |
+| CARD-02 | Phase 2.1: DashboardCard Component | Complete |
+| CARD-03 | Phase 2.1: DashboardCard Component | Complete |
+| CARD-04 | Phase 2.1: DashboardCard Component | Complete |
+| CARD-05 | Phase 2.1: DashboardCard Component | Complete |
 | CORR-01 | Phase 3: Correlation Analysis | Pending |
 | CORR-02 | Phase 3: Correlation Analysis | Pending |
 | DMAP-01 | Phase 4: Dual Maps | Pending |
@@ -110,10 +123,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRPH-01 | Phase 6: Graph Visualization | Pending |
 
 **Coverage:**
-- v1 requirements: 14 total
-- Mapped to phases: 14
+- v1 requirements: 19 total (including 5 new CARD-* requirements)
+- Mapped to phases: 19
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-20 — Phase 1 complete*
+*Last updated: 2026-01-21 — Phase 2.1 complete (CARD-01 to CARD-05 verified)*

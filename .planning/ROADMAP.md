@@ -129,10 +129,12 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 02.1-01-PLAN.md — Create DashboardCard component with frame, header, buttons, and TypeScript interfaces
-- [ ] 02.1-02-PLAN.md — Add fullscreen CSS management and resize event propagation
-- [ ] 02.1-03-PLAN.md — Refactor InteractiveDashboard to use DashboardCard wrapper
-- [ ] 02.1-04-PLAN.md — Verify content components and fullscreen behavior across all card types
+- [x] 02.1-01-PLAN.md — Create DashboardCard component with frame, header, buttons, and TypeScript interfaces
+- [x] 02.1-02-PLAN.md — Add fullscreen CSS management and resize event propagation
+- [x] 02.1-03-PLAN.md — Refactor InteractiveDashboard to use DashboardCard wrapper
+- [x] 02.1-04-PLAN.md — Verify content components and fullscreen behavior across all card types
+
+**Completed:** 2026-01-21
 
 **Details:**
 The current architecture has card frame/header/buttons rendered inline in InteractiveDashboard.vue template, with fullscreen logic in getCardStyle(). Individual cards (DataTableCard, ScatterCard) have tried to implement their own fullscreen/resize handling, causing:
@@ -248,13 +250,13 @@ This is the composition pattern that enables future features like card reorderin
 | 1 | Theming Foundation | THEME-01, THEME-02, THEME-03 | Complete | 100% |
 | 1.1 | Adaptive Layer Coloring (INSERTED) | ALYR-01, ALYR-02, ALYR-03, ALYR-04 | Complete | 100% |
 | 2 | Sub-Dashboard Fix | SUBD-01, SUBD-02 | Partial | 50% |
-| 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Not Started | 0% |
+| 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Not Started | 0% |
 | 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
 | 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
 | 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 2/8 phases complete (25%)
+**Overall Progress:** 3/8 phases complete (37.5%)
 
 ---
 
@@ -291,4 +293,4 @@ This is the composition pattern that enables future features like card reorderin
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 2.1 plans created (DashboardCard component architecture)*
+*Last updated: 2026-01-21 — Phase 2.1 complete (DashboardCard component architecture verified)*

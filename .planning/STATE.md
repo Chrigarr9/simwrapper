@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Plan 02.1-03 Complete - DashboardCard Integration)
+**Last Updated:** 2026-01-21 (Phase 2.1 Complete - DashboardCard Component Architecture)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 2.1 in progress (DashboardCard Component Architecture)
+**Current Focus:** Phase 2.1 COMPLETE - Ready for Phase 3 planning
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,23 +22,23 @@
 ## Current Position
 
 **Phase:** 2.1 of 8 (DashboardCard Component Architecture)
-**Plan:** 3/4 complete
-**Status:** Plan 02.1-03 COMPLETE - DashboardCard integrated into InteractiveDashboard
-**Last activity:** 2026-01-21 - Completed Plan 02.1-03 (Replaced inline card frame with DashboardCard wrapper)
+**Plan:** 4/4 complete
+**Status:** Phase 2.1 COMPLETE - All cards use DashboardCard wrapper, verified
+**Last activity:** 2026-01-21 - Completed Plan 02.1-04 (Verified content components and fullscreen behavior)
 
 **Progress:**
 ```
 Phase 1:   Theming Foundation       [####] 100% (4/4 plans) COMPLETE
 Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
-Phase 2.1: DashboardCard Component  [###-] 75% (3/4 plans)
+Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [    ] 0%
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 2.1 75% complete. InteractiveDashboard now uses DashboardCard wrapper.
+**Overall:** Phase 2.1 complete. All visualization cards now use unified DashboardCard wrapper.
 
 ---
 
@@ -46,9 +46,9 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 11 |
+| Plans completed | 12 |
 | Plans requiring revision | 0 |
-| Requirements completed | 8/18 (THEME-01, THEME-02, THEME-03, ALYR-01, ALYR-02, ALYR-03, ALYR-04, SUBD-01) |
+| Requirements completed | 13/19 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05) |
 | Research phases triggered | 0 |
 
 ---
@@ -88,6 +88,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 | Fullscreen toggle emitted to parent | DashboardCard emits event, parent maintains single source of truth | 2026-01-21 |
 | anotherCardFullscreen prop vs fullscreenCardId | Boolean simpler than string comparison, already implemented in 02.1-01 | 2026-01-21 |
 | DashboardCard handles card styling | getCardStyle() moved from InteractiveDashboard to DashboardCard.cardStyle computed | 2026-01-21 |
+| Single-element DashboardCard | Simplified from placeholder/frame wrapper to single .dashboard-card element | 2026-01-21 |
+| CSS-only fullscreen | .is-fullscreen class sets position:fixed to overlay viewport, no DOM restructuring | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -120,8 +122,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 02.1-01: Create DashboardCard component (COMPLETE)
 - [x] Execute Plan 02.1-02: Add fullscreen/resize management (COMPLETE)
 - [x] Execute Plan 02.1-03: Integrate DashboardCard into InteractiveDashboard (COMPLETE)
-- [ ] Execute Plan 02.1-04: Verify behavior (NEXT)
-- [ ] Plan Phase 3: Correlation Analysis
+- [x] Execute Plan 02.1-04: Verify behavior (COMPLETE)
+- [ ] Plan Phase 3: Correlation Analysis (NEXT)
 - [ ] Research Phase 3 before planning (Web Worker architecture)
 - [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
 - [ ] Research Phase 6 before planning (vue-cytoscape integration)
@@ -154,23 +156,24 @@ None currently.
 
 ### For Next Session
 
-**Where we left off:** Plan 02.1-03 complete. InteractiveDashboard now uses DashboardCard wrapper.
+**Where we left off:** Phase 2.1 complete. All cards use unified DashboardCard wrapper.
 
-**Next action:** Execute Plan 02.1-04 (Verify behavior across all card types).
+**Next action:** Plan Phase 3 (Correlation Analysis) - requires research first.
 
-**Plan 02.1-03 Completed (2026-01-21):**
+**Phase 2.1 Completed (2026-01-21):**
 
-Integration changes:
-- Replaced inline `.dash-card-frame` template with DashboardCard component
-- Added DashboardCard import and component registration
-- Wired toggle-fullscreen, clear-errors, and card-resize events
-- Added handleCardResize method to propagate resize events
-- Removed unused infoToggle state and handleToggleInfoClick method
-- Removed getCardStyle method (now in DashboardCard)
-- Removed duplicate styles (card frame, headers, buttons, error display)
+DashboardCard component architecture:
+- Single `.dashboard-card` element with CSS-only fullscreen (position:fixed)
+- Handles frame, header, buttons, resize events
+- Content components render only their visualization
+- Works identically in main dashboard and sub-dashboards
+- Verified on ScatterCard, HistogramCard, MapCard, DataTableCard
 
-Key modifications:
-- `src/plugins/interactive-dashboard/InteractiveDashboard.vue` (-307, +152 lines net)
+Key accomplishments:
+- Consistent card appearance across all types
+- No duplicate fullscreen buttons
+- Proper resize handling on fullscreen exit
+- Sub-dashboards automatically inherit architecture
 
 ### Recovery Commands
 
@@ -179,8 +182,7 @@ If context is lost:
 Read .planning/STATE.md for current position
 Read .planning/ROADMAP.md for phase structure
 Read .planning/REQUIREMENTS.md for requirement details
-Read .planning/phases/02.1-dashboard-card-component/ for Phase 2.1 plans
-Read .planning/phases/02.1-dashboard-card-component/02.1-03-SUMMARY.md for Plan 03 summary
+Read .planning/phases/02.1-dashboard-card-component/02.1-04-SUMMARY.md for verification summary
 ```
 
 ---
