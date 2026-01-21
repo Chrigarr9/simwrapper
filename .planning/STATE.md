@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 3.1 of 9 (Comparison Mode)
-**Plan:** 2/4 complete
+**Plan:** 3/4 complete
 **Status:** In progress
-**Last activity:** 2026-01-21 - Completed 03.1-02-PLAN.md (HistogramCard comparison mode)
+**Last activity:** 2026-01-21 - Completed 03.1-03-PLAN.md (PieChartCard comparison mode)
 
 **Progress:**
 ```
@@ -33,13 +33,13 @@ Phase 1.1: Adaptive Layer Coloring  [###] 100% (3/3 plans) COMPLETE
 Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
-Phase 3.1: Comparison Mode          [##  ] 50% (2/4 plans) IN PROGRESS
+Phase 3.1: Comparison Mode          [### ] 75% (3/4 plans) IN PROGRESS
 Phase 4:   Dual Maps                [    ] 0%
 Phase 5:   Timeline                 [    ] 0%
 Phase 6:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3.1 in progress. Comparison mode foundation and HistogramCard complete. HistogramCard shows gray baseline bars behind filtered bars when comparison active. Next: PieChartCard concentric rings.
+**Overall:** Phase 3.1 in progress. Comparison mode foundation, HistogramCard, and PieChartCard complete. PieChartCard shows concentric donut with semi-transparent baseline outer ring. Next: ScatterCard overlay and DataTableCard count display (Plan 03.1-04).
 
 ---
 
@@ -47,7 +47,7 @@ Phase 6:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 18 |
+| Plans completed | 19 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 16/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01) |
@@ -109,6 +109,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 | ComparisonToggle disabled state enforcement | effectiveShowComparison = showComparison AND hasActiveFilters prevents confusing UI where baseline equals filtered data | 2026-01-21 |
 | baselineData as computed property | Single source for unfiltered data; computed ensures reactivity when dataTableManager data changes | 2026-01-21 |
 | Slot prop auto-propagation | LinkableCardWrapper exposes new props via slot; child cards receive them automatically without InteractiveDashboard template changes | 2026-01-21 |
+| Concentric pie domain constraints | Inner trace [0.15, 0.85] constrained, outer [0, 1] full - creates visual separation for comparison | 2026-01-21 |
+| Trace-specific click handling in pie | curveNumber check prevents baseline trace interaction; only inner filtered pie responds to clicks | 2026-01-21 |
 
 ### Roadmap Evolution
 
@@ -216,9 +218,9 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 3.1 Plan 02 complete - HistogramCard comparison mode.
+**Where we left off:** Phase 3.1 Plan 03 complete - PieChartCard comparison mode.
 
-**Next action:** Execute Plan 03.1-03 (PieChartCard concentric rings).
+**Next action:** Check if Plan 03.1-04 (ScatterCard + DataTableCard) is already complete (git log shows commits), if not, execute it.
 
 **Phase progress:** Phase 3.1 in progress (2/4 plans complete).
 
@@ -324,6 +326,20 @@ Comparison mode foundation:
 - Files: ComparisonToggle.vue (created), LinkableCardWrapper.vue, InteractiveDashboard.vue
 
 *State updated: 2026-01-21 (Plan 03.1-01 complete - Comparison mode foundation)*
+
+**Plan 03.1-03 Completed (2026-01-21):**
+
+PieChartCard comparison mode with concentric donut visualization:
+- Added baselineData and showComparison props to PieChartCard
+- Implemented baselinePieData computed property for baseline aggregation
+- Concentric donut rendering: inner ring (filtered, hole 0.4) + outer ring (baseline, hole 0.7)
+- Baseline ring has 50% transparency (hex suffix '80')
+- Inner domain [0.15, 0.85], outer domain [0, 1] for visual separation
+- Center annotation shows "X of Y" count in comparison mode
+- Click handler checks curveNumber !== 0 to ignore baseline trace clicks
+- File: PieChartCard.vue (81 lines changed)
+
+*State updated: 2026-01-21 (Plan 03.1-03 complete - PieChartCard comparison mode)*
 
 **Plan 03.1-02 Completed (2026-01-21):**
 
