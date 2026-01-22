@@ -264,10 +264,12 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 **Plans:** 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Create trackAllocator utility and TimelineCard scaffold
-- [ ] 04-02-PLAN.md — Implement Plotly bar rendering with nested overlay bars
-- [ ] 04-03-PLAN.md — Add interactions, linkage, and card registration
-- [ ] 04-04-PLAN.md — Implement zoom controls, minimap, and expandable detail view
+- [x] 04-01-PLAN.md — Create trackAllocator utility and TimelineCard scaffold
+- [x] 04-02-PLAN.md — Implement Plotly bar rendering with nested overlay bars
+- [x] 04-03-PLAN.md — Add interactions, linkage, and card registration
+- [x] 04-04-PLAN.md — Implement zoom controls, minimap, and expandable detail view
+
+**Completed:** 2026-01-22
 
 **Research Flag:** Completed - Plotly.js Gantt patterns, greedy interval partitioning, vue-collapse-transition verified
 
@@ -302,10 +304,10 @@ Plans:
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
-| 4 | Timeline | TIME-01, TIME-02 | Planned | 0% |
+| 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 5/8 phases complete (63%)
+**Overall Progress:** 6/8 phases complete (75%)
 
 ---
 

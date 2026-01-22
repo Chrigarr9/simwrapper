@@ -40,17 +40,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **COMP-05**: DataTableCard shows "Filtered / Baseline" count when comparison mode active
 - [x] **COMP-06**: Comparison mode only activates when filters are active (no meaningless comparison of all vs all)
 
-### Dual Maps
-
-- [ ] **DMAP-01**: Dashboard layout supports side-by-side dual map configuration
-- [ ] **DMAP-02**: Maps synchronize pan/zoom (move one map, other follows automatically)
-- [ ] **DMAP-03**: Each map has independent colorBy attribute selector
-- [ ] **DMAP-04**: Hover on one map highlights same feature(s) on other map and data table
-
 ### Timeline
 
-- [ ] **TIME-01**: Timeline card shows time window bars (Gantt-style with earliest/latest constraints)
-- [ ] **TIME-02**: Requests visually grouped by their parent ride in timeline
+- [x] **TIME-01**: Timeline card shows time window bars (Gantt-style with earliest/latest constraints)
+- [x] **TIME-02**: Requests visually grouped by their parent ride in timeline
 
 ### Graph
 
@@ -136,19 +129,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMP-04 | Phase 3.1: Comparison Mode | Complete |
 | COMP-05 | Phase 3.1: Comparison Mode | Complete |
 | COMP-06 | Phase 3.1: Comparison Mode | Complete |
-| DMAP-01 | Phase 4: Dual Maps | Pending |
-| DMAP-02 | Phase 4: Dual Maps | Pending |
-| DMAP-03 | Phase 4: Dual Maps | Pending |
-| DMAP-04 | Phase 4: Dual Maps | Pending |
-| TIME-01 | Phase 5: Timeline | Pending |
-| TIME-02 | Phase 5: Timeline | Pending |
-| GRPH-01 | Phase 6: Graph Visualization | Pending |
+| TIME-01 | Phase 4: Timeline | Complete |
+| TIME-02 | Phase 4: Timeline | Complete |
+| GRPH-01 | Phase 5: Graph Visualization | Pending |
 
 **Coverage:**
-- v1 requirements: 25 total (including 5 CARD-*, 6 COMP-* requirements)
-- Mapped to phases: 25
+- v1 requirements: 21 total (DMAP-01 to DMAP-04 removed with Phase 4 Dual Maps)
+- Mapped to phases: 21
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 3.1 complete (COMP-01 to COMP-06 verified)*
+*Last updated: 2026-01-22 — Phase 4 complete (TIME-01, TIME-02 verified)*
