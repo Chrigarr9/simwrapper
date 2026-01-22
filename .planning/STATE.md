@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-21 (Phase 3.1 Complete - Comparison Mode)
+**Last Updated:** 2026-01-22 (Phase 4 Plan 01 Complete - Timeline Foundation)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 3.1 COMPLETE - Comparison Mode (all 4 plans done)
+**Current Focus:** Phase 4 IN PROGRESS - Timeline (Plan 01 complete)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 3.1 of 8 (Comparison Mode)
-**Plan:** 4/4 complete
-**Status:** Phase complete
-**Last activity:** 2026-01-21 - Completed 03.1-04-PLAN.md (ScatterCard and DataTableCard comparison)
+**Phase:** 4 of 8 (Timeline)
+**Plan:** 1/3 complete
+**Status:** In progress
+**Last activity:** 2026-01-22 - Completed 04-01-PLAN.md (Timeline Foundation)
 
 **Progress:**
 ```
@@ -34,11 +34,11 @@ Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
-Phase 4:   Timeline                 [    ] 0%
+Phase 4:   Timeline                 [#--] 33% (1/3 plans)
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 3.1 COMPLETE. All comparison mode features implemented: toggle UI, baseline data propagation, overlay bars (histogram), concentric rings (pie), baseline points (scatter), and count display (table). All cards support comparison mode visualization.
+**Overall:** Phase 4 Plan 01 COMPLETE. Track allocation algorithm (greedy interval partitioning O(n log n)) and TimelineCard scaffold with props interface, computed properties, and resize handling. Ready for Plan 02 (horizontal bar rendering).
 
 ---
 
@@ -46,7 +46,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 20 |
+| Plans completed | 21 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 21/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06) |
@@ -110,6 +110,9 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Slot prop auto-propagation | LinkableCardWrapper exposes new props via slot; child cards receive them automatically without InteractiveDashboard template changes | 2026-01-21 |
 | Concentric pie domain constraints | Inner trace [0.15, 0.85] constrained, outer [0, 1] full - creates visual separation for comparison | 2026-01-21 |
 | Trace-specific click handling in pie | curveNumber check prevents baseline trace interaction; only inner filtered pie responds to clicks | 2026-01-21 |
+| Track end time <= item start allows track reuse | Touching items (one ends when another starts) share tracks for optimal Gantt visualization | 2026-01-22 |
+| Zero-duration items don't block subsequent items | An instant event at t=1000 doesn't prevent interval [1000, 2000] from using same track | 2026-01-22 |
+| Array-based track search for <10K items | Linear scan sufficient for typical ride counts; simpler than min-heap implementation | 2026-01-22 |
 
 ### Roadmap Evolution
 
@@ -154,7 +157,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 03-02: CorrelationMatrixCard component (COMPLETE)
 - [x] Execute Plan 03-03: Attribute pair event system (COMPLETE)
 - [x] Execute Plan 03-04: Integration and verification (COMPLETE)
-- [ ] Research Phase 4 before planning (Timeline data volume assessment)
+- [x] Research Phase 4 before planning (Timeline data volume assessment)
+- [x] Execute Plan 04-01: Timeline foundation (COMPLETE)
+- [ ] Execute Plan 04-02: Horizontal bar rendering
+- [ ] Execute Plan 04-03: Integration and verification
 - [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
 ### Blockers
@@ -217,11 +223,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 3.1 complete. All comparison mode features verified.
+**Where we left off:** Phase 4 Plan 01 complete. Track allocator and TimelineCard scaffold done.
 
-**Next action:** Plan Phase 4 (Timeline) - requires partial research (data volume assessment).
+**Next action:** Execute Plan 04-02 (horizontal bar rendering with Plotly).
 
-**Phase progress:** Phase 3.1 complete (4/4 plans). Ready for Phase 4.
+**Phase progress:** Phase 4 in progress (1/3 plans). Ready for Plan 02.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -395,3 +401,18 @@ Lessons learned:
 - Charts need explicit watchers to re-render when comparison props change
 
 *State updated: 2026-01-22 (Phase 3.1 debugging complete - comparison mode now fully functional)*
+
+**Plan 04-01 Completed (2026-01-22):**
+
+Timeline foundation - track allocator and TimelineCard scaffold:
+- Created trackAllocator.ts with greedy interval partitioning algorithm O(n log n)
+- Exports TimelineItem and TrackAllocation interfaces
+- 14 comprehensive unit tests covering edge cases
+- Created TimelineCard.vue scaffold (317 lines) following HistogramCard/ScatterCard patterns
+- Props interface: filteredData, baselineData, showComparison, hoveredIds, selectedIds, idColumn, startColumn, endColumn, degreeColumn, linkage, tableConfig
+- Computed properties: timelineData (transforms rows to TimelineItem[]), trackAllocation (calls allocateTracks)
+- Watchers for data changes, comparison mode, dark mode
+- Resize handling with debounced ResizeObserver
+- Commits: 5357449b (trackAllocator), 5aa8a552 (TimelineCard)
+
+*State updated: 2026-01-22 (Plan 04-01 complete - Timeline foundation)*
