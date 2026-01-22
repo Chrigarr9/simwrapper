@@ -2,7 +2,7 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 9 (including 3 inserted)
+**Total Phases:** 8 (including 3 inserted)
 **Total v1 Requirements:** 18
 
 ---
@@ -245,33 +245,11 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 
 ---
 
-## Phase 4: Dual Maps
-
-**Goal:** User can compare two map visualizations side-by-side with synchronized navigation
-
-**Dependencies:** Phase 1 (StyleManager provides consistent layer colors)
-
-**Requirements:**
-- DMAP-01: Dashboard layout supports side-by-side dual map configuration
-- DMAP-02: Maps synchronize pan/zoom (move one map, other follows automatically)
-- DMAP-03: Each map has independent colorBy attribute selector
-- DMAP-04: Hover on one map highlights same feature(s) on other map and data table
-
-**Success Criteria:**
-1. User configures a dashboard with two MapCards side-by-side and both render correctly without overlap
-2. User pans or zooms one map and the other map follows with matching center and zoom level
-3. User selects different colorBy attributes on each map (e.g., "income" on left, "commute_time" on right) and sees distinct colorings
-4. User hovers over a cluster on the left map and sees the same cluster highlighted on the right map and scrolled-to in the data table
-
-**Research Flag:** Yes - deck.gl multi-view vs multiple MapLibre instances, WebGL context limits
-
----
-
-## Phase 5: Timeline
+## Phase 4: Timeline
 
 **Goal:** User can visualize temporal patterns in ride requests with time window constraints
 
-**Dependencies:** Phase 1 (StyleManager provides timeline colors), Phase 3 optional (correlation insights inform time analysis)
+**Dependencies:** Phase 1 (StyleManager provides timeline colors)
 
 **Requirements:**
 - TIME-01: Timeline card shows time window bars (Gantt-style with earliest/latest constraints)
@@ -287,11 +265,11 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 
 ---
 
-## Phase 6: Graph Visualization
+## Phase 5: Graph Visualization
 
 **Goal:** User can visualize path cover structure showing rides as nodes and feasibility connections as edges
 
-**Dependencies:** Phase 1 (StyleManager provides node/edge colors), Phase 4 optional (map linkage patterns inform graph linkage)
+**Dependencies:** Phase 1 (StyleManager provides node/edge colors)
 
 **Requirements:**
 - GRPH-01: Graph card displays path cover visualization (rides as nodes, feasibility edges between them)
@@ -316,11 +294,10 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
-| 4 | Dual Maps | DMAP-01, DMAP-02, DMAP-03, DMAP-04 | Not Started | 0% |
-| 5 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
-| 6 | Graph Visualization | GRPH-01 | Not Started | 0% |
+| 4 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
+| 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 5/9 phases complete (56%)
+**Overall Progress:** 5/8 phases complete (63%)
 
 ---
 
@@ -350,17 +327,13 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 | COMP-04 | Phase 3.1 | Yes |
 | COMP-05 | Phase 3.1 | Yes |
 | COMP-06 | Phase 3.1 | Yes |
-| DMAP-01 | Phase 4 | Yes |
-| DMAP-02 | Phase 4 | Yes |
-| DMAP-03 | Phase 4 | Yes |
-| DMAP-04 | Phase 4 | Yes |
-| TIME-01 | Phase 5 | Yes |
-| TIME-02 | Phase 5 | Yes |
-| GRPH-01 | Phase 6 | Yes |
+| TIME-01 | Phase 4 | Yes |
+| TIME-02 | Phase 4 | Yes |
+| GRPH-01 | Phase 5 | Yes |
 
-**Coverage:** 29/29 requirements mapped (100%)
+**Coverage:** 25/25 requirements mapped (100%)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-21 — Phase 3.1 complete (Comparison Mode)*
+*Last updated: 2026-01-22 — Phase 4 (Dual Maps) removed, renumbered*

@@ -21,7 +21,7 @@
 
 ## Current Position
 
-**Phase:** 3.1 of 9 (Comparison Mode)
+**Phase:** 3.1 of 8 (Comparison Mode)
 **Plan:** 4/4 complete
 **Status:** Phase complete
 **Last activity:** 2026-01-21 - Completed 03.1-04-PLAN.md (ScatterCard and DataTableCard comparison)
@@ -34,9 +34,8 @@ Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
-Phase 4:   Dual Maps                [    ] 0%
-Phase 5:   Timeline                 [    ] 0%
-Phase 6:   Graph Visualization      [    ] 0%
+Phase 4:   Timeline                 [    ] 0%
+Phase 5:   Graph Visualization      [    ] 0%
 ```
 
 **Overall:** Phase 3.1 COMPLETE. All comparison mode features implemented: toggle UI, baseline data propagation, overlay bars (histogram), concentric rings (pie), baseline points (scatter), and count display (table). All cards support comparison mode visualization.
@@ -155,8 +154,8 @@ Phase 6:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 03-02: CorrelationMatrixCard component (COMPLETE)
 - [x] Execute Plan 03-03: Attribute pair event system (COMPLETE)
 - [x] Execute Plan 03-04: Integration and verification (COMPLETE)
-- [ ] Research Phase 4 before planning (deck.gl multi-view tradeoffs)
-- [ ] Research Phase 6 before planning (vue-cytoscape integration)
+- [ ] Research Phase 4 before planning (Timeline data volume assessment)
+- [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
 ### Blockers
 
@@ -220,7 +219,7 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 **Where we left off:** Phase 3.1 complete. All comparison mode features verified.
 
-**Next action:** Plan Phase 4 (Dual Maps) - requires research first (deck.gl multi-view tradeoffs).
+**Next action:** Plan Phase 4 (Timeline) - requires partial research (data volume assessment).
 
 **Phase progress:** Phase 3.1 complete (4/4 plans). Ready for Phase 4.
 
