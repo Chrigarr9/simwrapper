@@ -240,6 +240,40 @@ const expandedRideRequests = computed(() => {
 })
 
 /**
+ * Transform requests into timeline items for detail view rendering
+ * Each request becomes a timeline bar with earliest_departure as start, latest_arrival as end
+ */
+const requestTimelineData = computed((): ExtendedTimelineItem[] => {
+  if (!detailRideId.value || expandedRideRequests.value.length === 0) {
+    debugLog('[TimelineCard] No requests for detail view')
+    return []
+  }
+
+  debugLog('[TimelineCard] Computing request timeline data from', expandedRideRequests.value.length, 'requests')
+
+  const items: ExtendedTimelineItem[] = []
+
+  for (const req of expandedRideRequests.value) {
+    // Validate required fields
+    if (req.id !== null && req.id !== undefined &&
+        typeof req.earliest_departure === 'number' && !isNaN(req.earliest_departure) &&
+        typeof req.latest_arrival === 'number' && !isNaN(req.latest_arrival)) {
+
+      items.push({
+        id: String(req.id),
+        start: req.earliest_departure,
+        end: req.latest_arrival,
+        degree: 1,  // Individual requests
+        earliestPickup: req.earliest_departure,
+        latestDropoff: req.latest_arrival,
+      })
+    }
+  }
+
+  return items
+})
+
+/**
  * Format time in seconds to HH:MM string
  */
 function formatTime(seconds: number): string {
@@ -310,8 +344,12 @@ function formatDuration(seconds: number): string {
 
 /**
  * Handle Plotly hover event - emit hover for cross-card coordination
+ * Only active in rides view
  */
 function handleHover(data: any) {
+  // No hover events in request detail view
+  if (viewMode.value === 'requests') return
+
   const point = data.points[0]
 
   // Skip constraint window trace (curveNumber 0) - only actual travel has meaningful customdata
@@ -326,8 +364,12 @@ function handleHover(data: any) {
 
 /**
  * Handle Plotly unhover event - clear hover state
+ * Only active in rides view
  */
 function handleUnhover() {
+  // No hover events in request detail view
+  if (viewMode.value === 'requests') return
+
   emit('hover', new Set())
 }
 
@@ -396,9 +438,14 @@ function updateSelectionVisuals() {
 }
 
 /**
- * Handle Plotly click event - single-select and switch to request detail view
+ * Handle Plotly click event
+ * In rides view: single-select and switch to request detail view
+ * In requests view: no action (view-only)
  */
 function handleClick(data: any) {
+  // No click action in request detail view
+  if (viewMode.value === 'requests') return
+
   const point = data.points[0]
 
   // Skip constraint window trace - only respond to actual travel clicks
@@ -722,6 +769,7 @@ function renderMinimap() {
  * Render the Plotly timeline chart
  * Uses horizontal bar traces with base property for Gantt-style visualization
  * Two overlaid traces: constraint window (gray, outer) and actual travel (colored, inner)
+ * Branches on viewMode: 'rides' shows all rides, 'requests' shows detail ride's requests
  */
 function renderChart() {
   if (!plotContainer.value) return
@@ -732,18 +780,22 @@ function renderChart() {
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
 
-  const allocation = trackAllocation.value
+  // Choose data based on view mode
+  const items = viewMode.value === 'requests' ? requestTimelineData.value : timelineData.value
+  const allocation = viewMode.value === 'requests'
+    ? allocateTracks(requestTimelineData.value)
+    : trackAllocation.value
+
   const totalTracks = allocation.size > 0
     ? [...allocation.values()][0]?.totalTracks ?? 0
     : 0
 
-  debugLog('[TimelineCard] Rendering chart, tracks:', totalTracks, 'items:', timelineData.value.length)
+  debugLog('[TimelineCard] Rendering chart, mode:', viewMode.value, 'tracks:', totalTracks, 'items:', items.length)
 
   // Build traces for Plotly
   const traces: any[] = []
 
   // Get data items with their track positions
-  const items = timelineData.value
   const hasConstraintWindows = items.some(item => item.earliestPickup !== undefined && item.latestDropoff !== undefined)
 
   // Constraint window trace (if data has constraint windows)
@@ -809,13 +861,23 @@ function renderChart() {
   }
 
   if (travelY.length > 0) {
+    // Different hover template for requests vs rides
+    const hoverTemplate = viewMode.value === 'requests'
+      ? '<b>Request %{customdata[0]}</b><br>' +
+        'Window: %{base:.0f}s - %{customdata[1]:.0f}s<br>' +
+        'Duration: %{x:.0f}s<extra></extra>'
+      : '<b>Ride %{customdata[0]}</b><br>' +
+        'Start: %{base:.0f}s<br>' +
+        'Duration: %{x:.0f}s<br>' +
+        'Degree: %{customdata[1]}<extra></extra>'
+
     traces.push({
       x: travelWidth,
       y: travelY,
       base: travelBase,
       type: 'bar',
       orientation: 'h',
-      name: 'Actual Travel',
+      name: viewMode.value === 'requests' ? 'Request Window' : 'Actual Travel',
       marker: {
         color: travelColors,
         line: {
@@ -824,16 +886,47 @@ function renderChart() {
         },
       },
       width: hasConstraintWindows ? 0.5 : 0.7,  // Narrower if showing constraint window
-      hovertemplate: '<b>Ride %{customdata[0]}</b><br>' +
-        'Start: %{base:.0f}s<br>' +
-        'Duration: %{x:.0f}s<br>' +
-        'Degree: %{customdata[1]}<extra></extra>',
-      customdata: travelIds.map((id, i) => [id, travelDegrees[i]]),
+      hovertemplate: hoverTemplate,
+      customdata: viewMode.value === 'requests'
+        ? travelIds.map((id, i) => [id, travelBase[i] + travelWidth[i]])  // [id, end_time]
+        : travelIds.map((id, i) => [id, travelDegrees[i]]),  // [id, degree]
     })
   }
 
   // Calculate y-axis range based on total tracks
   const yRange = totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5]
+
+  // Calculate x-axis range based on view mode
+  let xAxisRange: [number, number]
+  let tickVals: number[]
+  let tickText: string[]
+
+  if (viewMode.value === 'requests' && detailRideData.value) {
+    // Request view: scale to ride's constraint window
+    const rideStart = detailRideData.value.earliestPickup ?? detailRideData.value.start
+    const rideEnd = detailRideData.value.latestDropoff ?? detailRideData.value.end
+    xAxisRange = [rideStart, rideEnd]
+
+    // Generate 5-6 ticks across the ride window
+    const rangeDuration = rideEnd - rideStart
+    const tickInterval = Math.ceil(rangeDuration / 5)
+    tickVals = []
+    tickText = []
+    for (let t = rideStart; t <= rideEnd; t += tickInterval) {
+      tickVals.push(t)
+      tickText.push(formatTime(t))
+    }
+    // Ensure end time is included
+    if (tickVals[tickVals.length - 1] < rideEnd) {
+      tickVals.push(rideEnd)
+      tickText.push(formatTime(rideEnd))
+    }
+  } else {
+    // Rides view: full 24-hour range with viewport
+    xAxisRange = [viewportStart.value, viewportEnd.value]
+    tickVals = generateTimeTickVals()
+    tickText = generateTimeTickText()
+  }
 
   const layout = {
     title: {
@@ -846,10 +939,10 @@ function renderChart() {
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
-      range: [viewportStart.value, viewportEnd.value],  // Current viewport range
+      range: xAxisRange,
       tickmode: 'array',
-      tickvals: generateTimeTickVals(),
-      ticktext: generateTimeTickText(),
+      tickvals: tickVals,
+      ticktext: tickText,
     },
     yaxis: {
       title: { text: '', font: { color: textColor, size: 11 } },
@@ -880,8 +973,10 @@ function renderChart() {
   plotEl.on('plotly_click', handleClick)
   plotEl.on('plotly_relayout', handlePlotlyRelayout)
 
-  // Re-render minimap whenever main chart changes
-  renderMinimap()
+  // Re-render minimap only in rides view
+  if (viewMode.value === 'rides') {
+    renderMinimap()
+  }
 }
 
 /**
@@ -939,6 +1034,12 @@ watch(isDarkMode, () => {
 watch(() => props.showComparison, (newVal) => {
   debugLog('[TimelineCard] showComparison changed to:', newVal, '- re-rendering')
   renderChart()
+})
+
+// Re-render when view mode changes
+watch(viewMode, (newMode) => {
+  debugLog('[TimelineCard] viewMode changed to:', newMode, '- re-rendering')
+  nextTick(() => renderChart())
 })
 
 // Re-render when baseline data changes
