@@ -10,6 +10,38 @@
 
   .plot-container(ref="plotContainer")
 
+  //- Expanded detail panel for selected ride
+  transition(name="slide-down")
+    .expanded-detail(v-if="expandedRideId && expandedRideData")
+      .detail-header
+        h4 Ride {{ expandedRideId }}
+        button.close-btn(@click="expandedRideId = null")
+          i.fa.fa-times
+
+      .detail-content
+        .ride-summary
+          .metric
+            span.label Degree:
+            span.value {{ expandedRideData.degree }}
+          .metric
+            span.label Duration:
+            span.value {{ formatDuration(expandedRideData.end - expandedRideData.start) }}
+          .metric(v-if="expandedRideData.earliestPickup !== undefined")
+            span.label Time Window:
+            span.value {{ formatTime(expandedRideData.earliestPickup) }} - {{ formatTime(expandedRideData.latestDropoff) }}
+
+        //- Mini-Gantt for requests (if request data available)
+        .requests-gantt(v-if="expandedRideRequests.length")
+          h5 Requests ({{ expandedRideRequests.length }})
+          .request-bar(v-for="req in expandedRideRequests" :key="req.id")
+            .request-label {{ req.id }}
+            .request-timeline
+              .constraint-bar(:style="getRequestConstraintStyle(req)")
+              .actual-bar(:style="getRequestActualStyle(req)")
+            .request-metrics
+              span.metric Delay: {{ formatDuration(req.delay) }}
+              span.metric(v-if="req.wait_time !== undefined") Wait: {{ formatDuration(req.wait_time) }}
+
   .minimap-container
     .minimap(ref="minimapContainer" @click="handleMinimapClick")
     .viewport-indicator(:style="viewportIndicatorStyle")
@@ -126,6 +158,7 @@ const maxZoomRange = 86400          // 24 hours maximum
 
 // Internal state
 const selectedRides = ref<Set<any>>(new Set())
+const expandedRideId = ref<string | null>(null)
 
 // Dark mode from global store
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
@@ -201,6 +234,35 @@ const trackAllocation = computed(() => {
 })
 
 /**
+ * Get data for the currently expanded ride
+ */
+const expandedRideData = computed(() => {
+  if (!expandedRideId.value) return null
+  return timelineData.value.find(item => item.id === expandedRideId.value) || null
+})
+
+/**
+ * Get requests linked to the expanded ride (if request data available)
+ * Looks for rows with matching ride_id and a request_id column
+ */
+const expandedRideRequests = computed(() => {
+  if (!expandedRideId.value || !props.filteredData) return []
+
+  // Look for requests linked to this ride
+  // This assumes request data has a ride_id column matching
+  return props.filteredData
+    .filter(row => String(row.ride_id) === expandedRideId.value && row.request_id)
+    .map(row => ({
+      id: row.request_id,
+      treq: row.treq,
+      earliest_departure: row.earliest_departure,
+      latest_arrival: row.latest_arrival,
+      delay: row.delay || 0,
+      wait_time: row.wait_time,
+    }))
+})
+
+/**
  * Format time in seconds to HH:MM string
  */
 function formatTime(seconds: number): string {
@@ -252,6 +314,72 @@ function applyOpacity(hexColor: string, opacity: number): string {
   const g = parseInt(hexColor.slice(3, 5), 16)
   const b = parseInt(hexColor.slice(5, 7), 16)
   return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
+/**
+ * Format duration in seconds to human-readable string
+ */
+function formatDuration(seconds: number): string {
+  if (seconds === undefined || seconds === null || isNaN(seconds)) return '-'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  if (minutes < 60) return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return `${hours}h ${remainingMinutes}m`
+}
+
+/**
+ * Get CSS style for request constraint bar in mini-Gantt
+ * Uses the expanded ride's constraint window as the reference range
+ */
+function getRequestConstraintStyle(req: any) {
+  if (!expandedRideData.value ||
+      req.earliest_departure === undefined ||
+      req.latest_arrival === undefined) {
+    return { display: 'none' }
+  }
+
+  // Use the expanded ride's constraint window as reference for scaling
+  const rideStart = expandedRideData.value.earliestPickup ?? expandedRideData.value.start
+  const rideEnd = expandedRideData.value.latestDropoff ?? expandedRideData.value.end
+  const totalRange = rideEnd - rideStart
+
+  if (totalRange <= 0) return { display: 'none' }
+
+  const start = ((req.earliest_departure - rideStart) / totalRange) * 100
+  const width = ((req.latest_arrival - req.earliest_departure) / totalRange) * 100
+
+  return {
+    left: `${Math.max(0, start)}%`,
+    width: `${Math.min(100 - Math.max(0, start), width)}%`,
+    backgroundColor: 'rgba(156, 163, 175, 0.3)',
+  }
+}
+
+/**
+ * Get CSS style for request actual pickup marker in mini-Gantt
+ */
+function getRequestActualStyle(req: any) {
+  if (!expandedRideData.value || req.treq === undefined) {
+    return { display: 'none' }
+  }
+
+  // Use the expanded ride's constraint window as reference for scaling
+  const rideStart = expandedRideData.value.earliestPickup ?? expandedRideData.value.start
+  const rideEnd = expandedRideData.value.latestDropoff ?? expandedRideData.value.end
+  const totalRange = rideEnd - rideStart
+
+  if (totalRange <= 0) return { display: 'none' }
+
+  const start = ((req.treq - rideStart) / totalRange) * 100
+
+  return {
+    left: `${Math.max(0, start)}%`,
+    width: '3%',  // Fixed small width for pickup marker
+    backgroundColor: getDegreeColor(1),
+  }
 }
 
 /**
@@ -342,7 +470,7 @@ function updateSelectionVisuals() {
 }
 
 /**
- * Handle Plotly click event - toggle selection for cross-card filtering
+ * Handle Plotly click event - toggle selection and expand detail view
  */
 function handleClick(data: any) {
   const point = data.points[0]
@@ -352,6 +480,13 @@ function handleClick(data: any) {
 
   const rideId = String(point.customdata[0])
   debugLog('[TimelineCard] Click:', rideId)
+
+  // Toggle expanded detail view (only one ride expanded at a time)
+  if (expandedRideId.value === rideId) {
+    expandedRideId.value = null
+  } else {
+    expandedRideId.value = rideId
+  }
 
   // Toggle selection (matching HistogramCard behavior)
   if (selectedRides.value.has(rideId)) {
@@ -904,5 +1039,133 @@ onUnmounted(() => {
 
 .viewport-indicator:active {
   cursor: grabbing;
+}
+
+/* Expanded detail panel */
+.expanded-detail {
+  border-top: 1px solid var(--dashboard-border-default, #e5e7eb);
+  padding: 12px;
+  background: var(--dashboard-background-secondary, #f9fafb);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.detail-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dashboard-text-primary, #111827);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--dashboard-text-secondary, #6b7280);
+}
+
+.close-btn:hover {
+  color: var(--dashboard-text-primary, #111827);
+}
+
+.ride-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ride-summary .metric {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ride-summary .label {
+  color: var(--dashboard-text-secondary, #6b7280);
+  font-size: 12px;
+}
+
+.ride-summary .value {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--dashboard-text-primary, #111827);
+}
+
+.requests-gantt h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dashboard-text-primary, #111827);
+}
+
+.request-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.request-label {
+  width: 60px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dashboard-text-secondary, #6b7280);
+}
+
+.request-timeline {
+  position: relative;
+  flex: 1;
+  height: 16px;
+  background: var(--dashboard-background-primary, #fff);
+  border-radius: 2px;
+  border: 1px solid var(--dashboard-border-default, #e5e7eb);
+}
+
+.request-timeline .constraint-bar,
+.request-timeline .actual-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.request-metrics {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--dashboard-text-secondary, #6b7280);
+  min-width: 120px;
+}
+
+/* Slide down animation */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.slide-down-enter-to,
+.slide-down-leave-from {
+  opacity: 1;
+  max-height: 200px;
 }
 </style>
