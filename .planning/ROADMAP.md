@@ -2,8 +2,8 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 8 (including 3 inserted)
-**Total v1 Requirements:** 18
+**Total Phases:** 9 (including 4 inserted)
+**Total v1 Requirements:** 22
 
 ---
 
@@ -275,6 +275,59 @@ Plans:
 
 ---
 
+## Phase 4.1: Timeline Refinement (INSERTED)
+
+**Goal:** Simplify timeline UX with mouse wheel zoom, degree filtering, and modal ride detail view instead of inline expansion
+
+**Dependencies:** Phase 4 (Timeline - refines existing implementation)
+
+**Requirements:**
+- TIME-03: Mouse wheel zoom centers on cursor position (map-like behavior)
+- TIME-04: Degree filter multi-select with default showing degree >=2 rides
+- TIME-05: Click on ride opens modal detail view showing requests with time windows
+- TIME-06: Single-ride selection replaces multi-select (simplify interaction model)
+
+**Success Criteria:**
+1. User scrolls mouse wheel on timeline and chart zooms in/out centered on cursor position
+2. User sees degree filter control with multi-select checkboxes; default excludes degree 1
+3. User clicks a ride and sees modal popup with that ride's requests as mini-timeline bars
+4. User can only select one ride at a time (no multi-select); clicking another ride replaces selection
+5. Zoom buttons (+/-/reset) are positioned in minimap area for consolidated controls
+6. Inline expandable ride detail view is removed (replaced by modal)
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04.1-01-PLAN.md — Add mouse wheel zoom and relocate zoom buttons to minimap area
+- [ ] 04.1-02-PLAN.md — Create DegreeFilterControl component and integrate into TimelineCard
+- [ ] 04.1-03-PLAN.md — Create RideDetailModal and refactor to single-select behavior
+
+**Details:**
+Phase 4 delivered a feature-complete timeline, but user feedback indicates it has too many features creating UX complexity:
+
+**Keep (working well):**
+- Swim lane visualization showing commute pattern curves (morning/evening peaks)
+- Minimap for overview navigation
+- Zoom buttons (+/-/reset)
+- Hover highlighting for cross-card coordination
+
+**Add:**
+- Mouse wheel zoom with cursor-position centering (like map panning behavior)
+- Degree filter control: multi-select checkboxes for degree 1, 2, 3+ with default = [2, 3+]
+
+**Change:**
+- Move zoom buttons to minimap area (consolidate controls)
+- Ride detail view opens in modal/popup instead of inline expansion
+- Single-ride selection only (clicking another ride replaces current selection)
+
+**Remove:**
+- Inline expandable ride detail (too cluttered)
+- Multi-select capability (unnecessary complexity)
+
+**Research Flag:** None - Plotly wheel zoom events and modal patterns well-documented
+
+---
+
 ## Phase 5: Graph Visualization
 
 **Goal:** User can visualize path cover structure showing rides as nodes and feasibility connections as edges
@@ -305,9 +358,10 @@ Plans:
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
 | 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
+| 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-04, TIME-05, TIME-06 | Not Started | 0% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 6/8 phases complete (75%)
+**Overall Progress:** 6/9 phases complete (67%)
 
 ---
 
@@ -339,11 +393,15 @@ Plans:
 | COMP-06 | Phase 3.1 | Yes |
 | TIME-01 | Phase 4 | Yes |
 | TIME-02 | Phase 4 | Yes |
+| TIME-03 | Phase 4.1 | Yes |
+| TIME-04 | Phase 4.1 | Yes |
+| TIME-05 | Phase 4.1 | Yes |
+| TIME-06 | Phase 4.1 | Yes |
 | GRPH-01 | Phase 5 | Yes |
 
-**Coverage:** 25/25 requirements mapped (100%)
+**Coverage:** 29/29 requirements mapped (100%)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-22 — Phase 4 Timeline planned (4 plans in 4 waves)*
+*Last updated: 2026-01-22 — Phase 4.1 plans created (3 plans in 2 waves)*
