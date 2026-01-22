@@ -111,10 +111,19 @@ const selectedRides = ref<Set<any>>(new Set())
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
 /**
- * Transform filteredData into TimelineItem[] for track allocation
- * Uses configured column names to extract id, start, and end times
+ * Extended timeline item with constraint window and degree information
  */
-const timelineData = computed((): TimelineItem[] => {
+interface ExtendedTimelineItem extends TimelineItem {
+  degree: number
+  earliestPickup?: number
+  latestDropoff?: number
+}
+
+/**
+ * Transform filteredData into ExtendedTimelineItem[] for track allocation
+ * Uses configured column names to extract id, start, end times, degree, and constraint windows
+ */
+const timelineData = computed((): ExtendedTimelineItem[] => {
   if (!props.filteredData || props.filteredData.length === 0) {
     debugLog('[TimelineCard] No filtered data available')
     return []
@@ -122,22 +131,36 @@ const timelineData = computed((): TimelineItem[] => {
 
   debugLog('[TimelineCard] Computing timeline data from', props.filteredData.length, 'rows')
 
-  const items: TimelineItem[] = []
+  const items: ExtendedTimelineItem[] = []
 
   for (const row of props.filteredData) {
     const id = row[props.idColumn]
     const start = row[props.startColumn]
     const end = row[props.endColumn]
+    const degree = row[props.degreeColumn]
 
     // Validate required fields
     if (id !== null && id !== undefined &&
         typeof start === 'number' && !isNaN(start) &&
         typeof end === 'number' && !isNaN(end)) {
-      items.push({
+      const item: ExtendedTimelineItem = {
         id: String(id),
         start,
         end,
-      })
+        degree: typeof degree === 'number' && !isNaN(degree) ? degree : 1,
+      }
+
+      // Include constraint window fields if available
+      const earliestPickup = row['earliest_pickup']
+      const latestDropoff = row['latest_dropoff']
+      if (typeof earliestPickup === 'number' && !isNaN(earliestPickup)) {
+        item.earliestPickup = earliestPickup
+      }
+      if (typeof latestDropoff === 'number' && !isNaN(latestDropoff)) {
+        item.latestDropoff = latestDropoff
+      }
+
+      items.push(item)
     }
   }
 
@@ -158,10 +181,53 @@ const trackAllocation = computed(() => {
 })
 
 /**
+ * Format time in seconds to HH:MM string
+ */
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+}
+
+/**
+ * Generate tick values for 24-hour time axis (every 2 hours)
+ */
+function generateTimeTickVals(): number[] {
+  const ticks: number[] = []
+  for (let hour = 0; hour <= 24; hour += 2) {
+    ticks.push(hour * 3600)
+  }
+  return ticks
+}
+
+/**
+ * Generate tick labels for 24-hour time axis
+ */
+function generateTimeTickText(): string[] {
+  return generateTimeTickVals().map(seconds => formatTime(seconds))
+}
+
+/**
+ * Get color for degree (pooling effectiveness)
+ * degree 1: single passenger - color index 0
+ * degree 2: 2 passengers - color index 1
+ * degree 3+: 3+ passengers - color index 2
+ */
+function getDegreeColor(degree: number): string {
+  const styleManager = StyleManager.getInstance()
+  if (degree <= 1) {
+    return styleManager.getCategoricalColor(0)
+  } else if (degree === 2) {
+    return styleManager.getCategoricalColor(1)
+  } else {
+    return styleManager.getCategoricalColor(2)
+  }
+}
+
+/**
  * Render the Plotly timeline chart
  * Uses horizontal bar traces with base property for Gantt-style visualization
- *
- * Implementation will be completed in Plan 04-02
+ * Two overlaid traces: constraint window (gray, outer) and actual travel (colored, inner)
  */
 function renderChart() {
   if (!plotContainer.value) return
@@ -172,12 +238,109 @@ function renderChart() {
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
 
-  debugLog('[TimelineCard] Rendering chart, tracks:', trackAllocation.value.size > 0
-    ? [...trackAllocation.value.values()][0]?.totalTracks ?? 0
-    : 0)
+  const allocation = trackAllocation.value
+  const totalTracks = allocation.size > 0
+    ? [...allocation.values()][0]?.totalTracks ?? 0
+    : 0
 
-  // Placeholder layout for scaffold
-  // Full implementation in Plan 04-02
+  debugLog('[TimelineCard] Rendering chart, tracks:', totalTracks, 'items:', timelineData.value.length)
+
+  // Build traces for Plotly
+  const traces: any[] = []
+
+  // Get data items with their track positions
+  const items = timelineData.value
+  const hasConstraintWindows = items.some(item => item.earliestPickup !== undefined && item.latestDropoff !== undefined)
+
+  // Constraint window trace (if data has constraint windows)
+  // Render first so it appears behind the actual travel bars
+  if (hasConstraintWindows) {
+    const constraintY: number[] = []
+    const constraintBase: number[] = []
+    const constraintWidth: number[] = []
+    const constraintIds: string[] = []
+
+    for (const item of items) {
+      if (item.earliestPickup !== undefined && item.latestDropoff !== undefined) {
+        const trackInfo = allocation.get(item.id)
+        if (trackInfo) {
+          constraintY.push(trackInfo.trackIndex)
+          constraintBase.push(item.earliestPickup)
+          constraintWidth.push(item.latestDropoff - item.earliestPickup)
+          constraintIds.push(item.id)
+        }
+      }
+    }
+
+    if (constraintY.length > 0) {
+      traces.push({
+        x: constraintWidth,
+        y: constraintY,
+        base: constraintBase,
+        type: 'bar',
+        orientation: 'h',
+        name: 'Constraint Window',
+        marker: {
+          color: 'rgba(156, 163, 175, 0.4)', // Gray with transparency
+          line: {
+            color: bgColor,
+            width: 0,
+          },
+        },
+        width: 0.8,  // Bar height (for horizontal bars, width controls height)
+        hovertemplate: '<b>Constraint</b><br>%{base:.0f}s - %{x:.0f}s<extra></extra>',
+        customdata: constraintIds,
+      })
+    }
+  }
+
+  // Actual travel trace (always present)
+  const travelY: number[] = []
+  const travelBase: number[] = []
+  const travelWidth: number[] = []
+  const travelColors: string[] = []
+  const travelIds: string[] = []
+  const travelDegrees: number[] = []
+
+  for (const item of items) {
+    const trackInfo = allocation.get(item.id)
+    if (trackInfo) {
+      travelY.push(trackInfo.trackIndex)
+      travelBase.push(item.start)
+      travelWidth.push(item.end - item.start)
+      travelColors.push(getDegreeColor(item.degree))
+      travelIds.push(item.id)
+      travelDegrees.push(item.degree)
+    }
+  }
+
+  if (travelY.length > 0) {
+    traces.push({
+      x: travelWidth,
+      y: travelY,
+      base: travelBase,
+      type: 'bar',
+      orientation: 'h',
+      name: 'Actual Travel',
+      marker: {
+        color: travelColors,
+        line: {
+          color: bgColor,
+          width: 0.5,
+        },
+      },
+      width: hasConstraintWindows ? 0.5 : 0.7,  // Narrower if showing constraint window
+      hovertemplate: '<b>Ride %{customdata[0]}</b><br>' +
+        'Start: %{base:.0f}s<br>' +
+        'Duration: %{x:.0f}s<br>' +
+        'Degree: %{customdata[1]}<extra></extra>',
+      customdata: travelIds.map((id, i) => [id, travelDegrees[i]]),
+    })
+  }
+
+  // Calculate y-axis range based on total tracks
+  const yRange = totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5]
+
   const layout = {
     title: {
       text: '',  // Title shown in card header
@@ -191,26 +354,25 @@ function renderChart() {
       zerolinecolor: gridColor,
       range: [0, 86400],  // Full 24-hour range in seconds
       tickmode: 'array',
-      tickvals: [0, 21600, 43200, 64800, 86400],
-      ticktext: ['00:00', '06:00', '12:00', '18:00', '24:00'],
+      tickvals: generateTimeTickVals(),
+      ticktext: generateTimeTickText(),
     },
     yaxis: {
-      title: { text: 'Tracks', font: { color: textColor, size: 11 } },
+      title: { text: '', font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
-      autorange: 'reversed',  // Track 0 at top
+      showticklabels: false,  // No labels for swim lanes
+      range: yRange,
     },
-    margin: { l: 50, r: 15, t: 10, b: 35 },
+    margin: { l: 15, r: 15, t: 10, b: 35 },
     autosize: true,
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     barmode: 'overlay',  // For nested bars (constraint window + actual travel)
     showlegend: false,
+    bargap: 0.1,
   }
-
-  // Empty trace placeholder - full implementation in Plan 04-02
-  const traces: any[] = []
 
   Plotly.newPlot(plotContainer.value, traces, layout, {
     displayModeBar: false,
