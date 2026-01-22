@@ -44,6 +44,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **TIME-01**: Timeline card shows time window bars (Gantt-style with earliest/latest constraints)
 - [x] **TIME-02**: Requests visually grouped by their parent ride in timeline
+- [x] **TIME-03**: Mouse wheel zoom centers on cursor position (map-like behavior)
+- [~] **TIME-04**: Degree filter multi-select with default showing degree ≥2 rides (DEFERRED - handled via FilterManager)
+- [x] **TIME-05**: Click on ride switches view to show that ride's requests as timeline bars
+- [x] **TIME-06**: Single-ride selection replaces multi-select (simplify interaction model)
 
 ### Graph
 
@@ -77,9 +81,9 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ### Timeline Enhancements
 
-- **TIME-03**: Time range filter (drag to select time window)
-- **TIME-04**: Animation playback through time
-- **TIME-05**: Vehicle assignment visualization
+- **TIME-07**: Time range filter (drag to select time window)
+- **TIME-08**: Animation playback through time
+- **TIME-09**: Vehicle assignment visualization
 
 ### Graph Enhancements
 
@@ -131,13 +135,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMP-06 | Phase 3.1: Comparison Mode | Complete |
 | TIME-01 | Phase 4: Timeline | Complete |
 | TIME-02 | Phase 4: Timeline | Complete |
+| TIME-03 | Phase 4.1: Timeline Refinement | Complete |
+| TIME-04 | Deferred (FilterManager) | Deferred |
+| TIME-05 | Phase 4.1: Timeline Refinement | Complete |
+| TIME-06 | Phase 4.1: Timeline Refinement | Complete |
 | GRPH-01 | Phase 5: Graph Visualization | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total (DMAP-01 to DMAP-04 removed with Phase 4 Dual Maps)
-- Mapped to phases: 21
+- v1 requirements: 25 total
+- Mapped to phases: 25
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-22 — Phase 4 complete (TIME-01, TIME-02 verified)*
+*Last updated: 2026-01-22 — Phase 4.1 Timeline Refinement complete (TIME-03, TIME-05, TIME-06)*

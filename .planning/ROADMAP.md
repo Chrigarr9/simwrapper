@@ -277,30 +277,30 @@ Plans:
 
 ## Phase 4.1: Timeline Refinement (INSERTED)
 
-**Goal:** Simplify timeline UX with mouse wheel zoom, degree filtering, and modal ride detail view instead of inline expansion
+**Goal:** Simplify timeline UX with mouse wheel zoom, inline request detail view, and single-select behavior
 
 **Dependencies:** Phase 4 (Timeline - refines existing implementation)
 
 **Requirements:**
 - TIME-03: Mouse wheel zoom centers on cursor position (map-like behavior)
-- TIME-04: Degree filter multi-select with default showing degree >=2 rides
-- TIME-05: Click on ride opens modal detail view showing requests with time windows
+- TIME-05: Click on ride switches view to show that ride's requests as timeline bars
 - TIME-06: Single-ride selection replaces multi-select (simplify interaction model)
 
 **Success Criteria:**
 1. User scrolls mouse wheel on timeline and chart zooms in/out centered on cursor position
-2. User sees degree filter control with multi-select checkboxes; default excludes degree 1
-3. User clicks a ride and sees modal popup with that ride's requests as mini-timeline bars
-4. User can only select one ride at a time (no multi-select); clicking another ride replaces selection
+2. User clicks a ride and timeline re-renders showing that ride's requests with time windows
+3. User clicks back button and returns to all-rides view
+4. User can only select one ride at a time (no multi-select)
 5. Zoom buttons (+/-/reset) are positioned in minimap area for consolidated controls
-6. Inline expandable ride detail view is removed (replaced by modal)
+6. Inline expandable ride detail view is removed (replaced by view switching)
 
-**Plans:** 3 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04.1-01-PLAN.md — Add mouse wheel zoom and relocate zoom buttons to minimap area
-- [ ] 04.1-02-PLAN.md — Create DegreeFilterControl component and integrate into TimelineCard
-- [ ] 04.1-03-PLAN.md — Create RideDetailModal and refactor to single-select behavior
+- [x] 04.1-01-PLAN.md — Mouse wheel zoom and zoom control relocation
+- [x] 04.1-02-PLAN.md — Single-select and request detail view (inline view switching)
+
+**Completed:** 2026-01-22
 
 **Details:**
 Phase 4 delivered a feature-complete timeline, but user feedback indicates it has too many features creating UX complexity:
@@ -313,18 +313,20 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 
 **Add:**
 - Mouse wheel zoom with cursor-position centering (like map panning behavior)
-- Degree filter control: multi-select checkboxes for degree 1, 2, 3+ with default = [2, 3+]
 
 **Change:**
 - Move zoom buttons to minimap area (consolidate controls)
-- Ride detail view opens in modal/popup instead of inline expansion
-- Single-ride selection only (clicking another ride replaces current selection)
+- Click ride → view switches to show that ride's requests (not modal, just re-render)
+- Back button returns to all-rides view
+- Single-ride selection only
 
 **Remove:**
-- Inline expandable ride detail (too cluttered)
+- Inline expandable ride detail panel (replaced by view switching)
 - Multi-select capability (unnecessary complexity)
 
-**Research Flag:** None - Plotly wheel zoom events and modal patterns well-documented
+**Note:** TIME-04 (degree filter) removed from this phase - user will filter via existing FilterManager with a filter card.
+
+**Research Flag:** None - Plotly wheel zoom events well-documented
 
 ---
 
@@ -358,10 +360,10 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
 | 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
-| 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-04, TIME-05, TIME-06 | Not Started | 0% |
+| 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-05, TIME-06 | Complete | 100% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 6/9 phases complete (67%)
+**Overall Progress:** 7/9 phases complete (78%)
 
 ---
 
@@ -394,14 +396,14 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 | TIME-01 | Phase 4 | Yes |
 | TIME-02 | Phase 4 | Yes |
 | TIME-03 | Phase 4.1 | Yes |
-| TIME-04 | Phase 4.1 | Yes |
+| TIME-04 | Deferred | No (handled via FilterManager) |
 | TIME-05 | Phase 4.1 | Yes |
 | TIME-06 | Phase 4.1 | Yes |
 | GRPH-01 | Phase 5 | Yes |
 
-**Coverage:** 29/29 requirements mapped (100%)
+**Coverage:** 28/29 requirements mapped (TIME-04 deferred - user handles via existing FilterManager)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-22 — Phase 4.1 plans created (3 plans in 2 waves)*
+*Last updated: 2026-01-22 — Phase 4.1 revised (2 plans, TIME-04 deferred)*
