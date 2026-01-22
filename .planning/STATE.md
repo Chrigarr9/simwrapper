@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Plan 04-04 COMPLETE - Zoom and Detail View)
+**Last Updated:** 2026-01-22 (Plan 04.1-01 COMPLETE - Mouse Wheel Zoom and Control Relocation)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 4 COMPLETE - Timeline. Ready for Phase 5 (Graph Visualization)
+**Current Focus:** Phase 4.1 pending - Timeline Refinement (simplify UX, add wheel zoom, degree filter)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 4 of 8 (Timeline)
-**Plan:** 4/4 complete
-**Status:** Phase COMPLETE
-**Last activity:** 2026-01-22 - Completed 04-04-PLAN.md (Zoom and Detail View)
+**Phase:** 4.1 of 8 (Timeline Refinement)
+**Plan:** 1/2 complete
+**Status:** In progress
+**Last activity:** 2026-01-22 - Completed 04.1-01-PLAN.md (Mouse Wheel Zoom and Control Relocation)
 
 **Progress:**
 ```
@@ -35,17 +35,15 @@ Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
+Phase 4.1: Timeline Refinement      [#-] 50% (1/2 plans) ← CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4 COMPLETE. TimelineCard feature-complete with:
-- Track allocation algorithm for swim lane assignment
-- Plotly horizontal bar rendering with constraint windows
-- Hover/click interactions for cross-card coordination
-- Zoom controls (+/-/reset) with minimap navigation
-- Expandable ride detail view with per-request mini-Gantt
-- Card type registered in _allPanels.ts (`type: timeline`)
-Ready for Phase 5: Graph Visualization.
+**Overall:** Phase 4.1 in progress - Timeline UX refinement:
+- DONE: Mouse wheel zoom (cursor-centered), zoom controls relocated to minimap
+- NEXT: Modal detail view (remove inline expansion), degree filter
+- Keep: Swim lane visualization, minimap, hover highlighting
+- Remove: Inline expandable detail, multi-select capability
 
 ---
 
@@ -53,10 +51,10 @@ Ready for Phase 5: Graph Visualization.
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 24 |
+| Plans completed | 25 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
-| Requirements completed | 20/21 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-02) |
+| Requirements completed | 21/21 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-02, TIME-03) |
 | Research phases triggered | 1 (Phase 3 research) |
 
 ---
@@ -132,11 +130,19 @@ Ready for Phase 5: Graph Visualization.
 | Minimap uses staticPlot:true | No user interaction needed on minimap, staticPlot improves performance | 2026-01-22 |
 | Single expanded ride at a time | Clicking different ride replaces current expansion - simpler than multi-expand | 2026-01-22 |
 | Request mini-Gantt scales to ride constraint window | Provides contextual positioning - request times relative to expanded ride's time window | 2026-01-22 |
+| Use Plotly xaxis.p2d() for cursor-centered zoom | Plotly's pixel-to-data method converts mouse position to time coordinate, enabling cursor position to stay fixed during zoom | 2026-01-22 |
+| Prevent page scroll with passive:false wheel listener | Setting { passive: false } allows preventDefault() to stop page scroll during timeline zoom | 2026-01-22 |
+| Floating overlay for zoom controls in minimap | Consolidates all zoom controls (buttons + viewport indicator) in one visual area; z-index 5 keeps accessible | 2026-01-22 |
 
 ### Roadmap Evolution
 
 - Phase 1.1 inserted after Phase 1: Adaptive Layer Coloring (URGENT) - 2026-01-20
   - Reason: Cluster visualization issues - colorBy not affecting clusters/arcs, need intelligent layer coloring based on visibility
+
+- Phase 4.1 inserted after Phase 4: Timeline Refinement (URGENT) - 2026-01-22
+  - Reason: Phase 4 delivered too many features creating UX complexity
+  - Simplify: Remove inline detail view, multi-select; add mouse wheel zoom, degree filter, modal detail view
+  - Keep: Swim lane visualization, minimap, zoom buttons, hover highlighting
 
 - Phase 2.1 inserted after Phase 2: DashboardCard Component Architecture (URGENT) - 2026-01-21
   - Reason: Phase 2 execution revealed fundamental architectural issues:
@@ -181,6 +187,7 @@ Ready for Phase 5: Graph Visualization.
 - [x] Execute Plan 04-02: Horizontal bar rendering (COMPLETE)
 - [x] Execute Plan 04-03: Integration and verification (COMPLETE)
 - [x] Execute Plan 04-04: Zoom and detail view (COMPLETE)
+- [ ] Plan Phase 4.1: Timeline Refinement
 - [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
 ### Blockers
@@ -245,11 +252,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4 COMPLETE. TimelineCard feature-complete with zoom/minimap and expandable detail view (1171 lines).
+**Where we left off:** Completed plan 04.1-01 (Mouse Wheel Zoom and Control Relocation).
 
-**Next action:** Research Phase 5 (vue-cytoscape integration for Graph Visualization).
+**Next action:** Execute plan 04.1-02 (Modal Detail View) - `/gsd:execute-phase 04.1-02`
 
-**Phase progress:** Phase 4 COMPLETE (4/4 plans). Ready for Phase 5.
+**Phase progress:** Phase 4.1 in progress (1/2 plans complete).
 
 **Plan 03-01 Completed (2026-01-21):**
 
