@@ -296,11 +296,10 @@ function updateHoverVisuals() {
 }
 
 /**
- * Update bar visuals for selection state (stub - implemented in Task 2)
+ * Update bar visuals for selection state
  * Adds border/outline to selected bars
  */
 function updateSelectionVisuals() {
-  // Stub - will be fully implemented in Task 2
   if (!plotContainer.value || timelineData.value.length === 0) return
 
   const styleManager = StyleManager.getInstance()
@@ -320,6 +319,71 @@ function updateSelectionVisuals() {
     'marker.line.width': [lineWidths],
     'marker.line.color': [lineColors],
   }, [traceIndex])
+}
+
+/**
+ * Handle Plotly click event - toggle selection for cross-card filtering
+ */
+function handleClick(data: any) {
+  const point = data.points[0]
+
+  // Skip constraint window trace - only respond to actual travel clicks
+  if (!point.customdata || !Array.isArray(point.customdata) || !point.customdata[0]) return
+
+  const rideId = String(point.customdata[0])
+  debugLog('[TimelineCard] Click:', rideId)
+
+  // Toggle selection (matching HistogramCard behavior)
+  if (selectedRides.value.has(rideId)) {
+    selectedRides.value.delete(rideId)
+  } else {
+    selectedRides.value.add(rideId)
+  }
+
+  // Create a new Set to trigger reactivity
+  selectedRides.value = new Set(selectedRides.value)
+
+  // Emit select event for visual highlighting
+  emit('select', new Set(selectedRides.value))
+
+  // Emit filter event for cross-card filtering
+  if (props.linkage?.type === 'filter') {
+    const filterColumn = props.linkage.column || props.idColumn || 'ride_id'
+    emit('filter',
+      `timeline-${props.title || 'rides'}`,
+      filterColumn,
+      new Set(selectedRides.value),
+      'categorical'
+    )
+  }
+
+  // Update visual selection state
+  updateSelectionVisuals()
+}
+
+/**
+ * Handle keyboard events - Escape to clear selection
+ */
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selectedRides.value.size > 0) {
+    debugLog('[TimelineCard] Escape pressed, clearing selection')
+    selectedRides.value.clear()
+    selectedRides.value = new Set()  // Trigger reactivity
+
+    // Emit clear events
+    emit('select', new Set())
+    if (props.linkage?.type === 'filter') {
+      const filterColumn = props.linkage.column || props.idColumn || 'ride_id'
+      emit('filter',
+        `timeline-${props.title || 'rides'}`,
+        filterColumn,
+        new Set(),
+        'categorical'
+      )
+    }
+
+    updateSelectionVisuals()
+  }
 }
 
 /**
@@ -477,10 +541,11 @@ function renderChart() {
     responsive: true,
   })
 
-  // Bind hover events for cross-card coordination
+  // Bind hover and click events for cross-card coordination
   const plotEl = plotContainer.value as any
   plotEl.on('plotly_hover', handleHover)
   plotEl.on('plotly_unhover', handleUnhover)
+  plotEl.on('plotly_click', handleClick)
 }
 
 /**
@@ -558,6 +623,9 @@ onMounted(() => {
   // Window resize for fullscreen
   window.addEventListener('resize', handleResize)
 
+  // Keyboard listener for Escape to clear selection
+  window.addEventListener('keydown', handleKeydown)
+
   // Notify parent that card is loaded
   emit('isLoaded')
 })
@@ -573,6 +641,7 @@ onUnmounted(() => {
     resizeTimeout = null
   }
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
