@@ -198,6 +198,14 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 None currently.
 
+### Pending Todos
+
+| Date | Title | Area |
+|------|-------|------|
+| 2026-01-22 | Fix card viewport scaling issues | ui |
+
+See `.planning/todos/pending/` for details.
+
 ### Architectural Vision
 
 **Goal:** InteractiveDashboard replaces standard Dashboard as a superset.
