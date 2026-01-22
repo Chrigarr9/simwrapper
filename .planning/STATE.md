@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Phase 4 Plan 01 Complete - Timeline Foundation)
+**Last Updated:** 2026-01-22 (Phase 4 Plan 02 Complete - Horizontal Bar Rendering)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 4 IN PROGRESS - Timeline (Plan 01 complete)
+**Current Focus:** Phase 4 IN PROGRESS - Timeline (Plan 02 complete)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4 of 8 (Timeline)
-**Plan:** 1/3 complete
+**Plan:** 2/3 complete
 **Status:** In progress
-**Last activity:** 2026-01-22 - Completed 04-01-PLAN.md (Timeline Foundation)
+**Last activity:** 2026-01-22 - Completed 04-02-PLAN.md (Horizontal Bar Rendering)
 
 **Progress:**
 ```
@@ -34,11 +34,11 @@ Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
-Phase 4:   Timeline                 [#--] 33% (1/3 plans)
+Phase 4:   Timeline                 [##-] 67% (2/3 plans)
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4 Plan 01 COMPLETE. Track allocation algorithm (greedy interval partitioning O(n log n)) and TimelineCard scaffold with props interface, computed properties, and resize handling. Ready for Plan 02 (horizontal bar rendering).
+**Overall:** Phase 4 Plan 02 COMPLETE. Plotly horizontal bar traces with nested overlay for constraint windows and actual travel time. Bars colored by ride degree (1/2/3+ passengers) using StyleManager categorical colors. 24-hour time axis with HH:MM labels. Ready for Plan 03 (interactions and registration).
 
 ---
 
@@ -46,7 +46,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 21 |
+| Plans completed | 22 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 21/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06) |
@@ -113,6 +113,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Track end time <= item start allows track reuse | Touching items (one ends when another starts) share tracks for optimal Gantt visualization | 2026-01-22 |
 | Zero-duration items don't block subsequent items | An instant event at t=1000 doesn't prevent interval [1000, 2000] from using same track | 2026-01-22 |
 | Array-based track search for <10K items | Linear scan sufficient for typical ride counts; simpler than min-heap implementation | 2026-01-22 |
+| Constraint trace renders first for z-ordering | Plotly renders traces in order; constraint window (gray) behind actual travel (colored) | 2026-01-22 |
+| Degree colors use categorical palette indices 0-2 | Degree 1=index 0, degree 2=index 1, degree 3+=index 2; consistent with other charts | 2026-01-22 |
+| Bar widths 0.8/0.5 for nested visual | Constraint window wider (0.8), actual travel narrower (0.5) creates visual nesting effect | 2026-01-22 |
+| Time axis ticks every 2 hours | 13 ticks (00:00-24:00) provides readability without clutter | 2026-01-22 |
 
 ### Roadmap Evolution
 
@@ -159,7 +163,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 - [x] Execute Plan 03-04: Integration and verification (COMPLETE)
 - [x] Research Phase 4 before planning (Timeline data volume assessment)
 - [x] Execute Plan 04-01: Timeline foundation (COMPLETE)
-- [ ] Execute Plan 04-02: Horizontal bar rendering
+- [x] Execute Plan 04-02: Horizontal bar rendering (COMPLETE)
 - [ ] Execute Plan 04-03: Integration and verification
 - [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
@@ -223,11 +227,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4 Plan 01 complete. Track allocator and TimelineCard scaffold done.
+**Where we left off:** Phase 4 Plan 02 complete. TimelineCard now renders Plotly horizontal bars.
 
-**Next action:** Execute Plan 04-02 (horizontal bar rendering with Plotly).
+**Next action:** Execute Plan 04-03 (integration and verification).
 
-**Phase progress:** Phase 4 in progress (1/3 plans). Ready for Plan 02.
+**Phase progress:** Phase 4 in progress (2/3 plans). Ready for Plan 03.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -416,3 +420,20 @@ Timeline foundation - track allocator and TimelineCard scaffold:
 - Commits: 5357449b (trackAllocator), 5aa8a552 (TimelineCard)
 
 *State updated: 2026-01-22 (Plan 04-01 complete - Timeline foundation)*
+
+**Plan 04-02 Completed (2026-01-22):**
+
+Horizontal bar rendering with Plotly:
+- Implemented nested Plotly horizontal bar traces with barmode: 'overlay'
+- Constraint window trace (gray rgba 156,163,175,0.4, width 0.8) renders behind actual travel
+- Actual travel trace (degree-colored, width 0.5) renders on top
+- getDegreeColor() maps degree to StyleManager.getCategoricalColor(0/1/2)
+- formatTime(), generateTimeTickVals(), generateTimeTickText() for 24-hour axis
+- Time axis shows HH:MM labels every 2 hours (00:00, 02:00, ..., 24:00)
+- Y-axis shows swim lanes without labels, range based on totalTracks
+- Hover templates show ride ID, start time, duration, degree
+- Theme-aware colors (bgColor, textColor, gridColor from StyleManager)
+- File: TimelineCard.vue (479 lines total, +183 lines from scaffold)
+- Commit: 3f88ddd3
+
+*State updated: 2026-01-22 (Plan 04-02 complete - Horizontal bar rendering)*
