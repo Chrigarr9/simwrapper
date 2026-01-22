@@ -1,6 +1,18 @@
 <template lang="pug">
 .timeline-card
+  .timeline-controls
+    button.zoom-btn(@click="zoomIn" title="Zoom in")
+      i.fa.fa-plus
+    button.zoom-btn(@click="zoomOut" title="Zoom out")
+      i.fa.fa-minus
+    button.zoom-btn(@click="resetZoom" title="Reset zoom")
+      i.fa.fa-compress
+
   .plot-container(ref="plotContainer")
+
+  .minimap-container
+    .minimap(ref="minimapContainer" @click="handleMinimapClick")
+    .viewport-indicator(:style="viewportIndicatorStyle")
 </template>
 
 <script setup lang="ts">
@@ -104,6 +116,13 @@ const emit = defineEmits<{
 
 // Template refs
 const plotContainer = ref<HTMLElement>()
+const minimapContainer = ref<HTMLElement>()
+
+// Zoom state
+const viewportStart = ref(0)        // seconds
+const viewportEnd = ref(86400)      // 24 hours in seconds
+const minZoomRange = 3600           // 1 hour minimum
+const maxZoomRange = 86400          // 24 hours maximum
 
 // Internal state
 const selectedRides = ref<Set<any>>(new Set())
@@ -388,6 +407,182 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 /**
+ * Zoom in: halve the visible time range centered on current view
+ */
+function zoomIn() {
+  const currentRange = viewportEnd.value - viewportStart.value
+  const center = (viewportStart.value + viewportEnd.value) / 2
+  const newRange = Math.max(currentRange * 0.5, minZoomRange)
+
+  viewportStart.value = Math.max(0, center - newRange / 2)
+  viewportEnd.value = Math.min(86400, center + newRange / 2)
+  updateMainChartRange()
+}
+
+/**
+ * Zoom out: double the visible time range centered on current view
+ */
+function zoomOut() {
+  const currentRange = viewportEnd.value - viewportStart.value
+  const center = (viewportStart.value + viewportEnd.value) / 2
+  const newRange = Math.min(currentRange * 2, maxZoomRange)
+
+  viewportStart.value = Math.max(0, center - newRange / 2)
+  viewportEnd.value = Math.min(86400, center + newRange / 2)
+  updateMainChartRange()
+}
+
+/**
+ * Reset zoom to full 24-hour view
+ */
+function resetZoom() {
+  viewportStart.value = 0
+  viewportEnd.value = 86400
+  updateMainChartRange()
+}
+
+/**
+ * Update main chart x-axis range using Plotly.relayout
+ */
+function updateMainChartRange() {
+  if (!plotContainer.value) return
+  Plotly.relayout(plotContainer.value as any, {
+    'xaxis.range': [viewportStart.value, viewportEnd.value]
+  })
+}
+
+/**
+ * Computed style for viewport indicator on minimap
+ * Reflects current zoom state as CSS positioning
+ */
+const viewportIndicatorStyle = computed(() => {
+  const totalWidth = 100  // percentage
+  const left = (viewportStart.value / 86400) * totalWidth
+  const width = ((viewportEnd.value - viewportStart.value) / 86400) * totalWidth
+
+  return {
+    left: `${left}%`,
+    width: `${width}%`,
+    backgroundColor: 'rgba(59, 130, 246, 0.3)',
+    border: '1px solid rgba(59, 130, 246, 0.8)',
+  }
+})
+
+/**
+ * Handle click on minimap to navigate main chart
+ * Centers viewport on clicked time position
+ */
+function handleMinimapClick(e: MouseEvent) {
+  const rect = minimapContainer.value?.getBoundingClientRect()
+  if (!rect) return
+
+  const clickX = e.clientX - rect.left
+  const clickPercent = clickX / rect.width
+  const clickTime = clickPercent * 86400
+
+  // Center viewport on clicked time
+  const currentRange = viewportEnd.value - viewportStart.value
+  viewportStart.value = Math.max(0, clickTime - currentRange / 2)
+  viewportEnd.value = Math.min(86400, viewportStart.value + currentRange)
+  updateMainChartRange()
+}
+
+/**
+ * Handle plotly_relayout event to sync viewport state with user pan/zoom
+ */
+function handlePlotlyRelayout(eventData: any) {
+  if (eventData['xaxis.range[0]'] !== undefined) {
+    viewportStart.value = eventData['xaxis.range[0]']
+    viewportEnd.value = eventData['xaxis.range[1]']
+  }
+  // Also handle range array format
+  if (eventData['xaxis.range'] !== undefined) {
+    viewportStart.value = eventData['xaxis.range'][0]
+    viewportEnd.value = eventData['xaxis.range'][1]
+  }
+}
+
+/**
+ * Get theme colors for minimap rendering
+ */
+function getThemeColors() {
+  const styleManager = StyleManager.getInstance()
+  return {
+    bgColor: styleManager.getColor('theme.background.primary'),
+    textColor: styleManager.getColor('theme.text.primary'),
+    gridColor: styleManager.getColor('theme.border.default'),
+  }
+}
+
+/**
+ * Render the minimap - a simplified overview of the entire timeline
+ * Uses staticPlot mode for performance
+ */
+function renderMinimap() {
+  if (!minimapContainer.value || !timelineData.value.length) return
+
+  const { bgColor, textColor } = getThemeColors()
+  const allocation = trackAllocation.value
+
+  // Build simplified traces for minimap (no constraint windows, just actuals)
+  const items = timelineData.value
+  const minimapY: number[] = []
+  const minimapBase: number[] = []
+  const minimapWidth: number[] = []
+
+  for (const item of items) {
+    const trackInfo = allocation.get(item.id)
+    if (trackInfo) {
+      minimapY.push(trackInfo.trackIndex)
+      minimapBase.push(item.start)
+      minimapWidth.push(item.end - item.start)
+    }
+  }
+
+  if (minimapY.length === 0) return
+
+  const totalTracks = allocation.size > 0
+    ? [...allocation.values()][0]?.totalTracks ?? 0
+    : 0
+
+  const trace: Partial<Plotly.PlotData> = {
+    type: 'bar',
+    orientation: 'h',
+    y: minimapY,
+    x: minimapWidth,
+    base: minimapBase,
+    marker: {
+      color: 'rgba(59, 130, 246, 0.5)',  // Blue with transparency
+      line: { width: 0 } as any,
+    },
+    width: 0.8,
+    hoverinfo: 'skip',
+  }
+
+  const layout: Partial<Plotly.Layout> = {
+    paper_bgcolor: bgColor,
+    plot_bgcolor: bgColor,
+    margin: { l: 0, r: 0, t: 0, b: 20 },
+    xaxis: {
+      range: [0, 86400],
+      tickmode: 'array',
+      tickvals: [0, 21600, 43200, 64800, 86400],
+      ticktext: ['00', '06', '12', '18', '24'],
+      tickfont: { size: 9, color: textColor },
+      showgrid: false,
+    } as any,
+    yaxis: {
+      visible: false,
+      autorange: 'reversed',
+      range: [-0.5, totalTracks - 0.5],
+    } as any,
+    height: 40,
+  }
+
+  Plotly.newPlot(minimapContainer.value, [trace as any], layout, { staticPlot: true, responsive: true })
+}
+
+/**
  * Render the Plotly timeline chart
  * Uses horizontal bar traces with base property for Gantt-style visualization
  * Two overlaid traces: constraint window (gray, outer) and actual travel (colored, inner)
@@ -515,7 +710,7 @@ function renderChart() {
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
-      range: [0, 86400],  // Full 24-hour range in seconds
+      range: [viewportStart.value, viewportEnd.value],  // Current viewport range
       tickmode: 'array',
       tickvals: generateTimeTickVals(),
       ticktext: generateTimeTickText(),
@@ -542,11 +737,15 @@ function renderChart() {
     responsive: true,
   })
 
-  // Bind hover and click events for cross-card coordination
+  // Bind hover, click, and relayout events for cross-card coordination
   const plotEl = plotContainer.value as any
   plotEl.on('plotly_hover', handleHover)
   plotEl.on('plotly_unhover', handleUnhover)
   plotEl.on('plotly_click', handleClick)
+  plotEl.on('plotly_relayout', handlePlotlyRelayout)
+
+  // Re-render minimap whenever main chart changes
+  renderMinimap()
 }
 
 /**
@@ -564,6 +763,9 @@ function handleResize() {
     if (plotContainer.value) {
       debugLog('[TimelineCard] Executing Plotly resize')
       Plotly.Plots.resize(plotContainer.value)
+    }
+    if (minimapContainer.value) {
+      Plotly.Plots.resize(minimapContainer.value)
     }
     resizeTimeout = null
   }, 100)
@@ -594,6 +796,7 @@ watch(() => props.selectedIds, (newIds) => {
 // Re-render on dark mode change
 watch(isDarkMode, () => {
   renderChart()
+  renderMinimap()
 })
 
 // Re-render when comparison mode changes
@@ -655,8 +858,51 @@ onUnmounted(() => {
   background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
 }
 
+.timeline-controls {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.zoom-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--dashboard-border-default, #e5e7eb);
+  border-radius: 4px;
+  background: var(--dashboard-background-primary, #fff);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dashboard-text-primary, #333);
+}
+
+.zoom-btn:hover {
+  background: var(--dashboard-background-secondary, #f3f4f6);
+}
+
 .plot-container {
   flex: 1;
   min-height: 200px;
+}
+
+.minimap-container {
+  position: relative;
+  height: 50px;
+  padding: 5px 8px;
+}
+
+.minimap {
+  height: 40px;
+}
+
+.viewport-indicator {
+  position: absolute;
+  top: 5px;
+  height: 40px;
+  cursor: grab;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.viewport-indicator:active {
+  cursor: grabbing;
 }
 </style>
