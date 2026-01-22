@@ -225,6 +225,104 @@ function getDegreeColor(degree: number): string {
 }
 
 /**
+ * Apply opacity to a hex color, returning rgba string
+ */
+function applyOpacity(hexColor: string, opacity: number): string {
+  const r = parseInt(hexColor.slice(1, 3), 16)
+  const g = parseInt(hexColor.slice(3, 5), 16)
+  const b = parseInt(hexColor.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
+/**
+ * Handle Plotly hover event - emit hover for cross-card coordination
+ */
+function handleHover(data: any) {
+  const point = data.points[0]
+
+  // Skip constraint window trace (curveNumber 0) - only actual travel has meaningful customdata
+  if (!point.customdata || !Array.isArray(point.customdata) || !point.customdata[0]) return
+
+  const rideId = point.customdata[0]
+  debugLog('[TimelineCard] Hover:', rideId)
+
+  // Emit hover event with Set containing single ID
+  emit('hover', new Set([String(rideId)]))
+}
+
+/**
+ * Handle Plotly unhover event - clear hover state
+ */
+function handleUnhover() {
+  emit('hover', new Set())
+}
+
+/**
+ * Get the trace index for the actual travel bars (accounting for optional constraint trace)
+ */
+function getActualTravelTraceIndex(): number {
+  return timelineData.value.some(item =>
+    item.earliestPickup !== undefined && item.latestDropoff !== undefined
+  ) ? 1 : 0
+}
+
+/**
+ * Update bar colors for hover visualization
+ * Highlights hovered bars and dims others
+ */
+function updateHoverVisuals() {
+  if (!plotContainer.value || !props.hoveredIds || props.hoveredIds.size === 0) {
+    // Reset to normal colors
+    const colors = timelineData.value.map(item => getDegreeColor(item.degree))
+    if (timelineData.value.length > 0 && plotContainer.value) {
+      const traceIndex = getActualTravelTraceIndex()
+      Plotly.restyle(plotContainer.value as any, { 'marker.color': [colors] }, [traceIndex])
+    }
+    return
+  }
+
+  // Highlight hovered, dim others
+  const colors = timelineData.value.map(item => {
+    if (props.hoveredIds!.has(item.id) || props.hoveredIds!.has(Number(item.id))) {
+      return getDegreeColor(item.degree)  // Full color
+    }
+    return applyOpacity(getDegreeColor(item.degree), 0.3)  // Dimmed
+  })
+
+  if (timelineData.value.length > 0 && plotContainer.value) {
+    const traceIndex = getActualTravelTraceIndex()
+    Plotly.restyle(plotContainer.value as any, { 'marker.color': [colors] }, [traceIndex])
+  }
+}
+
+/**
+ * Update bar visuals for selection state (stub - implemented in Task 2)
+ * Adds border/outline to selected bars
+ */
+function updateSelectionVisuals() {
+  // Stub - will be fully implemented in Task 2
+  if (!plotContainer.value || timelineData.value.length === 0) return
+
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const selectedColor = styleManager.getColor('interaction.selected')
+
+  // Add selection outline to selected bars
+  const lineWidths = timelineData.value.map(item =>
+    selectedRides.value.has(item.id) ? 2 : 0.5
+  )
+  const lineColors = timelineData.value.map(item =>
+    selectedRides.value.has(item.id) ? selectedColor : bgColor
+  )
+
+  const traceIndex = getActualTravelTraceIndex()
+  Plotly.restyle(plotContainer.value as any, {
+    'marker.line.width': [lineWidths],
+    'marker.line.color': [lineColors],
+  }, [traceIndex])
+}
+
+/**
  * Render the Plotly timeline chart
  * Uses horizontal bar traces with base property for Gantt-style visualization
  * Two overlaid traces: constraint window (gray, outer) and actual travel (colored, inner)
@@ -378,6 +476,11 @@ function renderChart() {
     displayModeBar: false,
     responsive: true,
   })
+
+  // Bind hover events for cross-card coordination
+  const plotEl = plotContainer.value as any
+  plotEl.on('plotly_hover', handleHover)
+  plotEl.on('plotly_unhover', handleUnhover)
 }
 
 /**
@@ -406,10 +509,20 @@ watch(() => props.filteredData, () => {
   renderChart()
 }, { deep: true })
 
-// Watch for hover/selection changes from linkage
-watch([() => props.hoveredIds, () => props.selectedIds], () => {
-  debugLog('[TimelineCard] hoveredIds or selectedIds changed')
-  renderChart()
+// Watch for external hover changes from linkage
+watch(() => props.hoveredIds, (newIds) => {
+  debugLog('[TimelineCard] hoveredIds changed:', newIds?.size ?? 0, 'items')
+  updateHoverVisuals()
+}, { deep: true })
+
+// Watch for external selection changes from linkage
+watch(() => props.selectedIds, (newIds) => {
+  debugLog('[TimelineCard] selectedIds changed:', newIds?.size ?? 0, 'items')
+  // Sync internal state with external selection and update visuals
+  if (newIds) {
+    selectedRides.value = new Set([...newIds].map(id => String(id)))
+    updateSelectionVisuals()
+  }
 }, { deep: true })
 
 // Re-render on dark mode change
