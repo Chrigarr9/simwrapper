@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Plan 04.1-01 COMPLETE - Mouse Wheel Zoom and Control Relocation)
+**Last Updated:** 2026-01-22 (Phase 4.1 COMPLETE - Timeline Refinement)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 4.1 pending - Timeline Refinement (simplify UX, add wheel zoom, degree filter)
+**Current Focus:** Phase 5 ready to start - Graph Visualization (network diagrams with vue-cytoscape)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.1 of 8 (Timeline Refinement)
-**Plan:** 1/2 complete
-**Status:** In progress
-**Last activity:** 2026-01-22 - Completed 04.1-01-PLAN.md (Mouse Wheel Zoom and Control Relocation)
+**Plan:** 2/2 complete
+**Status:** Phase complete
+**Last activity:** 2026-01-22 - Completed 04.1-02-PLAN.md (Single-Select and Request Detail View)
 
 **Progress:**
 ```
@@ -35,15 +35,15 @@ Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
-Phase 4.1: Timeline Refinement      [#-] 50% (1/2 plans) ← CURRENT
+Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE ← CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4.1 in progress - Timeline UX refinement:
+**Overall:** Phase 4.1 complete - Timeline UX simplified:
 - DONE: Mouse wheel zoom (cursor-centered), zoom controls relocated to minimap
-- NEXT: Modal detail view (remove inline expansion), degree filter
+- DONE: Single-select with view switching to request detail view
+- Removed: Inline expandable detail panel, multi-select capability
 - Keep: Swim lane visualization, minimap, hover highlighting
-- Remove: Inline expandable detail, multi-select capability
 
 ---
 
@@ -51,7 +51,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 25 |
+| Plans completed | 26 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 21/21 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-02, TIME-03) |
@@ -133,6 +133,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Use Plotly xaxis.p2d() for cursor-centered zoom | Plotly's pixel-to-data method converts mouse position to time coordinate, enabling cursor position to stay fixed during zoom | 2026-01-22 |
 | Prevent page scroll with passive:false wheel listener | Setting { passive: false } allows preventDefault() to stop page scroll during timeline zoom | 2026-01-22 |
 | Floating overlay for zoom controls in minimap | Consolidates all zoom controls (buttons + viewport indicator) in one visual area; z-index 5 keeps accessible | 2026-01-22 |
+| Single-select switches to request detail view | Simpler UX than multi-select - clicking a ride both selects it and shows its requests | 2026-01-22 |
+| Request detail view is view-only | No hover/click events emit in request view to prevent confusing cross-card interactions | 2026-01-22 |
+| Dynamic x-axis for request view | Request time windows scaled to ride constraint window instead of 24-hour range | 2026-01-22 |
+| Back button clears all selection state | Returning to rides view resets to unfiltered state for clean slate | 2026-01-22 |
 
 ### Roadmap Evolution
 
@@ -252,11 +256,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed plan 04.1-01 (Mouse Wheel Zoom and Control Relocation).
+**Where we left off:** Completed Phase 4.1 (Timeline Refinement) - both plans complete.
 
-**Next action:** Execute plan 04.1-02 (Modal Detail View) - `/gsd:execute-phase 04.1-02`
+**Next action:** Plan Phase 5 (Graph Visualization) - `/gsd:plan-phase 5`
 
-**Phase progress:** Phase 4.1 in progress (1/2 plans complete).
+**Phase progress:** Phase 4.1 complete (2/2 plans). Ready to start Phase 5.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -497,3 +501,33 @@ Zoom controls, minimap navigation, and expandable ride detail view:
 - Commits: a9765a6b (zoom/minimap), 0b456c86 (expandable detail)
 
 *State updated: 2026-01-22 (Plan 04-04 complete - Zoom and Detail View)*
+
+**Plan 04.1-01 Completed (2026-01-22):**
+
+Mouse wheel zoom and zoom control relocation:
+- Implemented cursor-centered zoom that preserves mouse position during scroll operations
+- Scroll wheel up zooms in, scroll wheel down zooms out, both centered on cursor
+- Relocated zoom buttons (+/-/reset) from top controls to minimap floating overlay
+- Prevented page scroll during timeline zoom with passive:false event listener
+- File: TimelineCard.vue (modified)
+- Commits: b39ba360 (wheel zoom), 13b3b37c (control relocation)
+
+*State updated: 2026-01-22 (Plan 04.1-01 complete - Mouse Wheel Zoom)*
+
+**Plan 04.1-02 Completed (2026-01-22):**
+
+Single-select and request detail view:
+- Replaced multi-select toggle with single-select that switches to request detail view
+- Added viewMode ref ('rides' | 'requests') for view switching state
+- Added detailRideId ref to track selected ride in detail view
+- Implemented requestTimelineData computed for request timeline items
+- Updated renderChart() to branch on viewMode (rides vs requests)
+- Dynamic x-axis scaling for request view based on ride's constraint window
+- Back button navigation returns to all-rides view and clears selection
+- Removed inline expandable detail panel and slide-down transitions
+- Request detail view is view-only (no hover/click cross-card events)
+- Hide minimap when in request view
+- File: TimelineCard.vue (modified)
+- Commits: d3eda5ab (single-select), 191b2d18 (request view)
+
+*State updated: 2026-01-22 (Phase 4.1 complete - Timeline Refinement)*
