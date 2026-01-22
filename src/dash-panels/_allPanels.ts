@@ -26,6 +26,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   'scatter-plot': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/ScatterCard.vue')),
   slideshow: defineAsyncComponent(() => import('./slideshow.vue')),
   text: defineAsyncComponent(() => import('./text.vue')),
+  timeline: defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/TimelineCard.vue')),
   tile: defineAsyncComponent(() => import('./tile.vue')),
   transit: defineAsyncComponent(() => import('./transit.vue')),
   vega: defineAsyncComponent(() => import('./vega.vue')),

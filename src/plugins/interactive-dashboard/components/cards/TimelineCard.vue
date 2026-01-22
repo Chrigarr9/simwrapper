@@ -8,7 +8,8 @@ import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
-import { allocateTracks, TimelineItem } from '../../utils/trackAllocator'
+import { allocateTracks } from '../../utils/trackAllocator'
+import type { TimelineItem } from '../../utils/trackAllocator'
 import { debugLog } from '../../utils/debug'
 
 /**
