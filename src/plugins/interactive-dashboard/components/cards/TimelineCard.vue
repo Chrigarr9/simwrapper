@@ -1,13 +1,5 @@
 <template lang="pug">
 .timeline-card
-  .timeline-controls
-    button.zoom-btn(@click="zoomIn" title="Zoom in")
-      i.fa.fa-plus
-    button.zoom-btn(@click="zoomOut" title="Zoom out")
-      i.fa.fa-minus
-    button.zoom-btn(@click="resetZoom" title="Reset zoom")
-      i.fa.fa-compress
-
   .plot-container(ref="plotContainer")
 
   //- Expanded detail panel for selected ride
@@ -43,6 +35,13 @@
               span.metric(v-if="req.wait_time !== undefined") Wait: {{ formatDuration(req.wait_time) }}
 
   .minimap-container
+    .minimap-controls
+      button.zoom-btn(@click="zoomIn" title="Zoom in")
+        i.fa.fa-plus
+      button.zoom-btn(@click="zoomOut" title="Zoom out")
+        i.fa.fa-minus
+      button.zoom-btn(@click="resetZoom" title="Reset zoom")
+        i.fa.fa-compress
     .minimap(ref="minimapContainer" @click="handleMinimapClick")
     .viewport-indicator(:style="viewportIndicatorStyle")
 </template>
@@ -1061,10 +1060,24 @@ onUnmounted(() => {
   background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
 }
 
-.timeline-controls {
+.plot-container {
+  flex: 1;
+  min-height: 200px;
+}
+
+.minimap-container {
+  position: relative;
+  height: 50px;
+  padding: 5px 8px;
+}
+
+.minimap-controls {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 5;
   display: flex;
   gap: 4px;
-  padding: 4px 8px;
 }
 
 .zoom-btn {
@@ -1079,17 +1092,6 @@ onUnmounted(() => {
 
 .zoom-btn:hover {
   background: var(--dashboard-background-secondary, #f3f4f6);
-}
-
-.plot-container {
-  flex: 1;
-  min-height: 200px;
-}
-
-.minimap-container {
-  position: relative;
-  height: 50px;
-  padding: 5px 8px;
 }
 
 .minimap {
