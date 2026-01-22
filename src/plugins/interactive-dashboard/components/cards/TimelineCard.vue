@@ -638,6 +638,64 @@ function handlePlotlyRelayout(eventData: any) {
 }
 
 /**
+ * Handle mouse wheel event for cursor-centered zoom
+ * Scroll up: zoom in centered on cursor position
+ * Scroll down: zoom out centered on cursor position
+ */
+function handleWheel(e: WheelEvent) {
+  e.preventDefault()  // Prevent page scroll
+
+  if (!plotContainer.value) return
+
+  // Get mouse position relative to plot container
+  const rect = plotContainer.value.getBoundingClientRect()
+  const mouseX = e.clientX - rect.left
+
+  // Access Plotly's internal xaxis object to convert pixel to data coordinates
+  const plotEl = plotContainer.value as any
+  const xaxis = plotEl._fullLayout?.xaxis
+  if (!xaxis || !xaxis.p2d) return
+
+  // Convert pixel position to time coordinate
+  const mouseTime = xaxis.p2d(mouseX)
+
+  // Calculate zoom factor (scroll down = positive deltaY = zoom out)
+  const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9
+
+  // Compute new viewport range centered on cursor position
+  const currentRange = viewportEnd.value - viewportStart.value
+  const newRange = currentRange * zoomFactor
+
+  // Clamp to valid bounds (1 hour min, 24 hours max)
+  const clampedRange = Math.max(minZoomRange, Math.min(maxZoomRange, newRange))
+
+  // Calculate new start/end centered on mouse position
+  // Preserve the cursor's position in the viewport
+  const cursorRatio = (mouseTime - viewportStart.value) / currentRange
+  let newStart = mouseTime - clampedRange * cursorRatio
+  let newEnd = newStart + clampedRange
+
+  // Clamp to valid time bounds (0-86400 seconds)
+  if (newStart < 0) {
+    newStart = 0
+    newEnd = clampedRange
+  }
+  if (newEnd > 86400) {
+    newEnd = 86400
+    newStart = 86400 - clampedRange
+  }
+
+  // Update viewport refs
+  viewportStart.value = newStart
+  viewportEnd.value = newEnd
+
+  // Apply new range to chart
+  Plotly.relayout(plotEl, {
+    'xaxis.range': [newStart, newEnd]
+  })
+}
+
+/**
  * Get theme colors for minimap rendering
  */
 function getThemeColors() {
@@ -965,6 +1023,11 @@ onMounted(() => {
   // Keyboard listener for Escape to clear selection
   window.addEventListener('keydown', handleKeydown)
 
+  // Bind wheel listener for cursor-centered zoom
+  if (plotContainer.value) {
+    plotContainer.value.addEventListener('wheel', handleWheel, { passive: false })
+  }
+
   // Notify parent that card is loaded
   emit('isLoaded')
 })
@@ -981,6 +1044,11 @@ onUnmounted(() => {
   }
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', handleKeydown)
+
+  // Remove wheel listener
+  if (plotContainer.value) {
+    plotContainer.value.removeEventListener('wheel', handleWheel)
+  }
 })
 </script>
 
