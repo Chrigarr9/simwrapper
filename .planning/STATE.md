@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Phase 4 COMPLETE - Timeline Card)
+**Last Updated:** 2026-01-22 (Plan 04-04 COMPLETE - Zoom and Detail View)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4 of 8 (Timeline)
-**Plan:** 3/3 complete
+**Plan:** 4/4 complete
 **Status:** Phase COMPLETE
-**Last activity:** 2026-01-22 - Completed 04-03-PLAN.md (Integration and Verification)
+**Last activity:** 2026-01-22 - Completed 04-04-PLAN.md (Zoom and Detail View)
 
 **Progress:**
 ```
@@ -34,14 +34,16 @@ Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
-Phase 4:   Timeline                 [###] 100% (3/3 plans) COMPLETE
+Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4 COMPLETE. TimelineCard fully functional with:
+**Overall:** Phase 4 COMPLETE. TimelineCard feature-complete with:
 - Track allocation algorithm for swim lane assignment
 - Plotly horizontal bar rendering with constraint windows
 - Hover/click interactions for cross-card coordination
+- Zoom controls (+/-/reset) with minimap navigation
+- Expandable ride detail view with per-request mini-Gantt
 - Card type registered in _allPanels.ts (`type: timeline`)
 Ready for Phase 5: Graph Visualization.
 
@@ -51,7 +53,7 @@ Ready for Phase 5: Graph Visualization.
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 23 |
+| Plans completed | 24 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 21/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06) |
@@ -126,6 +128,10 @@ Ready for Phase 5: Graph Visualization.
 | Selection uses 2px border highlight | StyleManager.interaction.selected color for selection feedback | 2026-01-22 |
 | Toggle selection for timeline | Click to add, click again to remove - matches HistogramCard pattern | 2026-01-22 |
 | import type for TypelineItem | Required by isolatedModules - separates type-only imports from value imports | 2026-01-22 |
+| Viewport state in refs synced via plotly_relayout | Bidirectional sync - programmatic zoom updates refs then calls relayout, user pan/zoom triggers plotly_relayout which updates refs | 2026-01-22 |
+| Minimap uses staticPlot:true | No user interaction needed on minimap, staticPlot improves performance | 2026-01-22 |
+| Single expanded ride at a time | Clicking different ride replaces current expansion - simpler than multi-expand | 2026-01-22 |
+| Request mini-Gantt scales to ride constraint window | Provides contextual positioning - request times relative to expanded ride's time window | 2026-01-22 |
 
 ### Roadmap Evolution
 
@@ -174,6 +180,7 @@ Ready for Phase 5: Graph Visualization.
 - [x] Execute Plan 04-01: Timeline foundation (COMPLETE)
 - [x] Execute Plan 04-02: Horizontal bar rendering (COMPLETE)
 - [x] Execute Plan 04-03: Integration and verification (COMPLETE)
+- [x] Execute Plan 04-04: Zoom and detail view (COMPLETE)
 - [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
 ### Blockers
@@ -238,11 +245,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4 COMPLETE. TimelineCard fully functional with interactions and registered in _allPanels.ts.
+**Where we left off:** Phase 4 COMPLETE. TimelineCard feature-complete with zoom/minimap and expandable detail view (1171 lines).
 
 **Next action:** Research Phase 5 (vue-cytoscape integration for Graph Visualization).
 
-**Phase progress:** Phase 4 COMPLETE (3/3 plans). Ready for Phase 5.
+**Phase progress:** Phase 4 COMPLETE (4/4 plans). Ready for Phase 5.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -466,3 +473,20 @@ Integration and verification - hover/click interactions and card registration:
 - Commits: 27bab2c5 (hover), 05b69a3b (click), abf03830 (registration)
 
 *State updated: 2026-01-22 (Phase 4 COMPLETE - Timeline Card)*
+
+**Plan 04-04 Completed (2026-01-22):**
+
+Zoom controls, minimap navigation, and expandable ride detail view:
+- Zoom controls (+/-/reset) with Plotly.relayout for x-axis range updates
+- Viewport state (viewportStart/viewportEnd refs) synced via plotly_relayout events
+- Minimap with staticPlot mode showing simplified overview of entire timeline
+- Viewport indicator CSS overlay tracking current zoom position
+- Minimap click to center viewport on clicked time
+- Expandable ride detail panel with slide-down transition animation
+- Ride summary showing degree, duration, and time window
+- Per-request mini-Gantt with constraint bars and actual pickup markers
+- formatDuration helper for human-readable time formatting
+- File: TimelineCard.vue (1171 lines total)
+- Commits: a9765a6b (zoom/minimap), 0b456c86 (expandable detail)
+
+*State updated: 2026-01-22 (Plan 04-04 complete - Zoom and Detail View)*
