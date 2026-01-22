@@ -261,7 +261,15 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 3. User sees requests grouped under their parent ride with visual hierarchy (ride header, indented requests)
 4. User hovers over a timeline bar and sees the corresponding ride/request highlighted in the data table
 
-**Research Flag:** Partial - data volume assessment needed for aggregation strategy
+**Plans:** 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Create trackAllocator utility and TimelineCard scaffold
+- [ ] 04-02-PLAN.md — Implement Plotly bar rendering with nested overlay bars
+- [ ] 04-03-PLAN.md — Add interactions, linkage, and card registration
+- [ ] 04-04-PLAN.md — Implement zoom controls, minimap, and expandable detail view
+
+**Research Flag:** Completed - Plotly.js Gantt patterns, greedy interval partitioning, vue-collapse-transition verified
 
 ---
 
@@ -294,7 +302,7 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 | 2.1 | DashboardCard Component Architecture (INSERTED) | CARD-01 to CARD-05 | Complete | 100% |
 | 3 | Correlation Analysis | CORR-01, CORR-02 | Complete | 100% |
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
-| 4 | Timeline | TIME-01, TIME-02 | Not Started | 0% |
+| 4 | Timeline | TIME-01, TIME-02 | Planned | 0% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
 **Overall Progress:** 5/8 phases complete (63%)
@@ -336,4 +344,4 @@ Generalizes the comparison mode pattern from commuter-requests plugin to the int
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-22 — Phase 4 (Dual Maps) removed, renumbered*
+*Last updated: 2026-01-22 — Phase 4 Timeline planned (4 plans in 4 waves)*
