@@ -1,40 +1,15 @@
 <template lang="pug">
 .timeline-card
+  //- Back button for request detail view
+  .detail-header(v-if="viewMode === 'requests'")
+    button.back-btn(@click="handleBackToRides")
+      i.fa.fa-arrow-left
+      span Back to rides
+    span.detail-title Ride {{ detailRideId }} - Requests
+
   .plot-container(ref="plotContainer")
 
-  //- Expanded detail panel for selected ride
-  transition(name="slide-down")
-    .expanded-detail(v-if="expandedRideId && expandedRideData")
-      .detail-header
-        h4 Ride {{ expandedRideId }}
-        button.close-btn(@click="expandedRideId = null")
-          i.fa.fa-times
-
-      .detail-content
-        .ride-summary
-          .metric
-            span.label Degree:
-            span.value {{ expandedRideData.degree }}
-          .metric
-            span.label Duration:
-            span.value {{ formatDuration(expandedRideData.end - expandedRideData.start) }}
-          .metric(v-if="expandedRideData.earliestPickup !== undefined")
-            span.label Time Window:
-            span.value {{ formatTime(expandedRideData.earliestPickup) }} - {{ formatTime(expandedRideData.latestDropoff) }}
-
-        //- Mini-Gantt for requests (if request data available)
-        .requests-gantt(v-if="expandedRideRequests.length")
-          h5 Requests ({{ expandedRideRequests.length }})
-          .request-bar(v-for="req in expandedRideRequests" :key="req.id")
-            .request-label {{ req.id }}
-            .request-timeline
-              .constraint-bar(:style="getRequestConstraintStyle(req)")
-              .actual-bar(:style="getRequestActualStyle(req)")
-            .request-metrics
-              span.metric Delay: {{ formatDuration(req.delay) }}
-              span.metric(v-if="req.wait_time !== undefined") Wait: {{ formatDuration(req.wait_time) }}
-
-  .minimap-container
+  .minimap-container(v-if="viewMode === 'rides'")
     .minimap-controls
       button.zoom-btn(@click="zoomIn" title="Zoom in")
         i.fa.fa-plus
@@ -155,9 +130,12 @@ const viewportEnd = ref(86400)      // 24 hours in seconds
 const minZoomRange = 3600           // 1 hour minimum
 const maxZoomRange = 86400          // 24 hours maximum
 
+// View mode state
+const viewMode = ref<'rides' | 'requests'>('rides')
+const detailRideId = ref<string | null>(null)
+
 // Internal state
 const selectedRides = ref<Set<any>>(new Set())
-const expandedRideId = ref<string | null>(null)
 
 // Dark mode from global store
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
@@ -233,24 +211,24 @@ const trackAllocation = computed(() => {
 })
 
 /**
- * Get data for the currently expanded ride
+ * Get data for the currently selected ride in detail view
  */
-const expandedRideData = computed(() => {
-  if (!expandedRideId.value) return null
-  return timelineData.value.find(item => item.id === expandedRideId.value) || null
+const detailRideData = computed(() => {
+  if (!detailRideId.value) return null
+  return timelineData.value.find(item => item.id === detailRideId.value) || null
 })
 
 /**
- * Get requests linked to the expanded ride (if request data available)
+ * Get requests linked to the detail ride (if request data available)
  * Looks for rows with matching ride_id and a request_id column
  */
 const expandedRideRequests = computed(() => {
-  if (!expandedRideId.value || !props.filteredData) return []
+  if (!detailRideId.value || !props.filteredData) return []
 
   // Look for requests linked to this ride
   // This assumes request data has a ride_id column matching
   return props.filteredData
-    .filter(row => String(row.ride_id) === expandedRideId.value && row.request_id)
+    .filter(row => String(row.ride_id) === detailRideId.value && row.request_id)
     .map(row => ({
       id: row.request_id,
       treq: row.treq,
@@ -329,57 +307,6 @@ function formatDuration(seconds: number): string {
   return `${hours}h ${remainingMinutes}m`
 }
 
-/**
- * Get CSS style for request constraint bar in mini-Gantt
- * Uses the expanded ride's constraint window as the reference range
- */
-function getRequestConstraintStyle(req: any) {
-  if (!expandedRideData.value ||
-      req.earliest_departure === undefined ||
-      req.latest_arrival === undefined) {
-    return { display: 'none' }
-  }
-
-  // Use the expanded ride's constraint window as reference for scaling
-  const rideStart = expandedRideData.value.earliestPickup ?? expandedRideData.value.start
-  const rideEnd = expandedRideData.value.latestDropoff ?? expandedRideData.value.end
-  const totalRange = rideEnd - rideStart
-
-  if (totalRange <= 0) return { display: 'none' }
-
-  const start = ((req.earliest_departure - rideStart) / totalRange) * 100
-  const width = ((req.latest_arrival - req.earliest_departure) / totalRange) * 100
-
-  return {
-    left: `${Math.max(0, start)}%`,
-    width: `${Math.min(100 - Math.max(0, start), width)}%`,
-    backgroundColor: 'rgba(156, 163, 175, 0.3)',
-  }
-}
-
-/**
- * Get CSS style for request actual pickup marker in mini-Gantt
- */
-function getRequestActualStyle(req: any) {
-  if (!expandedRideData.value || req.treq === undefined) {
-    return { display: 'none' }
-  }
-
-  // Use the expanded ride's constraint window as reference for scaling
-  const rideStart = expandedRideData.value.earliestPickup ?? expandedRideData.value.start
-  const rideEnd = expandedRideData.value.latestDropoff ?? expandedRideData.value.end
-  const totalRange = rideEnd - rideStart
-
-  if (totalRange <= 0) return { display: 'none' }
-
-  const start = ((req.treq - rideStart) / totalRange) * 100
-
-  return {
-    left: `${Math.max(0, start)}%`,
-    width: '3%',  // Fixed small width for pickup marker
-    backgroundColor: getDegreeColor(1),
-  }
-}
 
 /**
  * Handle Plotly hover event - emit hover for cross-card coordination
@@ -469,7 +396,7 @@ function updateSelectionVisuals() {
 }
 
 /**
- * Handle Plotly click event - toggle selection and expand detail view
+ * Handle Plotly click event - single-select and switch to request detail view
  */
 function handleClick(data: any) {
   const point = data.points[0]
@@ -480,24 +407,16 @@ function handleClick(data: any) {
   const rideId = String(point.customdata[0])
   debugLog('[TimelineCard] Click:', rideId)
 
-  // Toggle expanded detail view (only one ride expanded at a time)
-  if (expandedRideId.value === rideId) {
-    expandedRideId.value = null
-  } else {
-    expandedRideId.value = rideId
-  }
-
-  // Toggle selection (matching HistogramCard behavior)
-  if (selectedRides.value.has(rideId)) {
-    selectedRides.value.delete(rideId)
-  } else {
-    selectedRides.value.add(rideId)
-  }
-
-  // Create a new Set to trigger reactivity
+  // Single-select: clear previous, select new
+  selectedRides.value.clear()
+  selectedRides.value.add(rideId)
   selectedRides.value = new Set(selectedRides.value)
 
-  // Emit select event for visual highlighting
+  // Switch to request detail view
+  detailRideId.value = rideId
+  viewMode.value = 'requests'
+
+  // Emit select event for cross-card coordination
   emit('select', new Set(selectedRides.value))
 
   // Emit filter event for cross-card filtering
@@ -512,6 +431,31 @@ function handleClick(data: any) {
   }
 
   // Update visual selection state
+  updateSelectionVisuals()
+}
+
+/**
+ * Handle back button - return to all-rides view
+ */
+function handleBackToRides() {
+  viewMode.value = 'rides'
+  detailRideId.value = null
+  selectedRides.value.clear()
+  selectedRides.value = new Set()
+
+  // Clear selection in cross-card coordination
+  emit('select', new Set())
+  if (props.linkage?.type === 'filter') {
+    const filterColumn = props.linkage.column || props.idColumn || 'ride_id'
+    emit('filter',
+      `timeline-${props.title || 'rides'}`,
+      filterColumn,
+      new Set(),
+      'categorical'
+    )
+  }
+
+  // Update visuals
   updateSelectionVisuals()
 }
 
@@ -1111,131 +1055,41 @@ onUnmounted(() => {
   cursor: grabbing;
 }
 
-/* Expanded detail panel */
-.expanded-detail {
-  border-top: 1px solid var(--dashboard-border-default, #e5e7eb);
-  padding: 12px;
-  background: var(--dashboard-background-secondary, #f9fafb);
-  max-height: 200px;
-  overflow-y: auto;
-}
-
+/* Detail header for request view */
 .detail-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dashboard-border-default, #e5e7eb);
+  background: var(--dashboard-background-secondary, #f9fafb);
 }
 
-.detail-header h4 {
-  margin: 0;
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--dashboard-border-default, #e5e7eb);
+  border-radius: 4px;
+  background: var(--dashboard-background-primary, #fff);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dashboard-text-primary, #333);
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--dashboard-background-secondary, #f3f4f6);
+}
+
+.back-btn i {
+  font-size: 11px;
+}
+
+.detail-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--dashboard-text-primary, #111827);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  color: var(--dashboard-text-secondary, #6b7280);
-}
-
-.close-btn:hover {
-  color: var(--dashboard-text-primary, #111827);
-}
-
-.ride-summary {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.ride-summary .metric {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.ride-summary .label {
-  color: var(--dashboard-text-secondary, #6b7280);
-  font-size: 12px;
-}
-
-.ride-summary .value {
-  font-weight: 500;
-  font-size: 12px;
-  color: var(--dashboard-text-primary, #111827);
-}
-
-.requests-gantt h5 {
-  margin: 0 0 8px 0;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dashboard-text-primary, #111827);
-}
-
-.request-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.request-label {
-  width: 60px;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--dashboard-text-secondary, #6b7280);
-}
-
-.request-timeline {
-  position: relative;
-  flex: 1;
-  height: 16px;
-  background: var(--dashboard-background-primary, #fff);
-  border-radius: 2px;
-  border: 1px solid var(--dashboard-border-default, #e5e7eb);
-}
-
-.request-timeline .constraint-bar,
-.request-timeline .actual-bar {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  border-radius: 2px;
-}
-
-.request-metrics {
-  display: flex;
-  gap: 8px;
-  font-size: 10px;
-  color: var(--dashboard-text-secondary, #6b7280);
-  min-width: 120px;
-}
-
-/* Slide down animation */
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.slide-down-enter-from,
-.slide-down-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.slide-down-enter-to,
-.slide-down-leave-from {
-  opacity: 1;
-  max-height: 200px;
 }
 </style>
