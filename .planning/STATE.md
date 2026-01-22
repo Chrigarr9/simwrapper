@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Phase 4 Plan 02 Complete - Horizontal Bar Rendering)
+**Last Updated:** 2026-01-22 (Phase 4 COMPLETE - Timeline Card)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 4 IN PROGRESS - Timeline (Plan 02 complete)
+**Current Focus:** Phase 4 COMPLETE - Timeline. Ready for Phase 5 (Graph Visualization)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4 of 8 (Timeline)
-**Plan:** 2/3 complete
-**Status:** In progress
-**Last activity:** 2026-01-22 - Completed 04-02-PLAN.md (Horizontal Bar Rendering)
+**Plan:** 3/3 complete
+**Status:** Phase COMPLETE
+**Last activity:** 2026-01-22 - Completed 04-03-PLAN.md (Integration and Verification)
 
 **Progress:**
 ```
@@ -34,11 +34,16 @@ Phase 2:   Sub-Dashboard Fix        [#--] 50% (partial - issues discovered)
 Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
-Phase 4:   Timeline                 [##-] 67% (2/3 plans)
+Phase 4:   Timeline                 [###] 100% (3/3 plans) COMPLETE
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4 Plan 02 COMPLETE. Plotly horizontal bar traces with nested overlay for constraint windows and actual travel time. Bars colored by ride degree (1/2/3+ passengers) using StyleManager categorical colors. 24-hour time axis with HH:MM labels. Ready for Plan 03 (interactions and registration).
+**Overall:** Phase 4 COMPLETE. TimelineCard fully functional with:
+- Track allocation algorithm for swim lane assignment
+- Plotly horizontal bar rendering with constraint windows
+- Hover/click interactions for cross-card coordination
+- Card type registered in _allPanels.ts (`type: timeline`)
+Ready for Phase 5: Graph Visualization.
 
 ---
 
@@ -46,7 +51,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 22 |
+| Plans completed | 23 |
 | Quick tasks completed | 2 |
 | Plans requiring revision | 0 |
 | Requirements completed | 21/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06) |
@@ -117,6 +122,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Degree colors use categorical palette indices 0-2 | Degree 1=index 0, degree 2=index 1, degree 3+=index 2; consistent with other charts | 2026-01-22 |
 | Bar widths 0.8/0.5 for nested visual | Constraint window wider (0.8), actual travel narrower (0.5) creates visual nesting effect | 2026-01-22 |
 | Time axis ticks every 2 hours | 13 ticks (00:00-24:00) provides readability without clutter | 2026-01-22 |
+| Hover dims non-hovered bars to 30% | applyOpacity() helper converts hex to rgba with specified opacity | 2026-01-22 |
+| Selection uses 2px border highlight | StyleManager.interaction.selected color for selection feedback | 2026-01-22 |
+| Toggle selection for timeline | Click to add, click again to remove - matches HistogramCard pattern | 2026-01-22 |
+| import type for TypelineItem | Required by isolatedModules - separates type-only imports from value imports | 2026-01-22 |
 
 ### Roadmap Evolution
 
@@ -164,7 +173,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 - [x] Research Phase 4 before planning (Timeline data volume assessment)
 - [x] Execute Plan 04-01: Timeline foundation (COMPLETE)
 - [x] Execute Plan 04-02: Horizontal bar rendering (COMPLETE)
-- [ ] Execute Plan 04-03: Integration and verification
+- [x] Execute Plan 04-03: Integration and verification (COMPLETE)
 - [ ] Research Phase 5 before planning (vue-cytoscape integration)
 
 ### Blockers
@@ -211,6 +220,8 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 19. **Two-tailed tests are standard for correlation**: Always use 2 × (1 - CDF) for p-value calculation in Pearson correlation, not one-tailed.
 20. **Missing data filtration essential**: Filtering null/undefined/NaN before correlation calculation prevents cascading NaN results and provides transparency via sample size reporting.
 21. **Optional interface methods for extensibility**: Adding optional methods to existing interfaces (onAttributePairSelected?) maintains backwards compatibility while enabling new features.
+22. **import type for type-only imports**: When a type is used only in type positions (extends, type annotations), use `import type` to satisfy isolatedModules and enable tree-shaking.
+23. **Plotly event binding via plotEl.on()**: After Plotly.newPlot(), cast element to `any` and use `.on('plotly_*', handler)` for event binding.
 
 ---
 
@@ -227,11 +238,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4 Plan 02 complete. TimelineCard now renders Plotly horizontal bars.
+**Where we left off:** Phase 4 COMPLETE. TimelineCard fully functional with interactions and registered in _allPanels.ts.
 
-**Next action:** Execute Plan 04-03 (integration and verification).
+**Next action:** Research Phase 5 (vue-cytoscape integration for Graph Visualization).
 
-**Phase progress:** Phase 4 in progress (2/3 plans). Ready for Plan 03.
+**Phase progress:** Phase 4 COMPLETE (3/3 plans). Ready for Phase 5.
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -437,3 +448,21 @@ Horizontal bar rendering with Plotly:
 - Commit: 3f88ddd3
 
 *State updated: 2026-01-22 (Plan 04-02 complete - Horizontal bar rendering)*
+
+**Plan 04-03 Completed (2026-01-22):**
+
+Integration and verification - hover/click interactions and card registration:
+- Added plotly_hover/plotly_unhover event binding for cross-card hover coordination
+- Emit hover events that highlight corresponding rows in DataTableCard
+- Visual feedback: dims non-hovered bars to 30% opacity via applyOpacity()
+- Added plotly_click event binding with toggle selection behavior
+- Emit select and filter events for cross-card filtering
+- Selection visuals: 2px border with StyleManager.interaction.selected color
+- Escape key clears entire selection
+- Watch hoveredIds and selectedIds props for external state changes
+- Registered 'timeline' in _allPanels.ts panelLookup
+- Fixed import type for TimelineItem (isolatedModules compatibility)
+- File: TimelineCard.vue (662 lines total)
+- Commits: 27bab2c5 (hover), 05b69a3b (click), abf03830 (registration)
+
+*State updated: 2026-01-22 (Phase 4 COMPLETE - Timeline Card)*
