@@ -17,6 +17,13 @@
         {{ comparisonCountText }}
       </span>
 
+      <!-- Comparison mode toggle -->
+      <ComparisonToggle
+        :model-value="showComparison"
+        :disabled="!hasActiveFilters"
+        @update:model-value="handleComparisonToggle"
+      />
+
       <!-- Filter reset button -->
       <button
         v-if="hasActiveFilters"
@@ -79,6 +86,7 @@ import type { FilterManager, FilterObserver } from '../../managers/FilterManager
 import type { LinkageManager } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
 import { debugLog } from '../../utils/debug'
+import ComparisonToggle from '../controls/ComparisonToggle.vue'
 
 interface Props {
   // From LinkableCardWrapper
@@ -116,7 +124,7 @@ const props = withDefaults(defineProps<Props>(), {
   showComparison: false,
 })
 
-const emit = defineEmits(['filter', 'hover', 'select', 'isLoaded'])
+const emit = defineEmits(['filter', 'hover', 'select', 'isLoaded', 'update:show-comparison'])
 
 // Local state
 const tableWrapper = ref<HTMLElement | null>(null)
@@ -194,6 +202,12 @@ const comparisonCountText = computed(() => {
   const baselineCount = props.baselineData?.length || 0
   return `${filteredCount} / ${baselineCount}`
 })
+
+// Handle comparison toggle change
+const handleComparisonToggle = (value: boolean) => {
+  console.log('[DataTableCard] handleComparisonToggle - value:', value)
+  emit('update:show-comparison', value)
+}
 
 // Sort and arrange data: filtered rows on top, then unfiltered
 const sortedDisplayData = computed(() => {
@@ -371,6 +385,11 @@ function handleClearAllFilters() {
     props.linkageManager.setSelectedIds(new Set())
   }
 }
+
+// Debug: watch showComparison prop changes
+watch(() => props.showComparison, (newVal, oldVal) => {
+  console.log('[DataTableCard] showComparison prop changed:', oldVal, '->', newVal)
+})
 
 // Scroll to hovered row when hover comes from map
 watch(() => props.hoveredIds, async (newVal) => {

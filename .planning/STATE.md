@@ -372,3 +372,27 @@ ScatterCard and DataTableCard comparison mode:
 - Commits: d280b4dd (scatter), 75d8b109 (table)
 
 *State updated: 2026-01-21 (Phase 3.1 complete - Comparison Mode)*
+
+**Phase 3.1 Debugging Session (2026-01-22):**
+
+Fixed event propagation issues preventing comparison mode from working:
+- ComparisonToggle emit changed from camelCase to kebab-case ('update:model-value')
+- DataTableCard emit changed from camelCase to kebab-case ('update:show-comparison')
+- InteractiveDashboard handleShowComparisonUpdate method created (avoids slot variable shadowing)
+- Added missing watchers for showComparison and baselineData in HistogramCard and PieChartCard
+- Root cause: Vue 2.7 doesn't auto-convert event names between camelCase and kebab-case
+
+Files modified:
+- ComparisonToggle.vue: emit('update:model-value')
+- DataTableCard.vue: emit('update:show-comparison'), added watcher for showComparison
+- InteractiveDashboard.vue: handleShowComparisonUpdate method, removed dashboard-toolbar CSS
+- HistogramCard.vue: added watchers for showComparison and baselineData
+- PieChartCard.vue: added watchers for showComparison and baselineData
+- LinkableCardWrapper.vue: added debug watcher (can be removed later)
+
+Lessons learned:
+- Vue 2.7 with Composition API requires exact event name matching (no auto camelCase↔kebab conversion)
+- Scoped slot variables shadow component data properties - use methods to update this.property
+- Charts need explicit watchers to re-render when comparison props change
+
+*State updated: 2026-01-22 (Phase 3.1 debugging complete - comparison mode now fully functional)*

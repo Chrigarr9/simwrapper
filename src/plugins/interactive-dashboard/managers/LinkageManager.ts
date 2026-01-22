@@ -70,6 +70,7 @@ export class LinkageManager {
   }
 
   setSelectedAttributePair(attrX: string, attrY: string): void {
+    console.log('[LinkageManager] setSelectedAttributePair:', attrX, attrY)
     this.selectedAttributePair = { x: attrX, y: attrY }
     this.notifyAttributePairSelection()
   }
@@ -85,7 +86,9 @@ export class LinkageManager {
   private notifyAttributePairSelection(): void {
     if (!this.selectedAttributePair) return
 
+    console.log('[LinkageManager] notifyAttributePairSelection to', this.observers.size, 'observers')
     this.observers.forEach(obs => {
+      console.log('[LinkageManager] Observer has onAttributePairSelected:', !!obs.onAttributePairSelected)
       if (obs.onAttributePairSelected) {
         obs.onAttributePairSelected(
           this.selectedAttributePair!.x,

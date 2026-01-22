@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
@@ -133,6 +133,11 @@ const updateFilteredData = () => {
     '- all:', allData.length, 'filtered:', filtered.length)
   filteredData.value = filtered
 }
+
+// Debug: watch showComparison prop changes
+watch(() => props.showComparison, (newVal, oldVal) => {
+  console.log('[LinkableCardWrapper] showComparison changed:', oldVal, '->', newVal, 'for card:', props.card.title || props.card.type)
+}, { immediate: true })
 
 onMounted(() => {
   props.filterManager.addObserver(filterObserver)

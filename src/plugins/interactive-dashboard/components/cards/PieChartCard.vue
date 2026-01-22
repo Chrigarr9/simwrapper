@@ -245,6 +245,20 @@ watch(isDarkMode, () => {
   renderChart()
 })
 
+// Re-render when comparison mode changes
+watch(() => props.showComparison, (newVal) => {
+  console.log('[PieChartCard] showComparison changed to:', newVal, '- re-rendering')
+  renderChart()
+})
+
+// Re-render when baseline data changes
+watch(() => props.baselineData, () => {
+  if (props.showComparison) {
+    console.log('[PieChartCard] baselineData changed in comparison mode - re-rendering')
+    renderChart()
+  }
+}, { deep: true })
+
 onMounted(() => {
   previousFilteredDataLength.value = props.filteredData.length
   renderChart()

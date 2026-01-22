@@ -16,19 +16,16 @@ interface Props {
   disabled?: boolean
 }
 
-interface Emits {
-  (e: 'update:modelValue', value: boolean): void
-}
-
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
 })
 
-const emit = defineEmits<Emits>()
+const emit = defineEmits(['update:model-value'])
 
 const onChange = (event: Event) => {
   const target = event.target as HTMLInputElement
-  emit('update:modelValue', target.checked)
+  console.log('[ComparisonToggle] onChange - checked:', target.checked, 'disabled:', props.disabled)
+  emit('update:model-value', target.checked)
 }
 </script>
 

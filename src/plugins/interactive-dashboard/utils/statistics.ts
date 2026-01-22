@@ -3,7 +3,8 @@
  * Provides Pearson correlation with p-value computation via t-test
  */
 
-import { sampleCorrelation } from 'simple-statistics'
+import * as ss from 'simple-statistics'
+const sampleCorrelation = ss.sampleCorrelation
 
 /**
  * Result of correlation calculation with significance testing

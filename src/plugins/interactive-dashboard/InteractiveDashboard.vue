@@ -22,16 +22,6 @@
         )
           b: a(@click="switchTab(index)") {{ subtab.title }}
 
-    //- Dashboard toolbar with comparison toggle (visible when table config exists)
-    .dashboard-toolbar(v-if="yaml.table && !fullScreenCardId")
-      .toolbar-left
-        span.toolbar-label(v-if="effectiveShowComparison") {{ filteredRowIds.size }} / {{ displayData.length }} rows
-      .toolbar-right
-        comparison-toggle(
-          v-model="showComparison"
-          :disabled="!hasActiveFilters"
-        )
-
     //- start row here
     .dash-row(v-for="row,i in rows" :key="i"
       :class="getRowClass(row)"
@@ -63,7 +53,7 @@
           :data-table-manager="dataTableManager"
           :show-comparison="effectiveShowComparison"
         )
-          template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
+          template(v-slot="{ filteredData, baselineData, showComparison, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
             component.dash-card(v-if="card.visible"
               :is="getCardComponent(card)"
               :class="{'is-data-table': card.type === 'data-table'}"
@@ -92,6 +82,8 @@
               :p-value-threshold="card.pValueThreshold"
               :listen-to-attribute-pair-selection="card.listenToAttributePairSelection"
               :filtered-data="filteredData"
+              :baseline-data="baselineData"
+              :show-comparison="showComparison"
               :hovered-ids="hoveredIds"
               :selected-ids="selectedIds"
               :linkage="card.linkage"
@@ -116,6 +108,7 @@
               @filter="handleFilter"
               @hover="handleHover"
               @select="handleSelect"
+              @update:show-comparison="handleShowComparisonUpdate"
               @attribute-pair-selected="handleAttributePairSelected"
               @isLoaded="handleCardIsLoaded(card)"
               @dimension-resizer="setDimensionResizer"
@@ -123,74 +116,7 @@
               @error="setCardError(card, $event)"
             )
 
-    //- Inline Data Table - wrapped in DashboardCard for unified fullscreen behavior
-    //- When table.position === 'layout', the table is rendered via DataTableCard in the layout instead
-    .dash-row(v-if="inlineTableCard")
-      DashboardCard(
-        :key="'inline-table'"
-        :card="inlineTableCard"
-        :is-fullscreen="fullScreenCardId === inlineTableCard.id"
-        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== inlineTableCard.id"
-        :is-panel-narrow="isPanelNarrow"
-        :is-full-screen-dashboard="isFullScreenDashboard"
-        :total-cards-in-row="1"
-        :total-rows="rows.length + 1"
-        @toggle-fullscreen="toggleZoom(inlineTableCard)"
-        @clear-errors=""
-      )
-        //- Table controls (scroll toggle, comparison toggle, filter reset) above the table
-        .table-controls
-          label.scroll-toggle(title="Auto-scroll to hovered row")
-            input(type="checkbox" v-model="enableScrollOnHover")
-            span.scroll-label Scroll
-
-          //- Comparison count display
-          span.comparison-count(
-            v-if="effectiveShowComparison"
-            title="Filtered rows / Total rows"
-          ) {{ filteredRowIds.size }} / {{ displayData.length }}
-
-          comparison-toggle(
-            v-if="yaml.table"
-            v-model="showComparison"
-            :disabled="!hasActiveFilters"
-          )
-
-          button.button.is-small.is-white(
-            v-if="filterManager && filterManager.hasActiveFilters()"
-            @click="handleClearAllFilters"
-            title="Clear all filters"
-          )
-            i.fa.fa-times-circle
-            span.reset-label  Reset
-
-        //- Table contents
-        .table-wrapper(ref="tableWrapper")
-          table.data-table
-            thead
-              tr
-                th(
-                  v-for="col in visibleColumns"
-                  :key="col"
-                  @click="sortByColumn(col)"
-                  :class="{ sortable: true, sorted: sortColumn === col }"
-                )
-                  .header-cell
-                    span {{ col }}
-                    span.sort-icon(v-if="sortColumn === col") {{ sortDirection === 'asc' ? '↑' : '↓' }}
-            tbody
-              tr(
-                v-for="(row, idx) in sortedDisplayData"
-                :key="getRowId(row)"
-                :data-row-id="getRowId(row)"
-                :class="getRowClasses(row)"
-                @mouseenter="handleTableRowHover(row)"
-                @mouseleave="handleTableRowLeave"
-                @click="handleTableRowClick(row)"
-              )
-                td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
-
-    //- NEW: Sub-Dashboards Section (shown when parent has selection)
+    //- Sub-Dashboards Section (shown when parent has selection)
     .sub-dashboards-section(v-if="yaml.subDashboards?.length && parentSelectedValue && !embedded")
       sub-dashboard(
         v-for="(subConfig, idx) in yaml.subDashboards"
@@ -446,23 +372,6 @@ export default defineComponent({
       return this.showComparison && this.hasActiveFilters
     },
 
-    /**
-     * Card config object for the inline data table.
-     * Used when yaml.table.position !== 'layout' (table not placed in layout cards).
-     * This allows the table to be wrapped in DashboardCard for unified fullscreen behavior.
-     */
-    inlineTableCard(): any {
-      if (!this.yaml.table || !this.yaml.table.visible || this.yaml.table.position === 'layout' || !this.dataTableManager) {
-        return null
-      }
-      return {
-        id: 'inline-table-card',
-        title: this.yaml.table.name || 'Data Table',
-        description: this.yaml.table.description || '',
-        type: 'inline-table',
-        isLoaded: true,  // Table is always loaded once dataTableManager exists
-      }
-    },
   },
 
   watch: {
@@ -494,6 +403,14 @@ export default defineComponent({
   },
 
   methods: {
+    // Handle comparison mode toggle from DataTableCard
+    handleShowComparisonUpdate(value: boolean) {
+      console.log('[InteractiveDashboard] handleShowComparisonUpdate - value:', value, 'current:', this.showComparison)
+      console.log('[InteractiveDashboard] handleShowComparisonUpdate - hasActiveFilters:', this.hasActiveFilters)
+      this.showComparison = value
+      console.log('[InteractiveDashboard] handleShowComparisonUpdate - after update:', this.showComparison, 'effectiveShowComparison:', this.effectiveShowComparison)
+    },
+
     // NEW: Format table cell values based on column config
     formatCellValue(value: any, column: string): string {
       if (value === null || value === undefined) return ''
@@ -601,7 +518,7 @@ export default defineComponent({
 
     // Get row CSS classes
     getRowClasses(row: any): Record<string, boolean> {
-      const hasFilters = this.filterManager && this.filterManager.hasActiveFilters()
+      const hasFilters = !!(this.filterManager && this.filterManager.hasActiveFilters())
       return {
         'is-hovered': this.isRowHovered(row),
         'is-selected': this.isRowSelected(row),
@@ -1628,34 +1545,6 @@ export default defineComponent({
 
 .dashboard-header.is-panel-narrow {
   margin: 1rem 1rem 1rem 0rem;
-}
-
-.dashboard-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  margin: 0 0 0.75rem 0;
-  background: var(--dashboard-bg-subtle, var(--bgBold, #f5f5f5));
-  border-radius: 4px;
-  font-size: 0.8rem;
-
-  .toolbar-left {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .toolbar-label {
-    color: var(--dashboard-interaction-selected, #3b82f6);
-    font-weight: 600;
-  }
 }
 
 .dash-row.is-panel-narrow {

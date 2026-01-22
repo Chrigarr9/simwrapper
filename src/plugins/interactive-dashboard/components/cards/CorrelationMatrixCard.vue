@@ -12,7 +12,8 @@ import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
-import { computeCorrelationMatrix, CorrelationMatrixResult } from '../../utils/statistics'
+import { computeCorrelationMatrix } from '../../utils/statistics'
+import type { CorrelationMatrixResult } from '../../utils/statistics'
 
 interface Props {
   title?: string
@@ -33,7 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  attributePairSelected: [attrX: string, attrY: string]
+  'attribute-pair-selected': [attrX: string, attrY: string]
   isLoaded: []
 }>()
 
@@ -45,6 +46,7 @@ const plotContainer = ref<HTMLElement>()
 const isCalculating = ref<boolean>(false)
 const correlationData = ref<CorrelationMatrixResult | null>(null)
 const hoveredCell = ref<{ row: number; col: number } | null>(null)
+const selectedCell = ref<{ row: number; col: number } | null>(null)
 
 // Computed properties
 const sampleSize = computed(() => {
@@ -225,19 +227,98 @@ function renderChart() {
     const point = data.points[0]
     const attrX = point.x
     const attrY = point.y
+    const rowIdx = point.pointIndex[0]
+    const colIdx = point.pointIndex[1]
 
-    emit('attributePairSelected', attrX, attrY)
+    console.log('[CorrelationMatrixCard] Cell clicked:', attrX, 'vs', attrY)
+
+    // Update selection state
+    selectedCell.value = { row: rowIdx, col: colIdx }
+    updateHighlights()
+
+    emit('attribute-pair-selected', attrX, attrY)
   })
 
-  // Hover handler (update hoveredCell state)
+  // Define updateHighlights function before using it in event handlers
+  function updateHighlights() {
+    if (!plotContainer.value) return
+
+    const shapes: any[] = []
+    const attrs = props.attributes
+    const n = attrs.length
+
+    // For categorical heatmaps, use category indices (0, 1, 2...) as coordinates
+    // Plotly maps categories to indices internally
+
+    // Selection highlight (cyan/teal outline around selected cell)
+    if (selectedCell.value) {
+      const { row, col } = selectedCell.value
+      console.log('[CorrelationMatrix] Selection highlight at row:', row, 'col:', col)
+      shapes.push({
+        type: 'rect',
+        xref: 'x',
+        yref: 'y',
+        x0: col - 0.5,
+        x1: col + 0.5,
+        y0: row - 0.5,
+        y1: row + 0.5,
+        fillcolor: 'rgba(0, 200, 200, 0.4)',
+        line: { color: 'rgb(0, 180, 180)', width: 3 },
+        layer: 'above'
+      })
+    }
+
+    // Hover highlights (row and column bands)
+    if (hoveredCell.value) {
+      const { row, col } = hoveredCell.value
+      const hoverColor = 'rgba(255, 200, 0, 0.3)'  // Semi-transparent orange/yellow
+
+      console.log('[CorrelationMatrix] Hover highlight at row:', row, 'col:', col, 'n:', n)
+
+      // Row highlight (horizontal band across all columns)
+      shapes.push({
+        type: 'rect',
+        xref: 'x',
+        yref: 'y',
+        x0: -0.5,
+        x1: n - 0.5,
+        y0: row - 0.5,
+        y1: row + 0.5,
+        fillcolor: hoverColor,
+        line: { color: 'rgba(255, 180, 0, 0.6)', width: 1 },
+        layer: 'above'
+      })
+
+      // Column highlight (vertical band across all rows)
+      shapes.push({
+        type: 'rect',
+        xref: 'x',
+        yref: 'y',
+        x0: col - 0.5,
+        x1: col + 0.5,
+        y0: -0.5,
+        y1: n - 0.5,
+        fillcolor: hoverColor,
+        line: { color: 'rgba(255, 180, 0, 0.6)', width: 1 },
+        layer: 'above'
+      })
+    }
+
+    console.log('[CorrelationMatrix] Applying', shapes.length, 'shapes')
+    Plotly.relayout(plotContainer.value, { shapes })
+  }
+
+  // Hover handler - highlight row and column
   plotContainer.value.on('plotly_hover', (data: any) => {
     const point = data.points[0]
     hoveredCell.value = { row: point.pointIndex[0], col: point.pointIndex[1] }
+    updateHighlights()
   })
 
-  // Unhover handler
+  // Unhover handler - remove hover highlights (keep selection)
   plotContainer.value.on('plotly_unhover', () => {
     hoveredCell.value = null
+    updateHighlights()
   })
 }
 

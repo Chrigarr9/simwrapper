@@ -135,7 +135,9 @@ const histogramData = computed(() => {
 
 const baselineHistogramData = computed(() => {
   // Only compute if comparison mode is active and we have baseline data
+  console.log('[HistogramCard] baselineHistogramData computed - showComparison:', props.showComparison, 'baselineData length:', props.baselineData?.length)
   if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
+    console.log('[HistogramCard] baselineHistogramData - returning empty (showComparison:', props.showComparison, 'baselineData:', props.baselineData?.length, ')')
     return []
   }
 
@@ -178,7 +180,9 @@ const renderChart = () => {
   const traces: any[] = []
 
   // Baseline trace (if comparison mode) - shown in background with low opacity
+  console.log('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineHistogramData.value.length > 0) {
+    console.log('[HistogramCard] Adding baseline trace')
     traces.push({
       x: baselineHistogramData.value.map(d => d.bin),
       y: baselineHistogramData.value.map(d => d.count),
@@ -306,6 +310,20 @@ watch(() => props.filteredData, (newData, oldData) => {
 watch(isDarkMode, () => {
   renderChart()
 })
+
+// Re-render when comparison mode changes
+watch(() => props.showComparison, (newVal) => {
+  console.log('[HistogramCard] showComparison changed to:', newVal, '- re-rendering')
+  renderChart()
+})
+
+// Re-render when baseline data changes
+watch(() => props.baselineData, () => {
+  if (props.showComparison) {
+    console.log('[HistogramCard] baselineData changed in comparison mode - re-rendering')
+    renderChart()
+  }
+}, { deep: true })
 
 // Resize observer for responsive chart sizing (matches ScatterCard pattern)
 let resizeObserver: ResizeObserver | null = null
