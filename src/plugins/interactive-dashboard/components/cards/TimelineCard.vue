@@ -124,11 +124,17 @@ const emit = defineEmits<{
 const plotContainer = ref<HTMLElement>()
 const minimapContainer = ref<HTMLElement>()
 
-// Zoom state
+// Zoom state - X axis (time)
 const viewportStart = ref(0)        // seconds
 const viewportEnd = ref(86400)      // 24 hours in seconds
 const minZoomRange = 3600           // 1 hour minimum
 const maxZoomRange = 86400          // 24 hours maximum
+
+// Zoom state - Y axis (tracks)
+const viewportTopTrack = ref(0)     // top track index (inverted - 0 is top)
+const viewportBottomTrack = ref(100) // bottom track index
+const minTrackRange = 5              // minimum 5 tracks visible
+let maxTrackRange = 100              // updated dynamically based on totalTracks
 
 // View mode state
 const viewMode = ref<'rides' | 'requests'>('rides')
@@ -532,47 +538,70 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 /**
- * Zoom in: halve the visible time range centered on current view
+ * Zoom in: halve the visible time and track range centered on current view
  */
 function zoomIn() {
+  // X-axis zoom
   const currentRange = viewportEnd.value - viewportStart.value
   const center = (viewportStart.value + viewportEnd.value) / 2
   const newRange = Math.max(currentRange * 0.5, minZoomRange)
 
   viewportStart.value = Math.max(0, center - newRange / 2)
   viewportEnd.value = Math.min(86400, center + newRange / 2)
+
+  // Y-axis zoom
+  const currentTrackRange = viewportBottomTrack.value - viewportTopTrack.value
+  const centerTrack = (viewportTopTrack.value + viewportBottomTrack.value) / 2
+  const newTrackRange = Math.max(currentTrackRange * 0.5, minTrackRange)
+
+  viewportTopTrack.value = Math.max(0, centerTrack - newTrackRange / 2)
+  viewportBottomTrack.value = Math.min(maxTrackRange, centerTrack + newTrackRange / 2)
+
   updateMainChartRange()
 }
 
 /**
- * Zoom out: double the visible time range centered on current view
+ * Zoom out: double the visible time and track range centered on current view
  */
 function zoomOut() {
+  // X-axis zoom
   const currentRange = viewportEnd.value - viewportStart.value
   const center = (viewportStart.value + viewportEnd.value) / 2
   const newRange = Math.min(currentRange * 2, maxZoomRange)
 
   viewportStart.value = Math.max(0, center - newRange / 2)
   viewportEnd.value = Math.min(86400, center + newRange / 2)
+
+  // Y-axis zoom
+  const currentTrackRange = viewportBottomTrack.value - viewportTopTrack.value
+  const centerTrack = (viewportTopTrack.value + viewportBottomTrack.value) / 2
+  const newTrackRange = Math.min(currentTrackRange * 2, maxTrackRange)
+
+  viewportTopTrack.value = Math.max(0, centerTrack - newTrackRange / 2)
+  viewportBottomTrack.value = Math.min(maxTrackRange, centerTrack + newTrackRange / 2)
+
   updateMainChartRange()
 }
 
 /**
- * Reset zoom to full 24-hour view
+ * Reset zoom to full 24-hour and all-tracks view
  */
 function resetZoom() {
   viewportStart.value = 0
   viewportEnd.value = 86400
+  viewportTopTrack.value = 0
+  viewportBottomTrack.value = maxTrackRange
   updateMainChartRange()
 }
 
 /**
- * Update main chart x-axis range using Plotly.relayout
+ * Update main chart x-axis and y-axis range using Plotly.relayout
  */
 function updateMainChartRange() {
   if (!plotContainer.value) return
   Plotly.relayout(plotContainer.value as any, {
-    'xaxis.range': [viewportStart.value, viewportEnd.value]
+    'xaxis.range': [viewportStart.value, viewportEnd.value],
+    'yaxis.range': [viewportBottomTrack.value - 0.5, viewportTopTrack.value - 0.5]
   })
 }
 
@@ -616,21 +645,31 @@ function handleMinimapClick(e: MouseEvent) {
  * Handle plotly_relayout event to sync viewport state with user pan/zoom
  */
 function handlePlotlyRelayout(eventData: any) {
+  // X-axis viewport sync
   if (eventData['xaxis.range[0]'] !== undefined) {
     viewportStart.value = eventData['xaxis.range[0]']
     viewportEnd.value = eventData['xaxis.range[1]']
   }
-  // Also handle range array format
   if (eventData['xaxis.range'] !== undefined) {
     viewportStart.value = eventData['xaxis.range'][0]
     viewportEnd.value = eventData['xaxis.range'][1]
+  }
+
+  // Y-axis viewport sync (inverted: range is [bottom - 0.5, top - 0.5])
+  if (eventData['yaxis.range[0]'] !== undefined) {
+    viewportBottomTrack.value = eventData['yaxis.range[0]'] + 0.5
+    viewportTopTrack.value = eventData['yaxis.range[1]'] + 0.5
+  }
+  if (eventData['yaxis.range'] !== undefined) {
+    viewportBottomTrack.value = eventData['yaxis.range'][0] + 0.5
+    viewportTopTrack.value = eventData['yaxis.range'][1] + 0.5
   }
 }
 
 /**
  * Handle mouse wheel event for cursor-centered zoom
- * Scroll up: zoom in centered on cursor position
- * Scroll down: zoom out centered on cursor position
+ * Scroll up: zoom in centered on cursor position (both X and Y axes)
+ * Scroll down: zoom out centered on cursor position (both X and Y axes)
  */
 function handleWheel(e: WheelEvent) {
   e.preventDefault()  // Prevent page scroll
@@ -640,27 +679,27 @@ function handleWheel(e: WheelEvent) {
   // Get mouse position relative to plot container
   const rect = plotContainer.value.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
 
-  // Access Plotly's internal xaxis object to convert pixel to data coordinates
+  // Access Plotly's internal axis objects to convert pixel to data coordinates
   const plotEl = plotContainer.value as any
   const xaxis = plotEl._fullLayout?.xaxis
-  if (!xaxis || !xaxis.p2d) return
+  const yaxis = plotEl._fullLayout?.yaxis
+  if (!xaxis || !xaxis.p2d || !yaxis || !yaxis.p2d) return
 
-  // Convert pixel position to time coordinate
+  // Convert pixel positions to data coordinates
   const mouseTime = xaxis.p2d(mouseX)
+  const mouseTrack = yaxis.p2d(mouseY)
 
   // Calculate zoom factor (scroll down = positive deltaY = zoom out)
   const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9
 
-  // Compute new viewport range centered on cursor position
+  // === X-AXIS ZOOM ===
   const currentRange = viewportEnd.value - viewportStart.value
   const newRange = currentRange * zoomFactor
-
-  // Clamp to valid bounds (1 hour min, 24 hours max)
   const clampedRange = Math.max(minZoomRange, Math.min(maxZoomRange, newRange))
 
   // Calculate new start/end centered on mouse position
-  // Preserve the cursor's position in the viewport
   const cursorRatio = (mouseTime - viewportStart.value) / currentRange
   let newStart = mouseTime - clampedRange * cursorRatio
   let newEnd = newStart + clampedRange
@@ -675,13 +714,37 @@ function handleWheel(e: WheelEvent) {
     newStart = 86400 - clampedRange
   }
 
+  // === Y-AXIS ZOOM ===
+  const currentTrackRange = viewportBottomTrack.value - viewportTopTrack.value
+  const newTrackRange = currentTrackRange * zoomFactor
+  const clampedTrackRange = Math.max(minTrackRange, Math.min(maxTrackRange, newTrackRange))
+
+  // Calculate new top/bottom centered on mouse position
+  // Note: Y-axis is inverted (track 0 at top, higher tracks at bottom)
+  const cursorTrackRatio = (mouseTrack - viewportTopTrack.value) / currentTrackRange
+  let newTopTrack = mouseTrack - clampedTrackRange * cursorTrackRatio
+  let newBottomTrack = newTopTrack + clampedTrackRange
+
+  // Clamp to valid track bounds (0 to maxTrackRange)
+  if (newTopTrack < 0) {
+    newTopTrack = 0
+    newBottomTrack = clampedTrackRange
+  }
+  if (newBottomTrack > maxTrackRange) {
+    newBottomTrack = maxTrackRange
+    newTopTrack = maxTrackRange - clampedTrackRange
+  }
+
   // Update viewport refs
   viewportStart.value = newStart
   viewportEnd.value = newEnd
+  viewportTopTrack.value = newTopTrack
+  viewportBottomTrack.value = newBottomTrack
 
-  // Apply new range to chart
+  // Apply new ranges to chart (Y range is inverted: [bottom - 0.5, top - 0.5])
   Plotly.relayout(plotEl, {
-    'xaxis.range': [newStart, newEnd]
+    'xaxis.range': [newStart, newEnd],
+    'yaxis.range': [newBottomTrack - 0.5, newTopTrack - 0.5]
   })
 }
 
@@ -790,6 +853,14 @@ function renderChart() {
     ? [...allocation.values()][0]?.totalTracks ?? 0
     : 0
 
+  // Update maxTrackRange based on current data
+  maxTrackRange = totalTracks
+  // Initialize Y viewport on first render or when tracks change significantly
+  if (viewportBottomTrack.value === 100 || viewportBottomTrack.value > totalTracks) {
+    viewportTopTrack.value = 0
+    viewportBottomTrack.value = totalTracks
+  }
+
   debugLog('[TimelineCard] Rendering chart, mode:', viewMode.value, 'tracks:', totalTracks, 'items:', items.length)
 
   // Build traces for Plotly
@@ -893,8 +964,10 @@ function renderChart() {
     })
   }
 
-  // Calculate y-axis range based on total tracks
-  const yRange = totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5]
+  // Calculate y-axis range based on Y viewport (inverted: [bottom - 0.5, top - 0.5])
+  const yRange = viewMode.value === 'requests'
+    ? (totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5])  // Full range for request view
+    : [viewportBottomTrack.value - 0.5, viewportTopTrack.value - 0.5]  // Viewport for rides view
 
   // Calculate x-axis range based on view mode
   let xAxisRange: [number, number]
