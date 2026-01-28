@@ -64,30 +64,12 @@ const handleFilter = (filterId: string, column: string, values: Set<any>, filter
   // Determine the filter type (default to 'categorical')
   const type = (filterType as 'categorical' | 'binned') || 'categorical'
 
-  // Check if this filter should use toggle behavior (for map cards with layer linkage)
-  let useToggle = props.card.linkage?.behavior === 'toggle'
-  if (!useToggle && props.card.layers) {
-    const hasLayerLinkage = props.card.layers.some((layer: any) => layer.linkage)
-    if (hasLayerLinkage) {
-      useToggle = true
-    }
-  }
-
-  if (useToggle) {
-    // Toggle filter values - if all values are already in the filter, remove them
-    const currentFilter = props.filterManager.getFilters().get(filterId)
-    if (currentFilter) {
-      const allValuesSelected = Array.from(values).every(v => currentFilter.values.has(v))
-      if (allValuesSelected) {
-        // Remove these values from the filter
-        const newValues = new Set(currentFilter.values)
-        values.forEach(v => newValues.delete(v))
-        debugLog('[LinkableCardWrapper] Toggle filter OFF:', filterId, column, 'remaining:', newValues)
-        props.filterManager.setFilter(filterId, column, newValues, type, binSize)
-        return
-      }
-    }
-  }
+  // Cards (HistogramCard, PieChartCard, etc.) manage their own selection state internally
+  // and emit the complete set of what should be selected. We simply pass this through
+  // to the FilterManager - no additional toggle logic needed here.
+  //
+  // The card's emitted values represent the TRUTH of what should be filtered.
+  // If values is empty, FilterManager.setFilter will remove the filter entirely.
 
   debugLog('[LinkableCardWrapper] Filter event:', filterId, column, values, 'type:', type, 'binSize:', binSize)
   props.filterManager.setFilter(filterId, column, values, type, binSize)

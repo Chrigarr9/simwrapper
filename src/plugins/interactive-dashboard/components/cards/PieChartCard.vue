@@ -44,6 +44,8 @@ const colorMap = ref<Map<string, string>>(new Map())
 const plotContainer = ref<HTMLElement>()
 const selectedCategories = ref<Set<string>>(new Set())
 const previousFilteredDataLength = ref(0)
+// Track if we just emitted a filter (to distinguish our own filter changes from external)
+const justEmittedFilter = ref(false)
 
 const pieData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
@@ -223,6 +225,8 @@ const renderChart = () => {
     // Emit filter
     if (props.linkage?.type === 'filter') {
       const filterId = `pie-${props.column}`
+      // Set flag so the filteredData watcher knows this change is from our own filter
+      justEmittedFilter.value = true
       emit('filter', filterId, props.column, new Set(selectedCategories.value))
     }
 
@@ -231,12 +235,17 @@ const renderChart = () => {
 }
 
 watch(() => props.filteredData, (newData, oldData) => {
-  // If filteredData has grown significantly (filters were removed), clear selection
+  // If filteredData has grown significantly AND we didn't just emit a filter,
+  // it means an external filter was removed - clear our selection
+  // This prevents clearing selection during multi-select (when our OR filter broadens results)
   if (oldData && newData.length > previousFilteredDataLength.value && selectedCategories.value.size > 0) {
-    debugLog('[PieChartCard] Filters cleared, resetting selection')
-    selectedCategories.value.clear()
+    if (!justEmittedFilter.value) {
+      debugLog('[PieChartCard] External filters cleared, resetting selection')
+      selectedCategories.value.clear()
+    }
   }
   previousFilteredDataLength.value = newData.length
+  justEmittedFilter.value = false  // Reset flag after processing
   renderChart()
 }, { deep: true })
 
