@@ -141,6 +141,33 @@ function formatTickValue(value: number): string {
   }
 }
 
+const baselineHistogramData = computed(() => {
+  // Compute baseline histogram from all data (baselineData or filteredData as fallback)
+  const dataSource = props.baselineData?.length > 0 ? props.baselineData : props.filteredData
+  if (!dataSource || dataSource.length === 0) {
+    debugLog('[HistogramCard] No baseline data available')
+    return []
+  }
+
+  debugLog('[HistogramCard] Computing baseline histogram from', dataSource.length, 'rows')
+
+  const values = dataSource.map(row => row[props.column])
+  const binSize = props.binSize || 1
+
+  // Create bins from baseline data - this defines the canonical bin boundaries
+  const bins = new Map<number, number>()
+  values.forEach(val => {
+    if (val !== null && val !== undefined) {
+      const bin = Math.floor(val / binSize) * binSize
+      bins.set(bin, (bins.get(bin) || 0) + 1)
+    }
+  })
+
+  return Array.from(bins.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bin, count]) => ({ bin, count }))
+})
+
 const histogramData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
   if (!props.filteredData || props.filteredData.length === 0) {
@@ -150,10 +177,34 @@ const histogramData = computed(() => {
 
   debugLog('[HistogramCard] Computing histogram from', props.filteredData.length, 'rows')
 
-  const values = props.filteredData.map(row => row[props.column])
   const binSize = props.binSize || 1
 
-  // Create bins
+  // In comparison mode, use baseline bins to ensure alignment
+  // This guarantees filtered bars overlay exactly on baseline bars
+  if (props.showComparison && baselineHistogramData.value.length > 0) {
+    // Start with all baseline bins set to 0
+    const bins = new Map<number, number>()
+    baselineHistogramData.value.forEach(d => bins.set(d.bin, 0))
+
+    // Count filtered values into the baseline bin structure
+    props.filteredData.forEach(row => {
+      const val = row[props.column]
+      if (val !== null && val !== undefined) {
+        const bin = Math.floor(val / binSize) * binSize
+        if (bins.has(bin)) {
+          bins.set(bin, bins.get(bin)! + 1)
+        }
+        // Note: filtered values outside baseline range are ignored for alignment
+      }
+    })
+
+    return Array.from(bins.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([bin, count]) => ({ bin, count }))
+  }
+
+  // Non-comparison mode: compute bins directly from filtered data
+  const values = props.filteredData.map(row => row[props.column])
   const bins = new Map<number, number>()
   values.forEach(val => {
     if (val !== null && val !== undefined) {
@@ -177,33 +228,6 @@ const histogramDataDensity = computed(() => {
     bin: d.bin,
     count: (d.count / total) * 100
   }))
-})
-
-const baselineHistogramData = computed(() => {
-  // Only compute if comparison mode is active and we have baseline data
-  debugLog('[HistogramCard] baselineHistogramData computed - showComparison:', props.showComparison, 'baselineData length:', props.baselineData?.length)
-  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
-    debugLog('[HistogramCard] baselineHistogramData - returning empty (showComparison:', props.showComparison, 'baselineData:', props.baselineData?.length, ')')
-    return []
-  }
-
-  debugLog('[HistogramCard] Computing baseline histogram from', props.baselineData.length, 'rows')
-
-  const values = props.baselineData.map(row => row[props.column])
-  const binSize = props.binSize || 1
-
-  // Create bins using same logic as histogramData
-  const bins = new Map<number, number>()
-  values.forEach(val => {
-    if (val !== null && val !== undefined) {
-      const bin = Math.floor(val / binSize) * binSize
-      bins.set(bin, (bins.get(bin) || 0) + 1)
-    }
-  })
-
-  return Array.from(bins.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([bin, count]) => ({ bin, count }))
 })
 
 // Baseline density: convert counts to percentages for comparison mode
@@ -328,19 +352,9 @@ const renderChart = () => {
     responsive: true,
   })
 
-  // Click handler - only respond to filtered trace clicks
+  // Click handler - respond to both baseline and filtered trace clicks
+  // This enables OR filter functionality: clicking additional bars extends the filter
   plotContainer.value.on('plotly_click', (data: any) => {
-    // In multi-trace mode, curveNumber indicates which trace was clicked
-    // curveNumber 0 = baseline (don't respond), curveNumber 1 = filtered (respond)
-    // In single-trace mode, curveNumber is 0 and that's the filtered trace
-    const clickedTraceIndex = data.points[0].curveNumber
-    const isBaselineTrace = props.showComparison && clickedTraceIndex === 0
-
-    if (isBaselineTrace) {
-      // Don't respond to baseline trace clicks
-      return
-    }
-
     const bin = data.points[0].x
 
     // Toggle bin in selection
