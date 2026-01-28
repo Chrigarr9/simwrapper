@@ -167,6 +167,18 @@ const histogramData = computed(() => {
     .map(([bin, count]) => ({ bin, count }))
 })
 
+// Density data: convert counts to percentages for comparison mode
+// Enables meaningful shape comparison between filtered and baseline distributions
+const histogramDataDensity = computed(() => {
+  if (!props.showComparison) return histogramData.value
+  const total = histogramData.value.reduce((sum, d) => sum + d.count, 0)
+  if (total === 0) return histogramData.value
+  return histogramData.value.map(d => ({
+    bin: d.bin,
+    count: (d.count / total) * 100
+  }))
+})
+
 const baselineHistogramData = computed(() => {
   // Only compute if comparison mode is active and we have baseline data
   console.log('[HistogramCard] baselineHistogramData computed - showComparison:', props.showComparison, 'baselineData length:', props.baselineData?.length)
@@ -194,6 +206,17 @@ const baselineHistogramData = computed(() => {
     .map(([bin, count]) => ({ bin, count }))
 })
 
+// Baseline density: convert counts to percentages for comparison mode
+const baselineHistogramDataDensity = computed(() => {
+  if (!props.showComparison) return baselineHistogramData.value
+  const total = baselineHistogramData.value.reduce((sum, d) => sum + d.count, 0)
+  if (total === 0) return baselineHistogramData.value
+  return baselineHistogramData.value.map(d => ({
+    bin: d.bin,
+    count: (d.count / total) * 100
+  }))
+})
+
 const renderChart = () => {
   if (!plotContainer.value || histogramData.value.length === 0) return
 
@@ -211,32 +234,38 @@ const renderChart = () => {
   const ticktext = tickvals.map(v => formatTickValue(v))
 
   // Build traces array for dual-trace rendering
+  // In comparison mode, use density (percentage) data for meaningful shape comparison
   const traces: any[] = []
+  const usePercentage = props.showComparison
+  const displayData = usePercentage ? histogramDataDensity.value : histogramData.value
+  const baselineDisplayData = usePercentage ? baselineHistogramDataDensity.value : baselineHistogramData.value
 
   // Baseline trace (if comparison mode) - shown in background with low opacity
   console.log('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
-  if (props.showComparison && baselineHistogramData.value.length > 0) {
-    console.log('[HistogramCard] Adding baseline trace')
+  if (props.showComparison && baselineDisplayData.length > 0) {
+    console.log('[HistogramCard] Adding baseline trace (density mode)')
     traces.push({
-      x: baselineHistogramData.value.map(d => d.bin),
-      y: baselineHistogramData.value.map(d => d.count),
+      x: baselineDisplayData.map(d => d.bin),
+      y: baselineDisplayData.map(d => d.count),
       type: 'bar',
       name: 'Baseline (All Data)',
       marker: {
         color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
       },
-      hovertemplate: '<b>%{x}</b><br>Baseline: %{y}<extra></extra>',
+      hovertemplate: usePercentage
+        ? '<b>%{x}</b><br>Baseline: %{y:.1f}%<extra></extra>'
+        : '<b>%{x}</b><br>Baseline: %{y}<extra></extra>',
     })
   }
 
   // Filtered trace - on top with full colors
   traces.push({
-    x: histogramData.value.map(d => d.bin),
-    y: histogramData.value.map(d => d.count),
+    x: displayData.map(d => d.bin),
+    y: displayData.map(d => d.count),
     type: 'bar',
     name: props.showComparison ? 'Filtered' : 'Count',
     marker: {
-      color: histogramData.value.map(d =>
+      color: displayData.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor
       ),
       line: {
@@ -245,7 +274,9 @@ const renderChart = () => {
         width: 1,
       },
     },
-    hovertemplate: '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
+    hovertemplate: usePercentage
+      ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
+      : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
   })
 
   // Build xaxis config with optional tick formatting
@@ -271,7 +302,7 @@ const renderChart = () => {
     },
     xaxis: xaxisConfig,
     yaxis: {
-      title: { text: 'Count', font: { color: textColor, size: 11 } },
+      title: { text: usePercentage ? 'Percentage [%]' : 'Count', font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
