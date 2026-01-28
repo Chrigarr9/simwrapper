@@ -1255,10 +1255,8 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
     return getInteractionColorRGBA('hover', 100)
   }
 
-  // Only dim non-filtered items when there are actual chart filters active,
-  // NOT when there's just a selection. Selection should only highlight,
-  // not dim other features.
-  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
+  // Dim non-filtered items when there are chart filters active
+  if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
@@ -1271,6 +1269,13 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
       Math.round((baseColor[2] + 180) / 2),
     ]
     return [dimmed[0], dimmed[1], dimmed[2], 60]
+  }
+
+  // Dim non-selected features when there's an active selection
+  // This creates visual hierarchy: selected features pop, everything else fades
+  if (hasActiveSelection && !isSelected && !isHovered) {
+    const baseColor = getBaseColor(feature, layerConfig)
+    return [baseColor[0], baseColor[1], baseColor[2], 80] // 30% opacity
   }
 
   // Use getBaseColor for colorBy support (dashboard-level or per-layer)
@@ -1409,11 +1414,15 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   // State-based scaling
   if (isHovered) return baseWidth * 3
   if (isSelected) return baseWidth * 2.5
-  // Only dim when chart filters are active, not when there's just a selection
-  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
+  // Dim non-filtered items when there are chart filters active
+  if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make invisible (0 width)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
     return 1 // Always 1px when dimmed
+  }
+  // Reduce width for non-selected features when there's a selection
+  if (hasActiveSelection) {
+    return baseWidth * 0.5 // 50% width when dimmed
   }
   return baseWidth
 }
@@ -1441,11 +1450,15 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
   // State-based scaling
   if (isHovered) return baseRadius * 1.5
   if (isSelected) return baseRadius * 1.3
-  // Only dim when chart filters are active, not when there's just a selection
-  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
+  // Dim non-filtered items when there are chart filters active
+  if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make invisible (0 radius)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
     return baseRadius * 0.5 // Smaller when dimmed
+  }
+  // Reduce radius for non-selected features when there's a selection
+  if (hasActiveSelection) {
+    return baseRadius * 0.7 // 70% radius when dimmed
   }
   return baseRadius
 }
@@ -1466,8 +1479,8 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
     return getInteractionColorRGBA('hover', 255)
   }
 
-  // Only dim when chart filters are active, not when there's just a selection
-  if (hasActiveFilters && !isFiltered && !hasActiveSelection) {
+  // Dim non-filtered items when there are chart filters active
+  if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
@@ -1479,6 +1492,12 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
       Math.round((baseColor[2] + 180) / 2),
     ]
     return [dimmed[0], dimmed[1], dimmed[2], 60]
+  }
+
+  // Dim non-selected features when there's an active selection
+  if (hasActiveSelection && !isSelected && !isHovered) {
+    const baseColor = getBaseColor(feature, layerConfig)
+    return [baseColor[0], baseColor[1], baseColor[2], 80] // 30% opacity
   }
 
   const baseColor = getBaseColor(feature, layerConfig)
