@@ -363,7 +363,9 @@ export default defineComponent({
     },
 
     // Check if any filters are active
+    // Access filterVersion to make this reactive to filter changes
     hasActiveFilters(): boolean {
+      const _version = this.filterVersion
       return this.filterManager ? this.filterManager.hasActiveFilters() : false
     },
 
