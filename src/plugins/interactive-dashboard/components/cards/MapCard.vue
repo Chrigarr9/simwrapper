@@ -53,6 +53,7 @@ import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
 import { getInteractionColorRGBA } from '../../utils/colorSchemes'
+import { toTitleCase } from '../../utils/labelFormatter'
 import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
 import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
@@ -339,7 +340,7 @@ async function initMap(): Promise<void> {
       container: mapId.value,
       style: mapStyle,
       center: props.center || [13.4, 52.52],
-      zoom: props.zoom || 10,
+      zoom: Number(props.zoom) || 10,
     })
 
     // Wait for map to load
@@ -695,7 +696,7 @@ function renderDefaultTooltip(
     // Skip internal properties
     if (key.startsWith('_')) return
 
-    const formattedKey = formatPropertyName(key)
+    const formattedKey = toTitleCase(key)
     const formattedValue = formatTooltipValue(value)
 
     html += `
@@ -713,14 +714,6 @@ function renderDefaultTooltip(
   html += '</div>'
 
   return html
-}
-
-// Format property name for display (e.g., "main_mode" -> "Main Mode")
-function formatPropertyName(name: string): string {
-  return name
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
 }
 
 // Format property value for display
@@ -1967,7 +1960,7 @@ const legendData = computed(() => {
           const max = allValues.length > 0 ? Math.max(...allValues) : 1
           return {
             type: 'numeric' as const,
-            title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+            title: attrConfig.label || toTitleCase(props.colorByAttribute),
             minValue: min,
             maxValue: max,
           }
@@ -1975,7 +1968,7 @@ const legendData = computed(() => {
           // Categorical - get unique values from central table
           return {
             type: 'categorical' as const,
-            title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+            title: attrConfig.label || toTitleCase(props.colorByAttribute),
             items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
           }
         }
@@ -1992,7 +1985,7 @@ const legendData = computed(() => {
         const [min, max] = calculateNumericRange(features, props.colorByAttribute)
         return {
           type: 'numeric' as const,
-          title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+          title: attrConfig.label || toTitleCase(props.colorByAttribute),
           minValue: min,
           maxValue: max,
         }
@@ -2000,7 +1993,7 @@ const legendData = computed(() => {
         // Categorical
         return {
           type: 'categorical' as const,
-          title: attrConfig.label || formatPropertyName(props.colorByAttribute),
+          title: attrConfig.label || toTitleCase(props.colorByAttribute),
           items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
         }
       }
@@ -2022,7 +2015,7 @@ const legendData = computed(() => {
   if (colorBy.type === 'categorical') {
     return {
       type: 'categorical' as const,
-      title: formatPropertyName(colorBy.attribute),
+      title: toTitleCase(colorBy.attribute),
       items: buildCategoricalLegendItems(colorByLayer, colorBy),
     }
   } else if (colorBy.type === 'numeric') {
@@ -2031,7 +2024,7 @@ const legendData = computed(() => {
 
     return {
       type: 'numeric' as const,
-      title: formatPropertyName(colorBy.attribute),
+      title: toTitleCase(colorBy.attribute),
       minValue: min,
       maxValue: max,
     }

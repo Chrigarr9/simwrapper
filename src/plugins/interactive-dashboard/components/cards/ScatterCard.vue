@@ -11,6 +11,7 @@ import { StyleManager } from '../../managers/StyleManager'
 import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal' | 'percent'
@@ -304,8 +305,8 @@ const renderChart = () => {
       // Find all points belonging to this category
       props.filteredData?.forEach((row, i) => {
         if (String(row[props.colorColumn!]) === category) {
-          const xVal = row[props.xColumn]
-          const yVal = row[props.yColumn]
+          const xVal = row[currentXColumn.value]
+          const yVal = row[currentYColumn.value]
           if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
             const id = props.idColumn ? row[props.idColumn] : null
             categoryIndices.push(i)
@@ -395,14 +396,14 @@ const renderChart = () => {
 
   const layout = {
     xaxis: {
-      title: { text: currentXColumn.value, font: { color: textColor, size: 11 } },
+      title: { text: toTitleCase(currentXColumn.value), font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
     },
     yaxis: {
-      title: { text: currentYColumn.value, font: { color: textColor, size: 11 } },
+      title: { text: toTitleCase(currentYColumn.value), font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,

@@ -14,6 +14,7 @@ import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { computeCorrelationMatrix } from '../../utils/statistics'
 import type { CorrelationMatrixResult } from '../../utils/statistics'
+import { toTitleCase } from '../../utils/labelFormatter'
 
 interface Props {
   title?: string
@@ -164,8 +165,8 @@ function renderChart() {
         const textColorAnnotation = Math.abs(r) > 0.5 ? '#ffffff' : '#000000'
 
         annotations.push({
-          x: props.attributes[j],
-          y: props.attributes[i],
+          x: toTitleCase(props.attributes[j]),
+          y: toTitleCase(props.attributes[i]),
           text: text,
           showarrow: false,
           font: {
@@ -180,8 +181,8 @@ function renderChart() {
   // Plotly heatmap trace
   const trace = {
     z: matrix,
-    x: props.attributes,
-    y: props.attributes,
+    x: props.attributes.map(toTitleCase),
+    y: props.attributes.map(toTitleCase),
     type: 'heatmap',
     colorscale: [
       [0.0, '#3b4cc0'],  // Blue for -1 (negative)

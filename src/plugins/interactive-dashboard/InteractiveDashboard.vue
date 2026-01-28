@@ -246,7 +246,7 @@ export default defineComponent({
       // Key for forcing card re-renders after table fullscreen (fixes layout issues)
       cardRenderKey: 0,
       // Comparison mode state
-      showComparison: false,
+      showComparison: true,
     }
   },
 

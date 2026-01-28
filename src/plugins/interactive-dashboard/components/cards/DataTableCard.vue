@@ -49,7 +49,7 @@
               :class="{ sortable: true, sorted: sortColumn === col }"
             >
               <div class="header-cell">
-                <span>{{ col }}</span>
+                <span>{{ toTitleCase(col) }}</span>
                 <span class="sort-icon" v-if="sortColumn === col">
                   {{ sortDirection === 'asc' ? '↑' : '↓' }}
                 </span>
@@ -86,6 +86,7 @@ import type { FilterManager, FilterObserver } from '../../managers/FilterManager
 import type { LinkageManager } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
 import ComparisonToggle from '../controls/ComparisonToggle.vue'
 
 interface Props {
