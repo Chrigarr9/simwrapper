@@ -405,10 +405,10 @@ export default defineComponent({
   methods: {
     // Handle comparison mode toggle from DataTableCard
     handleShowComparisonUpdate(value: boolean) {
-      console.log('[InteractiveDashboard] handleShowComparisonUpdate - value:', value, 'current:', this.showComparison)
-      console.log('[InteractiveDashboard] handleShowComparisonUpdate - hasActiveFilters:', this.hasActiveFilters)
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - value:', value, 'current:', this.showComparison)
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - hasActiveFilters:', this.hasActiveFilters)
       this.showComparison = value
-      console.log('[InteractiveDashboard] handleShowComparisonUpdate - after update:', this.showComparison, 'effectiveShowComparison:', this.effectiveShowComparison)
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - after update:', this.showComparison, 'effectiveShowComparison:', this.effectiveShowComparison)
     },
 
     // NEW: Format table cell values based on column config
@@ -928,16 +928,16 @@ export default defineComponent({
 
     selectTabLayout() {
       // Choose subtab or full layout
-      console.log('[InteractiveDashboard] selectTabLayout called')
-      console.log('[InteractiveDashboard] subtabs:', this.subtabs.length, 'activeTab:', this.activeTab)
-      console.log('[InteractiveDashboard] yaml.layout:', this.yaml.layout)
+      debugLog('[InteractiveDashboard] selectTabLayout called')
+      debugLog('[InteractiveDashboard] subtabs:', this.subtabs.length, 'activeTab:', this.activeTab)
+      debugLog('[InteractiveDashboard] yaml.layout:', this.yaml.layout)
 
       if (this.subtabs.length && this.activeTab > -1) {
         const subtab = this.subtabs[this.activeTab]
-        console.log('[InteractiveDashboard] Using subtab layout:', subtab.title)
+        debugLog('[InteractiveDashboard] Using subtab layout:', subtab.title)
         this.setupRows(subtab.layout, subtab.subtabFolder)
       } else if (this.yaml.layout) {
-        console.log('[InteractiveDashboard] Using main layout')
+        debugLog('[InteractiveDashboard] Using main layout')
         this.setupRows(this.yaml.layout)
       } else {
         console.error('[InteractiveDashboard] No layout found in YAML!')
@@ -949,10 +949,10 @@ export default defineComponent({
     },
 
     setupRows(layout: any, subtabFolder?: string) {
-      console.log('[InteractiveDashboard] setupRows called with layout:', layout)
-      console.log('[InteractiveDashboard] layout keys:', layout ? Object.keys(layout) : 'null')
-      console.log('[InteractiveDashboard] embedded mode:', this.embedded, 'title:', this.yaml?.header?.title)
-      console.log('[InteractiveDashboard] current rows before setup:', this.rows.length)
+      debugLog('[InteractiveDashboard] setupRows called with layout:', layout)
+      debugLog('[InteractiveDashboard] layout keys:', layout ? Object.keys(layout) : 'null')
+      debugLog('[InteractiveDashboard] embedded mode:', this.embedded, 'title:', this.yaml?.header?.title)
+      debugLog('[InteractiveDashboard] current rows before setup:', this.rows.length)
       let numCard = 1
 
       for (const rowId of Object.keys(layout)) {

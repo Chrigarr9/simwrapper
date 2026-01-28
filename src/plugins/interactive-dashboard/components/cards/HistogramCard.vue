@@ -181,9 +181,9 @@ const histogramDataDensity = computed(() => {
 
 const baselineHistogramData = computed(() => {
   // Only compute if comparison mode is active and we have baseline data
-  console.log('[HistogramCard] baselineHistogramData computed - showComparison:', props.showComparison, 'baselineData length:', props.baselineData?.length)
+  debugLog('[HistogramCard] baselineHistogramData computed - showComparison:', props.showComparison, 'baselineData length:', props.baselineData?.length)
   if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
-    console.log('[HistogramCard] baselineHistogramData - returning empty (showComparison:', props.showComparison, 'baselineData:', props.baselineData?.length, ')')
+    debugLog('[HistogramCard] baselineHistogramData - returning empty (showComparison:', props.showComparison, 'baselineData:', props.baselineData?.length, ')')
     return []
   }
 
@@ -241,9 +241,9 @@ const renderChart = () => {
   const baselineDisplayData = usePercentage ? baselineHistogramDataDensity.value : baselineHistogramData.value
 
   // Baseline trace (if comparison mode) - shown in background with low opacity
-  console.log('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
+  debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
-    console.log('[HistogramCard] Adding baseline trace (density mode)')
+    debugLog('[HistogramCard] Adding baseline trace (density mode)')
     traces.push({
       x: baselineDisplayData.map(d => d.bin),
       y: baselineDisplayData.map(d => d.count),

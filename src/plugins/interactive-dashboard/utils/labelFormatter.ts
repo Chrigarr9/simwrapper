@@ -70,3 +70,23 @@ export function toTitleCase(str: string): string {
     })
     .join(' ')
 }
+
+/**
+ * Strip empty or placeholder unit brackets from a label.
+ *
+ * Useful for categorical attributes where the label may have "[-]"
+ * indicating no unit, which looks odd when displayed.
+ *
+ * Examples:
+ * - "Transport Mode [-]" -> "Transport Mode"
+ * - "Distance [km]" -> "Distance [km]" (unchanged - has actual unit)
+ * - "Budget [€]" -> "Budget [€]" (unchanged - has actual unit)
+ *
+ * @param label - The label to clean
+ * @returns The label with empty unit brackets removed
+ */
+export function stripEmptyUnitBrackets(label: string): string {
+  if (!label) return ''
+  // Remove " [-]" at the end of the string (empty unit placeholder)
+  return label.replace(/\s*\[-\]\s*$/, '').trim()
+}

@@ -53,7 +53,7 @@ import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
 import { getInteractionColorRGBA } from '../../utils/colorSchemes'
-import { toTitleCase } from '../../utils/labelFormatter'
+import { toTitleCase, stripEmptyUnitBrackets } from '../../utils/labelFormatter'
 import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
 import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
@@ -806,7 +806,8 @@ function sortLayersByZIndex(layers: any[]): any[] {
 
 function updateLayers() {
   if (!deckOverlay.value) {
-    console.warn('[MapCard] Cannot update layers: overlay not initialized')
+    // Expected during initial render - overlay may not be ready yet
+    debugLog('[MapCard] Cannot update layers: overlay not initialized')
     return
   }
 
@@ -820,12 +821,12 @@ function updateLayers() {
   // Otherwise, hidden arcs would cause all visible polygons to become neutral
   const visibleLayers = props.layers.filter(layer => isLayerVisible(layer))
 
-  // DEBUG: Log visibility filtering
-  console.log('[MapCard] geometryType selected:', props.geometryType)
-  console.log('[MapCard] All layers:', props.layers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
-  console.log('[MapCard] Visible layers:', visibleLayers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
-  console.log('[MapCard] layerStrategy:', props.layerStrategy)
-  console.log('[MapCard] colorByAttribute:', props.colorByAttribute)
+  // Log visibility filtering
+  debugLog('[MapCard] geometryType selected:', props.geometryType)
+  debugLog('[MapCard] All layers:', props.layers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  debugLog('[MapCard] Visible layers:', visibleLayers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  debugLog('[MapCard] layerStrategy:', props.layerStrategy)
+  debugLog('[MapCard] colorByAttribute:', props.colorByAttribute)
 
   // Compute layer roles using LayerColoringManager
   // This determines which layers get colorBy coloring vs neutral styling
@@ -1663,16 +1664,16 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
       const featureId = getFeatureId(feature, layerConfig)
       const tableColumn = layerConfig.linkage.tableColumn
 
-      // DEBUG: Log the first few lookups
+      // Log the first lookup for debugging (controlled via debug flag)
       if (!window._colorByDebugLogged) {
-        console.log('[MapCard] colorBy data join lookup:')
-        console.log('  raw cluster_id:', feature.properties?.[layerConfig.linkage.geoProperty])
-        console.log('  cluster_type:', feature.properties?.cluster_type)
-        console.log('  constructed featureId:', featureId)
-        console.log('  tableColumn:', tableColumn)
-        console.log('  colorByAttribute:', props.colorByAttribute)
-        console.log('  filteredData rows:', props.filteredData?.length)
-        console.log('  First row sample:', props.filteredData?.[0])
+        debugLog('[MapCard] colorBy data join lookup:')
+        debugLog('  raw cluster_id:', feature.properties?.[layerConfig.linkage.geoProperty])
+        debugLog('  cluster_type:', feature.properties?.cluster_type)
+        debugLog('  constructed featureId:', featureId)
+        debugLog('  tableColumn:', tableColumn)
+        debugLog('  colorByAttribute:', props.colorByAttribute)
+        debugLog('  filteredData rows:', props.filteredData?.length)
+        debugLog('  First row sample:', props.filteredData?.[0])
         window._colorByDebugLogged = true
       }
 
@@ -1985,9 +1986,10 @@ const legendData = computed(() => {
           }
         } else {
           // Categorical - get unique values from central table
+          // Strip "[-]" from label for categorical data (no meaningful unit)
           return {
             type: 'categorical' as const,
-            title: attrConfig.label || toTitleCase(props.colorByAttribute),
+            title: stripEmptyUnitBrackets(attrConfig.label || toTitleCase(props.colorByAttribute)),
             items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
           }
         }
@@ -2010,9 +2012,10 @@ const legendData = computed(() => {
         }
       } else {
         // Categorical
+        // Strip "[-]" from label for categorical data (no meaningful unit)
         return {
           type: 'categorical' as const,
-          title: attrConfig.label || toTitleCase(props.colorByAttribute),
+          title: stripEmptyUnitBrackets(attrConfig.label || toTitleCase(props.colorByAttribute)),
           items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
         }
       }
@@ -2034,7 +2037,7 @@ const legendData = computed(() => {
   if (colorBy.type === 'categorical') {
     return {
       type: 'categorical' as const,
-      title: toTitleCase(colorBy.attribute),
+      title: stripEmptyUnitBrackets(toTitleCase(colorBy.attribute)),
       items: buildCategoricalLegendItems(colorByLayer, colorBy),
     }
   } else if (colorBy.type === 'numeric') {

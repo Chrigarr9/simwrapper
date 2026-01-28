@@ -226,18 +226,22 @@ function renderChart() {
   // Click handler for cell selection
   plotContainer.value.on('plotly_click', (data: any) => {
     const point = data.points[0]
-    const attrX = point.x
-    const attrY = point.y
     const rowIdx = point.pointIndex[0]
     const colIdx = point.pointIndex[1]
 
-    console.log('[CorrelationMatrixCard] Cell clicked:', attrX, 'vs', attrY)
+    // Use indices to get ORIGINAL column names (not title-cased display labels)
+    // This is critical for data lookups in ScatterCard
+    const originalAttrX = props.attributes[colIdx]
+    const originalAttrY = props.attributes[rowIdx]
+
+    console.log('[CorrelationMatrixCard] Cell clicked:', originalAttrX, 'vs', originalAttrY, '(display:', point.x, 'vs', point.y, ')')
 
     // Update selection state
     selectedCell.value = { row: rowIdx, col: colIdx }
     updateHighlights()
 
-    emit('attribute-pair-selected', attrX, attrY)
+    // Emit original column names for data binding
+    emit('attribute-pair-selected', originalAttrX, originalAttrY)
   })
 
   // Define updateHighlights function before using it in event handlers

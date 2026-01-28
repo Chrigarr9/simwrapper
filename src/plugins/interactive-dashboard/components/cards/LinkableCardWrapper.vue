@@ -134,9 +134,9 @@ const updateFilteredData = () => {
   filteredData.value = filtered
 }
 
-// Debug: watch showComparison prop changes
+// Watch showComparison prop changes (uses debugLog for controlled output)
 watch(() => props.showComparison, (newVal, oldVal) => {
-  console.log('[LinkableCardWrapper] showComparison changed:', oldVal, '->', newVal, 'for card:', props.card.title || props.card.type)
+  debugLog('[LinkableCardWrapper] showComparison changed:', oldVal, '->', newVal, 'for card:', props.card.title || props.card.type)
 }, { immediate: true })
 
 onMounted(() => {
