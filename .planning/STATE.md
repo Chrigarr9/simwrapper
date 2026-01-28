@@ -204,6 +204,7 @@ None currently.
 |------|-------|------|
 | 2026-01-22 | Fix card viewport scaling issues | ui |
 | 2026-01-28 | Add scientific styling profile for paper-ready visualizations | ui |
+| 2026-01-28 | Create custom SimWrapper branding/styling for dissertation use case | ui |
 
 See `.planning/todos/pending/` for details.
 
