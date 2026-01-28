@@ -203,6 +203,7 @@ None currently.
 | Date | Title | Area |
 |------|-------|------|
 | 2026-01-22 | Fix card viewport scaling issues | ui |
+| 2026-01-28 | Add scientific styling profile for paper-ready visualizations | ui |
 
 See `.planning/todos/pending/` for details.
 
