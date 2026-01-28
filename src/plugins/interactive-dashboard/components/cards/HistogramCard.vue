@@ -323,6 +323,8 @@ const renderChart = () => {
     if (props.linkage?.type === 'filter') {
       const filterId = `histogram-${props.column}`
       const binSize = props.binSize || 1
+      // Set flag so the filteredData watcher knows this change is from our own filter
+      justEmittedFilter.value = true
       emit('filter', filterId, props.column, new Set(selectedBins.value), 'binned', binSize)
     }
 
@@ -330,13 +332,21 @@ const renderChart = () => {
   })
 }
 
+// Track if we just emitted a filter (to distinguish our own filter changes from external)
+const justEmittedFilter = ref(false)
+
 watch(() => props.filteredData, (newData, oldData) => {
-  // If filteredData has grown significantly (filters were removed), clear selection
+  // If filteredData has grown significantly AND we didn't just emit a filter,
+  // it means an external filter was removed - clear our selection
+  // This prevents clearing selection during multi-select (when our OR filter broadens results)
   if (oldData && newData.length > previousFilteredDataLength.value && selectedBins.value.size > 0) {
-    debugLog('[HistogramCard] Filters cleared, resetting selection')
-    selectedBins.value.clear()
+    if (!justEmittedFilter.value) {
+      debugLog('[HistogramCard] External filters cleared, resetting selection')
+      selectedBins.value.clear()
+    }
   }
   previousFilteredDataLength.value = newData.length
+  justEmittedFilter.value = false  // Reset flag after processing
   renderChart()
 }, { deep: true })
 
