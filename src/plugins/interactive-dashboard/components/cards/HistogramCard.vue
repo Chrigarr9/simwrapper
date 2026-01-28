@@ -63,6 +63,40 @@ const columnFormat = computed((): ColumnFormat | undefined => {
   return format
 })
 
+// Format axis label with unit suffix based on column format
+// Returns "Column Name [unit]" format, e.g., "Distance [km]", "Duration [min]"
+function formatAxisLabel(column: string): string {
+  const format = columnFormat.value
+  if (!format) {
+    // Title case the column name
+    return column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  }
+
+  // Get the display name (title case)
+  const displayName = column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  switch (format.type) {
+    case 'time':
+      return `${displayName} [hh:mm]`
+    case 'duration':
+      if (format.unit === 'min') return `${displayName} [min]`
+      if (format.unit === 's') return `${displayName} [s]`
+      return displayName
+    case 'distance':
+      if (format.unit === 'km') return `${displayName} [km]`
+      if (format.unit === 'm') return `${displayName} [m]`
+      return displayName
+    case 'percent':
+      return `${displayName} [%]`
+    case 'decimal':
+      // Support custom unit field for decimal type
+      if (format.unit) return `${displayName} [${format.unit}]`
+      return displayName
+    default:
+      return displayName
+  }
+}
+
 // Format a tick value based on column format
 function formatTickValue(value: number): string {
   const format = columnFormat.value
@@ -216,7 +250,7 @@ const renderChart = () => {
 
   // Build xaxis config with optional tick formatting
   const xaxisConfig: any = {
-    title: { text: '', font: { color: textColor, size: 11 } },
+    title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11 } },
     tickfont: { color: textColor, size: 10 },
     gridcolor: gridColor,
     linecolor: gridColor,

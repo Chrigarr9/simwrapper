@@ -11,7 +11,6 @@ import { StyleManager } from '../../managers/StyleManager'
 import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
-import { toTitleCase } from '../../utils/labelFormatter'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal' | 'percent'
@@ -84,6 +83,40 @@ watch(() => props.yColumn, (newVal) => { currentYColumn.value = newVal })
 // Get format config for a column
 function getColumnFormat(column: string): ColumnFormat | undefined {
   return props.tableConfig?.columns?.formats?.[column]
+}
+
+// Format axis label with unit suffix based on column format
+// Returns "Column Name [unit]" format, e.g., "Distance [km]", "Duration [min]"
+function formatAxisLabel(column: string): string {
+  const format = getColumnFormat(column)
+
+  // Get the display name (title case)
+  const displayName = column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  if (!format) {
+    return displayName
+  }
+
+  switch (format.type) {
+    case 'time':
+      return `${displayName} [hh:mm]`
+    case 'duration':
+      if (format.unit === 'min') return `${displayName} [min]`
+      if (format.unit === 's') return `${displayName} [s]`
+      return displayName
+    case 'distance':
+      if (format.unit === 'km') return `${displayName} [km]`
+      if (format.unit === 'm') return `${displayName} [m]`
+      return displayName
+    case 'percent':
+      return `${displayName} [%]`
+    case 'decimal':
+      // Support custom unit field for decimal type
+      if (format.unit) return `${displayName} [${format.unit}]`
+      return displayName
+    default:
+      return displayName
+  }
 }
 
 // Format a value based on column format
@@ -396,14 +429,14 @@ const renderChart = () => {
 
   const layout = {
     xaxis: {
-      title: { text: toTitleCase(currentXColumn.value), font: { color: textColor, size: 11 } },
+      title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
     },
     yaxis: {
-      title: { text: toTitleCase(currentYColumn.value), font: { color: textColor, size: 11 } },
+      title: { text: formatAxisLabel(currentYColumn.value), font: { color: textColor, size: 11 } },
       tickfont: { color: textColor, size: 10 },
       gridcolor: gridColor,
       linecolor: gridColor,
