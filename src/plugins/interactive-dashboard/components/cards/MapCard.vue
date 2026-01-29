@@ -893,12 +893,31 @@ function updateLayers() {
     }
   })
 
+  // Create highlight overlay layers for hovered/selected features
+  // These render LAST to ensure they're always on top of normal features
+  const hasHighlightedFeatures = (props.hoveredIds && props.hoveredIds.size > 0) ||
+                                  (props.selectedIds && props.selectedIds.size > 0)
+
+  if (hasHighlightedFeatures) {
+    props.layers.forEach((layerConfig) => {
+      if (!isLayerVisible(layerConfig)) return
+
+      const features = getLayerData(layerConfig.name)
+      if (features.length === 0) return
+
+      const highlightLayer = createHighlightOverlayLayer(layerConfig, features)
+      if (highlightLayer) {
+        layers.push(highlightLayer)
+      }
+    })
+  }
+
   // Sort layers by zIndex (if specified) or by original order
   const sortedLayers = sortLayersByZIndex(layers)
 
   // Update deck overlay
   deckOverlay.value.setProps({ layers: sortedLayers })
-  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
+  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison}, highlights: ${hasHighlightedFeatures})`)
   debugLog(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
 }
 
@@ -980,6 +999,125 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
         getFillColor: baselineColor,
         getLineColor: [160, 160, 160, 100],
         lineWidthMinPixels: 1,
+      })
+
+    default:
+      return null
+  }
+}
+
+// Create highlight overlay layer for hovered/selected features
+// These layers render ON TOP of normal layers for guaranteed visibility
+function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]): any | null {
+  if (!layerConfig.linkage) return null
+
+  // Filter to only hovered or selected features
+  const highlightedFeatures = features.filter(feature => {
+    const featureId = getFeatureId(feature, layerConfig)
+    const isHovered = setHasLoose(props.hoveredIds, featureId)
+    const isSelected = setHasLoose(props.selectedIds, featureId)
+    return isHovered || isSelected
+  })
+
+  if (highlightedFeatures.length === 0) return null
+
+  debugLog(`[MapCard] Creating highlight overlay for "${layerConfig.name}" with ${highlightedFeatures.length} features`)
+
+  switch (layerConfig.type) {
+    case 'polygon':
+    case 'fill':
+      return new PolygonLayer({
+        id: `highlight-polygon-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false, // Main layer handles picking
+        stroked: true,
+        filled: true,
+        wireframe: true,
+        lineWidthMinPixels: 2,
+
+        getPolygon: (d: any) => {
+          const coords = d.geometry.coordinates
+          if (d.geometry.type === 'Polygon') return coords[0]
+          if (d.geometry.type === 'MultiPolygon') return coords[0][0]
+          return []
+        },
+
+        getFillColor: (d: any) => getFeatureFillColor(d, layerConfig),
+        getLineColor: (d: any) => getFeatureLineColor(d, layerConfig),
+        getLineWidth: (d: any) => getFeatureLineWidth(d, layerConfig),
+
+        updateTriggers: {
+          getFillColor: [props.hoveredIds, props.selectedIds],
+          getLineColor: [props.hoveredIds, props.selectedIds],
+          getLineWidth: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'line':
+      return new LineLayer({
+        id: `highlight-line-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false,
+
+        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
+        getTargetPosition: (d: any) => {
+          const coords = d.geometry.coordinates
+          return coords[coords.length - 1] as Position
+        },
+
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig),
+        getColor: (d: any) => getFeatureColor(d, layerConfig),
+
+        updateTriggers: {
+          getWidth: [props.hoveredIds, props.selectedIds],
+          getColor: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'arc':
+      return new ArcLayer({
+        id: `highlight-arc-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false,
+        greatCircle: false,
+
+        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
+        getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig),
+        getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
+        getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
+
+        getTilt: () => layerConfig.arcTilt || 25,
+        getHeight: () => layerConfig.arcHeight || 0.2,
+
+        updateTriggers: {
+          getWidth: [props.hoveredIds, props.selectedIds],
+          getSourceColor: [props.hoveredIds, props.selectedIds],
+          getTargetColor: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'scatterplot':
+    case 'circle':
+    case 'point':
+      return new ScatterplotLayer({
+        id: `highlight-scatterplot-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false,
+        radiusMinPixels: 3,
+        radiusMaxPixels: 20,
+
+        getPosition: (d: any) => d.geometry.coordinates as Position,
+        getRadius: (d: any) => getFeatureRadius(d, layerConfig) * 1.3, // Slightly larger
+        getFillColor: (d: any) => getFeaturePointColor(d, layerConfig),
+        getLineColor: [255, 255, 255, 255], // White outline for visibility
+        lineWidthMinPixels: 2,
+
+        updateTriggers: {
+          getRadius: [props.hoveredIds, props.selectedIds],
+          getFillColor: [props.hoveredIds, props.selectedIds],
+        },
       })
 
     default:
