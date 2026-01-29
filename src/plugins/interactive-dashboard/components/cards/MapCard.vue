@@ -1033,7 +1033,7 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
         stroked: true,
         filled: true,
         wireframe: true,
-        lineWidthMinPixels: 2,
+        lineWidthMinPixels: 3, // Thicker border for visibility
 
         getPolygon: (d: any) => {
           const coords = d.geometry.coordinates
@@ -1044,7 +1044,12 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
 
         getFillColor: (d: any) => getFeatureFillColor(d, layerConfig),
         getLineColor: (d: any) => getFeatureLineColor(d, layerConfig),
-        getLineWidth: (d: any) => getFeatureLineWidth(d, layerConfig),
+        getLineWidth: (d: any) => getFeatureLineWidth(d, layerConfig) * 1.5,
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
 
         updateTriggers: {
           getFillColor: [props.hoveredIds, props.selectedIds],
@@ -1065,8 +1070,13 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
           return coords[coords.length - 1] as Position
         },
 
-        getWidth: (d: any) => getFeatureWidth(d, layerConfig),
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig) * 1.5, // Thicker for visibility
         getColor: (d: any) => getFeatureColor(d, layerConfig),
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
 
         updateTriggers: {
           getWidth: [props.hoveredIds, props.selectedIds],
@@ -1084,12 +1094,17 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
         getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
         getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
 
-        getWidth: (d: any) => getFeatureWidth(d, layerConfig),
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig) * 1.5, // Thicker for visibility
         getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
         getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
 
         getTilt: () => layerConfig.arcTilt || 25,
-        getHeight: () => layerConfig.arcHeight || 0.2,
+        getHeight: () => (layerConfig.arcHeight || 0.2) + 0.05, // Slightly higher to appear on top
+
+        // Disable depth test so highlight always renders on top regardless of 3D position
+        parameters: {
+          depthTest: false,
+        },
 
         updateTriggers: {
           getWidth: [props.hoveredIds, props.selectedIds],
@@ -1105,14 +1120,19 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
         id: `highlight-scatterplot-${layerConfig.name}`,
         data: highlightedFeatures,
         pickable: false,
-        radiusMinPixels: 3,
-        radiusMaxPixels: 20,
+        radiusMinPixels: 4,
+        radiusMaxPixels: 25,
 
         getPosition: (d: any) => d.geometry.coordinates as Position,
-        getRadius: (d: any) => getFeatureRadius(d, layerConfig) * 1.3, // Slightly larger
+        getRadius: (d: any) => getFeatureRadius(d, layerConfig) * 1.5, // 50% larger
         getFillColor: (d: any) => getFeaturePointColor(d, layerConfig),
         getLineColor: [255, 255, 255, 255], // White outline for visibility
-        lineWidthMinPixels: 2,
+        lineWidthMinPixels: 3,
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
 
         updateTriggers: {
           getRadius: [props.hoveredIds, props.selectedIds],
