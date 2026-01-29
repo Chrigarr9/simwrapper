@@ -334,6 +334,8 @@ const renderChart = () => {
       const categorySizes: number[] = []
       const categoryMarkerColors: string[] = []
       const categoryLineWidths: number[] = []
+      const categoryLineColors: string[] = []
+      const categoryOpacities: number[] = []
 
       // Find all points belonging to this category
       props.filteredData?.forEach((row, i) => {
@@ -346,24 +348,34 @@ const renderChart = () => {
             categoryX.push(xVal)
             categoryY.push(yVal)
             categoryText.push(scatterData.value.text[scatterData.value.ids.indexOf(id)] || '')
-            categorySizes.push(scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize)
-            
+
+            const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize
+            const isHovered = id && props.hoveredIds?.has(id)
+            const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+
+            // Size: 1.5x larger for highlighted/selected points
+            if (isSelected || isHovered) {
+              categorySizes.push(baseSize * 1.5)
+            } else {
+              categorySizes.push(baseSize)
+            }
+
             // Color based on selection state
-            if (id && selectedPoints.value.has(id)) {
+            if (isSelected) {
               categoryMarkerColors.push(selectedColor)
-            } else if (id && props.selectedIds?.has(id)) {
-              categoryMarkerColors.push(selectedColor)
-            } else if (id && props.hoveredIds?.has(id)) {
+              categoryLineColors.push('#ffffff')  // White border for max contrast
+              categoryLineWidths.push(3)
+              categoryOpacities.push(1.0)
+            } else if (isHovered) {
               categoryMarkerColors.push(highlightColor)
+              categoryLineColors.push('#ffffff')  // White border for visibility
+              categoryLineWidths.push(2.5)
+              categoryOpacities.push(1.0)
             } else {
               categoryMarkerColors.push(categoryColors[category])
-            }
-            
-            // Line width for highlighting
-            if (id && (props.hoveredIds?.has(id) || props.selectedIds?.has(id) || selectedPoints.value.has(id))) {
-              categoryLineWidths.push(2)
-            } else {
+              categoryLineColors.push(textColor)
               categoryLineWidths.push(0.5)
+              categoryOpacities.push(0.7)
             }
           }
         }
@@ -382,10 +394,10 @@ const renderChart = () => {
             color: categoryMarkerColors,
             size: categorySizes,
             line: {
-              color: textColor, // Use text color for marker outline contrast
+              color: categoryLineColors,
               width: categoryLineWidths,
             },
-            opacity: 0.8,
+            opacity: categoryOpacities,
           },
           // Store original color for legend
           legendgroup: category,
@@ -401,11 +413,34 @@ const renderChart = () => {
       return scatterData.value.colors[i] || defaultColor
     })
 
+    const markerSizes = scatterData.value.ids.map((id, i) => {
+      const baseSize = scatterData.value.sizes[i]
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      // 1.5x size for highlighted/selected points
+      return (isSelected || isHovered) ? baseSize * 1.5 : baseSize
+    })
+
     const lineWidths = scatterData.value.ids.map((id) => {
-      if (id && (props.hoveredIds?.has(id) || props.selectedIds?.has(id) || selectedPoints.value.has(id))) {
-        return 2
-      }
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      if (isSelected) return 3
+      if (isHovered) return 2.5
       return 0.5
+    })
+
+    const lineColors = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      // White border for highlighted/selected, text color for normal
+      return (isSelected || isHovered) ? '#ffffff' : textColor
+    })
+
+    const opacities = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      // Full opacity for highlighted/selected, reduced for normal
+      return (isSelected || isHovered) ? 1.0 : 0.7
     })
 
     traces.push({
@@ -417,12 +452,12 @@ const renderChart = () => {
       hoverinfo: 'text',
       marker: {
         color: markerColors,
-        size: scatterData.value.sizes,
+        size: markerSizes,
         line: {
-          color: textColor, // Use text color for marker outline contrast
+          color: lineColors,
           width: lineWidths,
         },
-        opacity: 0.8,
+        opacity: opacities,
       },
     })
   }
