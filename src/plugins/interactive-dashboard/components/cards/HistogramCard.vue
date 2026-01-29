@@ -303,20 +303,45 @@ const renderChart = () => {
       : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
   })
 
-  // Build xaxis config with optional tick formatting
+  // Build xaxis config with intelligent tick thinning
+  // When there are many bins, we need to auto-skip tick labels to prevent overlap
+  const numBins = histogramData.value.length
+  const maxTicksToShow = 15  // Maximum number of tick labels to show before thinning
+
   const xaxisConfig: any = {
     title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11 } },
     tickfont: { color: textColor, size: 10 },
     gridcolor: gridColor,
     linecolor: gridColor,
     zerolinecolor: gridColor,
+    automargin: true,  // Let Plotly expand margins for long labels
+    tickangle: numBins > 10 ? -45 : 0,  // Rotate labels when many bins
   }
 
-  // Apply custom tick labels if we have a column format
+  // Apply custom tick labels with intelligent thinning
   if (columnFormat.value) {
+    // Calculate tick skip interval: show at most maxTicksToShow labels
+    const skipInterval = Math.max(1, Math.ceil(numBins / maxTicksToShow))
+
+    // Filter tick values and text to show only every nth tick
+    const thinnedTickvals: number[] = []
+    const thinnedTicktext: string[] = []
+
+    tickvals.forEach((val, idx) => {
+      // Always show first and last tick, plus evenly spaced ticks in between
+      if (idx === 0 || idx === tickvals.length - 1 || idx % skipInterval === 0) {
+        thinnedTickvals.push(val)
+        thinnedTicktext.push(ticktext[idx])
+      }
+    })
+
     xaxisConfig.tickmode = 'array'
-    xaxisConfig.tickvals = tickvals
-    xaxisConfig.ticktext = ticktext
+    xaxisConfig.tickvals = thinnedTickvals
+    xaxisConfig.ticktext = thinnedTicktext
+  } else if (numBins > maxTicksToShow) {
+    // For non-formatted columns with many bins, use Plotly's auto mode with nticks limit
+    xaxisConfig.tickmode = 'auto'
+    xaxisConfig.nticks = maxTicksToShow
   }
 
   const layout = {
@@ -331,8 +356,9 @@ const renderChart = () => {
       gridcolor: gridColor,
       linecolor: gridColor,
       zerolinecolor: gridColor,
+      automargin: true,  // Let Plotly expand margins for large count values
     },
-    margin: { l: 50, r: 15, t: 10, b: 35 },
+    margin: { l: 60, r: 15, t: 10, b: 50 },
     autosize: true,
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
