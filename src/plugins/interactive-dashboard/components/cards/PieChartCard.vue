@@ -118,6 +118,26 @@ const renderChart = () => {
 
   const traces: any[] = []
 
+  // Calculate total for percentage threshold
+  const total = pieData.value.reduce((sum, d) => sum + d.value, 0)
+
+  // Determine text position per slice based on size
+  // Large slices (>10%): inside, Medium (3-10%): outside, Small (<3%): none
+  const textPositions = pieData.value.map(d => {
+    const pct = (d.value / total) * 100
+    if (pct >= 10) return 'inside'
+    if (pct >= 3) return 'outside'
+    return 'none'  // Hide labels for tiny slices - hover still shows details
+  })
+
+  // Only show label+percent for slices that have visible text
+  const textTemplate = pieData.value.map(d => {
+    const pct = (d.value / total) * 100
+    if (pct >= 10) return '%{label}<br>%{percent}'  // Inside: label on top, percent below
+    if (pct >= 3) return '%{label} %{percent}'  // Outside: inline
+    return ''  // Hidden
+  })
+
   // Main pie chart (inner ring when comparison active)
   const mainTrace = {
     labels: pieData.value.map(d => d.label),
@@ -135,9 +155,11 @@ const renderChart = () => {
         ),
       },
     },
-    textinfo: 'percent+label',
+    textposition: textPositions,
+    texttemplate: textTemplate,
     textfont: { color: textColor, size: 11 },
-    outsidetextfont: { color: textColor, size: 11 },
+    outsidetextfont: { color: textColor, size: 10 },
+    insidetextorientation: 'horizontal',  // Keep inside text readable
     hovertemplate: '%{label}: %{value} (%{percent})<extra></extra>',
     hole: props.showComparison ? 0.4 : 0.3,  // Smaller hole for inner ring
     // Constrain to inner area when comparison active
@@ -175,10 +197,11 @@ const renderChart = () => {
         text: '',  // Title is shown in card header
         font: { color: textColor },
       },
-      margin: { t: 10, b: 10, l: 10, r: 10 },
+      margin: { t: 10, b: 30, l: 10, r: 10 },  // Extra bottom margin for outside labels
       autosize: true,
       paper_bgcolor: bgColor,
       plot_bgcolor: bgColor,
+      uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
       showlegend: true,
       legend: {
         font: { color: textColor, size: 11 },
