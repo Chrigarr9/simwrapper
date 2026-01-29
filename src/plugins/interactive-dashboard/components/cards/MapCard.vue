@@ -1094,7 +1094,7 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
         getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
         getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
 
-        getWidth: (d: any) => getFeatureWidth(d, layerConfig) * 1.5, // Thicker for visibility
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig), // Same width, just on top
         getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
         getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
 

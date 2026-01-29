@@ -393,6 +393,7 @@ watch(() => props.showComparison, (newVal, oldVal) => {
 })
 
 // Scroll to hovered row when hover comes from map
+// Uses manual scrollTop calculation to avoid scrolling the whole page
 watch(() => props.hoveredIds, async (newVal) => {
   if (newVal.size === 0) return
   if (!enableScrollOnHover.value) return
@@ -401,9 +402,18 @@ watch(() => props.hoveredIds, async (newVal) => {
   await nextTick()
 
   const firstId = Array.from(newVal)[0]
-  const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`)
-  if (rowElement) {
-    rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`) as HTMLElement | null
+  if (rowElement && tableWrapper.value) {
+    // Calculate scroll position to center the row within the table wrapper
+    const wrapperHeight = tableWrapper.value.clientHeight
+    const rowTop = rowElement.offsetTop
+    const rowHeight = rowElement.offsetHeight
+    const targetScrollTop = rowTop - (wrapperHeight / 2) + (rowHeight / 2)
+
+    tableWrapper.value.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: 'smooth'
+    })
   }
 }, { deep: true })
 
