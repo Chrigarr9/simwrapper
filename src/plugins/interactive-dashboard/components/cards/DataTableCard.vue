@@ -403,7 +403,7 @@ watch(() => props.hoveredIds, async (newVal) => {
   const firstId = Array.from(newVal)[0]
   const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`)
   if (rowElement) {
-    rowElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 }, { deep: true })
 
