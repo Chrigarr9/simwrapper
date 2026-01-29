@@ -306,7 +306,21 @@ const renderChart = () => {
   // Build xaxis config with intelligent tick thinning
   // When there are many bins, we need to auto-skip tick labels to prevent overlap
   const numBins = histogramData.value.length
-  const maxTicksToShow = 15  // Maximum number of tick labels to show before thinning
+
+  // Estimate max ticks based on label width
+  // Formatted labels (e.g., "40 min", "14:30") are wider than plain numbers
+  // Use fewer ticks for wider labels to prevent overlap
+  const hasFormattedLabels = !!columnFormat.value
+  const formatType = columnFormat.value?.type
+  const hasWideLabels = formatType === 'time' || formatType === 'duration' || formatType === 'distance'
+
+  // Adaptive maxTicksToShow: fewer for wide labels, more for narrow
+  // With rotation (-45°), labels take up less horizontal space, so we can show more
+  const maxTicksToShow = hasWideLabels ? 8 : (hasFormattedLabels ? 10 : 12)
+
+  // Consistent rotation threshold: rotate when we have many bins OR wide formatted labels
+  // This ensures visual consistency across all histograms
+  const shouldRotate = numBins > 8 || (hasWideLabels && numBins > 5)
 
   const xaxisConfig: any = {
     title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11 } },
@@ -315,11 +329,11 @@ const renderChart = () => {
     linecolor: gridColor,
     zerolinecolor: gridColor,
     automargin: true,  // Let Plotly expand margins for long labels
-    tickangle: numBins > 10 ? -45 : 0,  // Rotate labels when many bins
+    tickangle: shouldRotate ? -45 : 0,
   }
 
-  // Apply custom tick labels with intelligent thinning
-  if (columnFormat.value) {
+  // Apply intelligent tick thinning based on number of bins and label width
+  if (numBins > maxTicksToShow || hasFormattedLabels) {
     // Calculate tick skip interval: show at most maxTicksToShow labels
     const skipInterval = Math.max(1, Math.ceil(numBins / maxTicksToShow))
 
@@ -338,10 +352,6 @@ const renderChart = () => {
     xaxisConfig.tickmode = 'array'
     xaxisConfig.tickvals = thinnedTickvals
     xaxisConfig.ticktext = thinnedTicktext
-  } else if (numBins > maxTicksToShow) {
-    // For non-formatted columns with many bins, use Plotly's auto mode with nticks limit
-    xaxisConfig.tickmode = 'auto'
-    xaxisConfig.nticks = maxTicksToShow
   }
 
   const layout = {
