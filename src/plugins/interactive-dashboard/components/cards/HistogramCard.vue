@@ -307,20 +307,18 @@ const renderChart = () => {
   // When there are many bins, we need to auto-skip tick labels to prevent overlap
   const numBins = histogramData.value.length
 
-  // Estimate max ticks based on label width
-  // Formatted labels (e.g., "40 min", "14:30") are wider than plain numbers
-  // Use fewer ticks for wider labels to prevent overlap
-  const hasFormattedLabels = !!columnFormat.value
-  const formatType = columnFormat.value?.type
-  const hasWideLabels = formatType === 'time' || formatType === 'duration' || formatType === 'distance'
+  // Calculate actual max label length from generated tick text
+  // This determines both rotation and tick density
+  const maxLabelLength = Math.max(...ticktext.map(t => t.length))
 
-  // Adaptive maxTicksToShow: fewer for wide labels, more for narrow
-  // With rotation (-45°), labels take up less horizontal space, so we can show more
-  const maxTicksToShow = hasWideLabels ? 8 : (hasFormattedLabels ? 10 : 12)
+  // Adaptive maxTicksToShow based on actual label width
+  // Longer labels need more space, so show fewer of them
+  // Short labels (1-4 chars): 12 ticks, Medium (5-6): 10, Long (7+): 8
+  const maxTicksToShow = maxLabelLength <= 4 ? 12 : (maxLabelLength <= 6 ? 10 : 8)
 
-  // Consistent rotation threshold: rotate when we have many bins OR wide formatted labels
-  // This ensures visual consistency across all histograms
-  const shouldRotate = numBins > 8 || (hasWideLabels && numBins > 5)
+  // Rotate labels only when they're actually long (>4 chars) AND we have multiple bins
+  // Short labels like "1", "2", "100" stay horizontal for cleaner appearance
+  const shouldRotate = maxLabelLength > 4 && numBins > 3
 
   const xaxisConfig: any = {
     title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11 } },
@@ -332,8 +330,8 @@ const renderChart = () => {
     tickangle: shouldRotate ? -45 : 0,
   }
 
-  // Apply intelligent tick thinning based on number of bins and label width
-  if (numBins > maxTicksToShow || hasFormattedLabels) {
+  // Apply intelligent tick thinning when we have many bins
+  if (numBins > maxTicksToShow) {
     // Calculate tick skip interval: show at most maxTicksToShow labels
     const skipInterval = Math.max(1, Math.ceil(numBins / maxTicksToShow))
 
