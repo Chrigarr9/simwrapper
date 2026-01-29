@@ -325,7 +325,7 @@ const renderChart = () => {
   if (hasCategories) {
     // Create separate traces for each category (enables proper legend)
     const categoryColors = generateCategoryColors(categories)
-    
+
     categories.forEach((category) => {
       const categoryIndices: number[] = []
       const categoryX: number[] = []
@@ -336,6 +336,7 @@ const renderChart = () => {
       const categoryLineWidths: number[] = []
       const categoryLineColors: string[] = []
       const categoryOpacities: number[] = []
+      const categoryIds: any[] = []  // Store IDs for this trace
 
       // Find all points belonging to this category
       props.filteredData?.forEach((row, i) => {
@@ -347,6 +348,7 @@ const renderChart = () => {
             categoryIndices.push(i)
             categoryX.push(xVal)
             categoryY.push(yVal)
+            categoryIds.push(id)  // Store ID at trace-specific index
             categoryText.push(scatterData.value.text[scatterData.value.ids.indexOf(id)] || '')
 
             const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize
@@ -401,6 +403,8 @@ const renderChart = () => {
           },
           // Store original color for legend
           legendgroup: category,
+          // Store IDs with this trace for correct index mapping on click/hover
+          customdata: categoryIds.map(id => ({ id })),
         })
       }
     })
@@ -508,8 +512,9 @@ const renderChart = () => {
       return
     }
 
-    const pointIndex = data.points[0].pointIndex
-    const id = scatterData.value.ids[pointIndex]
+    const point = data.points[0]
+    // Get ID from customdata if available (category traces), otherwise use global index
+    const id = point.customdata?.id ?? scatterData.value.ids[point.pointIndex]
 
     if (!id) return
 
@@ -534,8 +539,9 @@ const renderChart = () => {
 
   // Hover handler
   plotContainer.value.on('plotly_hover', (data: any) => {
-    const pointIndex = data.points[0].pointIndex
-    const id = scatterData.value.ids[pointIndex]
+    const point = data.points[0]
+    // Get ID from customdata if available (category traces), otherwise use global index
+    const id = point.customdata?.id ?? scatterData.value.ids[point.pointIndex]
     if (id) {
       emit('hover', new Set([id]))
     }
