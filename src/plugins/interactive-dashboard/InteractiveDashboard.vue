@@ -10,6 +10,14 @@
         p {{ description }}
 
       .header-controls
+        //- Theme toggle showing current mode
+        button.theme-toggle(
+          @click="toggleTheme"
+          :title="'Theme: ' + currentThemeName + ' (click to cycle)'"
+        )
+          i.fa(:class="themeIcon")
+          span.theme-label {{ currentThemeName }}
+
         export-all-button(
           :dashboard-title="title"
           format="png"
@@ -154,7 +162,7 @@ import YAML from 'yaml'
 import globalStore from '@/store'
 import { sleep } from '@/js/util'
 
-import { FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
+import { ColorScheme, FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 
 import TopSheet from '@/components/TopSheet/TopSheet.vue'
@@ -283,7 +291,21 @@ export default defineComponent({
       )
       return indexOfPathInFavorites > -1
     },
-    
+
+    // Theme toggle computed properties
+    currentThemeName(): string {
+      const scheme = this.$store.state.colorScheme
+      if (scheme === ColorScheme.ScientificMode) return 'Scientific'
+      if (scheme === ColorScheme.LightMode) return 'Light'
+      return 'Dark'
+    },
+    themeIcon(): string {
+      const scheme = this.$store.state.colorScheme
+      if (scheme === ColorScheme.ScientificMode) return 'fa-flask'
+      if (scheme === ColorScheme.LightMode) return 'fa-sun'
+      return 'fa-moon'
+    },
+
     // NEW: Table data computed properties
     displayData(): any[] {
       if (!this.dataTableManager) return []
@@ -415,6 +437,11 @@ export default defineComponent({
   },
 
   methods: {
+    // Theme toggle - cycles through Dark -> Light -> Scientific -> Dark
+    toggleTheme() {
+      this.$store.commit('rotateColors')
+    },
+
     // Handle comparison mode toggle from DataTableCard
     handleShowComparisonUpdate(value: boolean) {
       debugLog('[InteractiveDashboard] handleShowComparisonUpdate - value:', value, 'current:', this.showComparison)
@@ -1503,6 +1530,35 @@ export default defineComponent({
   align-items: center;
   gap: 12px;
   margin-right: 16px;
+}
+
+// Theme toggle button
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--dashboard-border-default, #475569);
+  border-radius: 4px;
+  background-color: var(--dashboard-bg-secondary, #334155);
+  color: var(--dashboard-text-primary, #e2e8f0);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+
+  &:hover {
+    background-color: var(--dashboard-bg-tertiary, #475569);
+    border-color: var(--dashboard-interaction-selected, #3b82f6);
+  }
+
+  i {
+    font-size: 0.9rem;
+  }
+
+  .theme-label {
+    min-width: 60px;
+    text-align: left;
+  }
 }
 
 // Map controls (cluster type, color-by selectors)
