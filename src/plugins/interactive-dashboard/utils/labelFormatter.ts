@@ -21,10 +21,7 @@ const ABBREVIATIONS = new Set([
   'pkm',  // Person Kilometers
   'pmt',  // Person Miles Traveled
   'vmt',  // Vehicle Miles Traveled
-  'avg',  // Average
-  'min',  // Minimum
-  'max',  // Maximum
-  'std',  // Standard deviation
+  // Note: 'avg', 'min', 'max', 'std' are NOT included - they look better as "Avg", "Min", "Max", "Std"
   'num',  // Number
   'cnt',  // Count
 ])

@@ -7,10 +7,10 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
-import { getCategoryColor, buildColorMap } from '../../utils/colorSchemes'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
 
 interface Props {
   title?: string
@@ -64,12 +64,16 @@ const pieData = computed(() => {
     }
   })
 
-  // Sort by count descending
+  // Sort by count descending for display
   const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
 
-  // Build color map for all unique values
-  const values = sorted.map(([label]) => label)
-  colorMap.value = buildColorMap(values)
+  // Build color map using ALPHABETICALLY sorted values for consistent colors
+  // This ensures same category always gets same color regardless of count order
+  const styleManager = StyleManager.getInstance()
+  const alphabeticallySorted = Array.from(counts.keys()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' })
+  )
+  colorMap.value = styleManager.buildCategoricalColorMap(alphabeticallySorted)
 
   return sorted.map(([label, value]) => ({ label, value }))
 })
@@ -108,7 +112,8 @@ const renderChart = () => {
 
   // Get colors - use color map for each category, darken if selected
   const colors = pieData.value.map(d => {
-    const baseColor = colorMap.value.get(d.label) || getCategoryColor(d.label)
+    // Use colorMap (always populated by pieData computed), fallback to categorical palette
+    const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
     if (selectedCategories.value.size > 0 && !selectedCategories.value.has(d.label)) {
       // Dim unselected slices
       return baseColor + '66' // Add alpha for dimming
@@ -140,7 +145,7 @@ const renderChart = () => {
 
   // Main pie chart (inner ring when comparison active)
   const mainTrace = {
-    labels: pieData.value.map(d => d.label),
+    labels: pieData.value.map(d => toTitleCase(d.label)),
     values: pieData.value.map(d => d.value),
     type: 'pie',
     marker: {
@@ -171,12 +176,12 @@ const renderChart = () => {
   if (props.showComparison && baselinePieData.value.length > 0) {
     // Use same color map but with transparency
     const baselineColors = baselinePieData.value.map(d => {
-      const baseColor = colorMap.value.get(d.label) || getCategoryColor(d.label)
+      const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
       return baseColor + '80' // Add 50% alpha (hex 80 = 128/255)
     })
 
     traces.push({
-      labels: baselinePieData.value.map(d => d.label),
+      labels: baselinePieData.value.map(d => toTitleCase(d.label)),
       values: baselinePieData.value.map(d => d.value),
       type: 'pie',
       marker: {
@@ -236,7 +241,11 @@ const renderChart = () => {
     // Ignore clicks on baseline trace (trace index 1)
     if (data.points[0].curveNumber !== 0) return
 
-    const category = data.points[0].label
+    // Use point index to get raw value (since display labels are title-cased)
+    const pointIndex = data.points[0].pointNumber
+    const category = pieData.value[pointIndex]?.label
+
+    if (!category) return
 
     // Toggle category
     if (selectedCategories.value.has(category)) {

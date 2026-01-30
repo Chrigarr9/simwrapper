@@ -201,18 +201,24 @@ function renderChart() {
     }
   }
 
-  // Layout
+  // Layout with adaptive margins based on label lengths
+  const maxLabelLength = Math.max(...props.attributes.map(a => toTitleCase(a).length))
+  // Scale margins based on longest label: base 80px + 5px per char over 10
+  const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLabelLength - 10) * 5)
+
   const layout = {
     xaxis: {
       tickfont: { color: textColor, size: 10 },
       tickangle: -45,
-      side: 'bottom'
+      side: 'bottom',
+      automargin: true,  // Allow Plotly to expand margins for long labels
     },
     yaxis: {
       tickfont: { color: textColor, size: 10 },
-      autorange: 'reversed'  // Top-to-bottom matches matrix convention
+      autorange: 'reversed',  // Top-to-bottom matches matrix convention
+      automargin: true,  // Allow Plotly to expand margins for long labels
     },
-    margin: { l: 100, r: 50, t: 20, b: 100 },
+    margin: { l: dynamicMargin, r: 60, t: 20, b: dynamicMargin },
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     annotations: annotations,

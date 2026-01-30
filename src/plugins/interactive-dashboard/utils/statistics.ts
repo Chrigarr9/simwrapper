@@ -115,11 +115,13 @@ export function correlationWithPValue(
     const yi = y[i]
 
     // Check for valid numeric values
-    if (
-      xi !== null && xi !== undefined && !isNaN(xi) &&
-      yi !== null && yi !== undefined && !isNaN(yi)
-    ) {
-      pairs.push([xi, yi])
+    // Must handle: null, undefined, NaN, empty strings "", and non-numeric types
+    // Note: isNaN("") returns false because Number("") = 0, so check explicitly
+    const xiNum = typeof xi === 'number' ? xi : (typeof xi === 'string' && xi.trim() !== '' ? parseFloat(xi) : NaN)
+    const yiNum = typeof yi === 'number' ? yi : (typeof yi === 'string' && yi.trim() !== '' ? parseFloat(yi) : NaN)
+
+    if (!isNaN(xiNum) && !isNaN(yiNum) && isFinite(xiNum) && isFinite(yiNum)) {
+      pairs.push([xiNum, yiNum])
     }
   }
 

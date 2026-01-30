@@ -99,9 +99,12 @@ function formatAxisLabel(column: string): string {
 
 // Format a tick value based on column format
 function formatTickValue(value: number): string {
+  const styleManager = StyleManager.getInstance()
+  const defaultDecimals = styleManager.getNumberFormat().defaultDecimals
   const format = columnFormat.value
   if (!format) {
-    return String(value)
+    // Default formatting - use StyleManager
+    return styleManager.formatNumber(value)
   }
 
   switch (format.type) {
@@ -112,32 +115,32 @@ function formatTickValue(value: number): string {
         const minutes = Math.floor((value % 3600) / 60)
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
       }
-      return String(value)
+      return styleManager.formatNumber(value)
     }
     case 'duration': {
       if (format.convertFrom === 'seconds') {
         if (format.unit === 'min') {
-          return `${(value / 60).toFixed(0)} min`
+          return `${(value / 60).toFixed(defaultDecimals)} min`
         }
-        return `${value.toFixed(0)} s`
+        return `${value.toFixed(defaultDecimals)} s`
       }
-      return String(value)
+      return styleManager.formatNumber(value)
     }
     case 'distance': {
       if (format.convertFrom === 'meters') {
         if (format.unit === 'km') {
-          return `${(value / 1000).toFixed(1)} km`
+          return `${(value / 1000).toFixed(defaultDecimals)} km`
         }
-        return `${value.toFixed(0)} m`
+        return `${value.toFixed(defaultDecimals)} m`
       }
-      return String(value)
+      return styleManager.formatNumber(value)
     }
     case 'decimal': {
-      const decimals = format.decimals ?? 2
+      const decimals = format.decimals ?? defaultDecimals
       return value.toFixed(decimals)
     }
     default:
-      return String(value)
+      return styleManager.formatNumber(value)
   }
 }
 
@@ -264,6 +267,11 @@ const renderChart = () => {
   const displayData = usePercentage ? histogramDataDensity.value : histogramData.value
   const baselineDisplayData = usePercentage ? baselineHistogramDataDensity.value : baselineHistogramData.value
 
+  // Bar width based on bin size - use natural width without forcing minimum
+  // This avoids overlap when data has outliers stretching the x-axis
+  const binSize = props.binSize || 1
+  const barWidth = binSize * 0.85  // 85% of bin size for slight gap between bars
+
   // Baseline trace (if comparison mode) - shown in background with low opacity
   debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
@@ -273,6 +281,7 @@ const renderChart = () => {
       y: baselineDisplayData.map(d => d.count),
       type: 'bar',
       name: 'Baseline (All Data)',
+      width: barWidth,  // Match filtered trace width
       marker: {
         color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
       },
@@ -288,6 +297,7 @@ const renderChart = () => {
     y: displayData.map(d => d.count),
     type: 'bar',
     name: props.showComparison ? 'Filtered' : 'Count',
+    width: barWidth,  // Explicit bar width for consistent sizing
     marker: {
       color: displayData.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor

@@ -52,7 +52,6 @@ import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
-import { getInteractionColorRGBA } from '../../utils/colorSchemes'
 import { toTitleCase, stripEmptyUnitBrackets } from '../../utils/labelFormatter'
 import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
@@ -722,14 +721,10 @@ function formatTooltipValue(value: any): string {
     return '<em>N/A</em>'
   }
 
-  // Number formatting
+  // Number formatting - use StyleManager for consistent decimals
   if (typeof value === 'number') {
-    // Check if it's likely a large coordinate or timestamp
-    if (Math.abs(value) > 10000) {
-      return value.toFixed(0)
-    }
-    // Regular numbers - 2 decimal places
-    return value.toFixed(2)
+    const styleManager = StyleManager.getInstance()
+    return styleManager.formatNumber(value)
   }
 
   // Boolean
@@ -1265,6 +1260,9 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
   try {
     const sortedFeatures = sortFeaturesByState(features, layerConfig)
 
+    // Get arc layer defaults from StyleManager (single source of truth)
+    const arcDefaults = StyleManager.getInstance().getArcLayerStyle()
+
     return new ArcLayer({
       id: `arc-${layerConfig.name}`,
       data: sortedFeatures,
@@ -1278,8 +1276,9 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
       getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
       getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
 
-      getTilt: () => layerConfig.arcTilt || 25,
-      getHeight: () => layerConfig.arcHeight || 0.2,
+      // Use StyleManager defaults, allow YAML override
+      getTilt: () => layerConfig.arcTilt ?? arcDefaults.arcTilt,
+      getHeight: () => layerConfig.arcHeight ?? arcDefaults.arcHeight,
 
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
@@ -1374,6 +1373,10 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
     return features
   }
 
+  // Check if there are active filters
+  const totalFeatures = layerData.value.get(layerConfig.name)?.length || 0
+  const hasActiveFilters = props.filteredData.length < totalFeatures
+
   return [...features].sort((a, b) => {
     const aId = getFeatureId(a, layerConfig)
     const bId = getFeatureId(b, layerConfig)
@@ -1383,13 +1386,20 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
     const bSelected = setHasLoose(props.selectedIds, bId)
     const aHovered = setHasLoose(props.hoveredIds, aId)
     const bHovered = setHasLoose(props.hoveredIds, bId)
+    const aFiltered = isFeatureFiltered(a, layerConfig)
+    const bFiltered = isFeatureFiltered(b, layerConfig)
 
-    // Priority: hovered on top, then selected, then normal
+    // Priority: hovered > selected > filtered > non-filtered
     // Higher return value = rendered later = on top
     if (aHovered && !bHovered) return 1
     if (!aHovered && bHovered) return -1
     if (aSelected && !bSelected) return 1
     if (!aSelected && bSelected) return -1
+    // Filtered items on top of non-filtered when filters are active
+    if (hasActiveFilters) {
+      if (aFiltered && !bFiltered) return 1
+      if (!aFiltered && bFiltered) return -1
+    }
 
     return 0
   })
@@ -1405,13 +1415,27 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
   const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
+
+  // Get the configured fill opacity (respecting fillOpacity: 0 for outline-only layers)
+  const configuredOpacity = layerConfig.fillOpacity ?? 0.7
+  const isOutlineOnly = configuredOpacity === 0
+
+  // For outline-only layers (fillOpacity: 0), always return transparent fill
+  // This ensures OD cluster boundaries stay outline-only even during filtering
+  if (isOutlineOnly) {
+    return [0, 0, 0, 0]
+  }
+
   if (isSelected) {
     // Selected items: blue fill with higher alpha for visibility
-    return getInteractionColorRGBA('selected', 180)
+    return styleManager.getInteractionColorRGBA('selected', 180)
   }
 
   if (isHovered) {
-    return getInteractionColorRGBA('hover', 100)
+    return styleManager.getInteractionColorRGBA('hover', 100)
   }
 
   // Dim non-filtered items when there are chart filters active
@@ -1420,14 +1444,14 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
     }
-    // Dimmed color - use base color but with reduced opacity
+    // Dimmed color - use base color but with reduced opacity from StyleManager
     const baseColor = getBaseColor(feature, layerConfig)
     const dimmed: [number, number, number] = [
       Math.round((baseColor[0] + 180) / 2),
       Math.round((baseColor[1] + 180) / 2),
       Math.round((baseColor[2] + 180) / 2),
     ]
-    return [dimmed[0], dimmed[1], dimmed[2], 60]
+    return [dimmed[0], dimmed[1], dimmed[2], filterStyle.nonFilteredAlpha]
   }
 
   // Dim non-selected features when there's an active selection
@@ -1439,24 +1463,24 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
 
   // Use getBaseColor for colorBy support (dashboard-level or per-layer)
   const baseColor = getBaseColor(feature, layerConfig)
-  // Default to 0.7 opacity for better visibility (was 0.5)
-  const opacity = Math.round((layerConfig.fillOpacity ?? 0.7) * 255)
+  const opacity = Math.round(configuredOpacity * 255)
   return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
 function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
   const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
+  const styleManager = StyleManager.getInstance()
 
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) {
     // Selected items: thicker blue outline for clear indication
-    return getInteractionColorRGBA('selected', 255)
+    return styleManager.getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return getInteractionColorRGBA('hover', 255)
+    return styleManager.getInteractionColorRGBA('hover', 255)
   }
 
   if (layerConfig.lineColor) {
@@ -1497,8 +1521,10 @@ function getAttributeBasedWidth(
   const normalized = (attributeValue - minValue) / (maxValue - minValue)
   const clamped = Math.max(0, Math.min(1, normalized))
 
-  // Scale to configured range
-  const [minWidth, maxWidth] = widthBy.scale
+  // Scale to configured range (use StyleManager defaults if not specified)
+  const arcDefaults = StyleManager.getInstance().getArcLayerStyle()
+  const defaultScale = layerConfig.type === 'arc' ? arcDefaults.widthScale : [2, 10]
+  const [minWidth, maxWidth] = widthBy.scale ?? defaultScale
   const scaledWidth = minWidth + clamped * (maxWidth - minWidth)
 
   return scaledWidth
@@ -1559,15 +1585,21 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
   const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
+  const arcDefaults = styleManager.getArcLayerStyle()
+  const defaultWidth = layerConfig.type === 'arc' ? arcDefaults.widthScale[0] : 2
+
   // Base width (static or attribute-based)
   let baseWidth: number
   if (layerConfig.widthBy) {
-    // Attribute-based sizing
-    const staticBase = layerConfig.width || 2
+    // Attribute-based sizing - use StyleManager scale defaults if not specified
+    const staticBase = layerConfig.width ?? defaultWidth
     baseWidth = getAttributeBasedWidth(feature, layerConfig, staticBase)
   } else {
     // Static sizing
-    baseWidth = layerConfig.width || 2
+    baseWidth = layerConfig.width ?? defaultWidth
   }
 
   // State-based scaling
@@ -1577,7 +1609,11 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make invisible (0 width)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
-    return 1 // Always 1px when dimmed
+    return filterStyle.nonFilteredWidthPx // Use StyleManager config
+  }
+  // Filtered items get slight width boost when filters are active
+  if (hasActiveFilters && isFiltered) {
+    return baseWidth * filterStyle.filteredWidthMultiplier
   }
   // Reduce width for non-selected features when there's a selection
   if (hasActiveSelection) {
@@ -1630,151 +1666,145 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
   const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
+
   if (isSelected) {
-    return getInteractionColorRGBA('selected', 255)
+    return styleManager.getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return getInteractionColorRGBA('hover', 255)
+    return styleManager.getInteractionColorRGBA('hover', 255)
   }
 
   // Dim non-filtered items when there are chart filters active
+  // Make filtered items stand out by making non-filtered very dim
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
     }
-    const baseColor = getBaseColor(feature, layerConfig)
-    const dimmed: [number, number, number] = [
-      Math.round((baseColor[0] + 180) / 2),
-      Math.round((baseColor[1] + 180) / 2),
-      Math.round((baseColor[2] + 180) / 2),
-    ]
-    return [dimmed[0], dimmed[1], dimmed[2], 60]
+    // Use a neutral gray with very low opacity from StyleManager config
+    // This makes the filtered items pop while non-filtered fade into background
+    return [128, 128, 128, filterStyle.nonFilteredAlpha]
   }
 
   // Dim non-selected features when there's an active selection
   if (hasActiveSelection && !isSelected && !isHovered) {
     const baseColor = getBaseColor(feature, layerConfig)
-    return [baseColor[0], baseColor[1], baseColor[2], 80] // 30% opacity
+    return [baseColor[0], baseColor[1], baseColor[2], 60] // Lower opacity for better contrast
   }
 
   const baseColor = getBaseColor(feature, layerConfig)
-  const opacity = Math.round((layerConfig.opacity || 1.0) * 255)
+  // Use StyleManager defaults for opacity if not specified
+  let defaultOpacity = 1.0
+  if (layerConfig.type === 'arc') {
+    defaultOpacity = styleManager.getArcLayerStyle().opacity
+  } else if (layerConfig.type === 'fill' || layerConfig.type === 'polygon') {
+    defaultOpacity = styleManager.getBoundaryLayerStyle().fillOpacity
+  }
+  const opacity = Math.round((layerConfig.opacity ?? defaultOpacity) * 255)
   return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
 // ============================================================================
-// TASK 8: Dynamic Color Management System
+// TASK 8: Dynamic Color Management System (using StyleManager)
 // ============================================================================
 
-// Domain-specific categorical color schemes - not theme-dependent
-// These colors represent semantic meaning (e.g., transport mode types)
-// and should remain constant regardless of light/dark mode
-const DEFAULT_CATEGORICAL_COLORS: Record<string, Record<string, string>> = {
-  mode: {
-    car: '#e74c3c',
-    pt: '#3498db',
-    bike: '#2ecc71',
-    walk: '#f39c12',
-    drt: '#9b59b6',
-    ride: '#1abc9c',
-    default: '#95a5a6',
-  },
-  activity: {
-    home: '#4477ff',
-    work: '#ff4477',
-    education: '#44ff77',
-    shopping: '#ff7744',
-    leisure: '#aa44ff',
-    other: '#777777',
-  },
-}
+// Cached color map for current colorBy attribute
+// Rebuilt when colorByAttribute changes for consistent categorical colors
+const categoricalColorMapCache = ref<Map<string, string>>(new Map())
+const lastColorByAttribute = ref<string>('')
 
-// Get categorical color for a value
+/**
+ * Get categorical color for a value using StyleManager
+ * For consistent colors, values are sorted alphabetically and assigned from palette
+ */
 function getCategoricalColor(
   value: any,
   colorMap?: Record<string, string>,
   attribute?: string
 ): [number, number, number] {
+  const styleManager = StyleManager.getInstance()
+
   // Use custom color map if provided
   if (colorMap && colorMap[value]) {
     return hexToRgb(colorMap[value])
   }
 
-  // Try default schemes based on attribute name
+  // Try mode/activity colors from StyleManager
   if (attribute) {
-    const schemeName = attribute.toLowerCase().includes('mode') ? 'mode' :
-                      attribute.toLowerCase().includes('activity') ? 'activity' : null
-
-    if (schemeName && DEFAULT_CATEGORICAL_COLORS[schemeName]) {
-      const scheme = DEFAULT_CATEGORICAL_COLORS[schemeName]
-      if (scheme[value]) {
-        return hexToRgb(scheme[value])
+    const attrLower = attribute.toLowerCase()
+    if (attrLower.includes('mode')) {
+      const modeColor = styleManager.getColor(`mode.${String(value).toLowerCase()}`)
+      if (modeColor !== '#808080') { // Not the fallback color
+        return hexToRgb(modeColor)
       }
-      if (scheme.default) {
-        return hexToRgb(scheme.default)
+    }
+    if (attrLower.includes('activity')) {
+      const activityColor = styleManager.getColor(`activity.${String(value).toLowerCase()}`)
+      if (activityColor !== '#808080') { // Not the fallback color
+        return hexToRgb(activityColor)
       }
     }
   }
 
-  // Fallback: generate color from hash
-  return generateColorFromHash(String(value))
-}
+  // Build/use cached color map for consistent categorical colors
+  // This ensures same value always gets same color based on sorted order
+  if (attribute && props.filteredData && props.filteredData.length > 0) {
+    // Rebuild cache if attribute changed
+    if (lastColorByAttribute.value !== attribute) {
+      const uniqueValues = new Set<string>()
+      props.filteredData.forEach((row: any) => {
+        const val = row[attribute]
+        if (val !== null && val !== undefined) {
+          uniqueValues.add(String(val))
+        }
+      })
+      const sortedValues = Array.from(uniqueValues).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      )
+      categoricalColorMapCache.value = styleManager.buildCategoricalColorMap(sortedValues)
+      lastColorByAttribute.value = attribute
+    }
 
-// Generate color from string hash (for dynamic categories)
-function generateColorFromHash(value: string): [number, number, number] {
-  // Simple hash function
-  let hash = 0
-  for (let i = 0; i < value.length; i++) {
-    hash = value.charCodeAt(i) + ((hash << 5) - hash)
-    hash = hash & hash // Convert to 32-bit integer
+    const cachedColor = categoricalColorMapCache.value.get(String(value))
+    if (cachedColor) {
+      return hexToRgb(cachedColor)
+    }
   }
 
-  // Generate RGB from hash
-  const r = (hash & 0xff0000) >> 16
-  const g = (hash & 0x00ff00) >> 8
-  const b = hash & 0x0000ff
-
-  // Ensure colors are not too dark
-  return [
-    Math.max(r, 80),
-    Math.max(g, 80),
-    Math.max(b, 80),
-  ]
+  // Fallback: use StyleManager categorical palette with hash-based index
+  const hash = String(value)
+    .split('')
+    .reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0)
+  const hex = styleManager.getCategoricalColor(Math.abs(hash))
+  return hexToRgb(hex)
 }
 
-// Get numeric color using Viridis gradient
+/**
+ * Get numeric color using StyleManager's viridis sequential scale
+ */
 function getNumericColor(
   value: number,
   scale?: [number, number],
   minValue?: number,
   maxValue?: number
 ): [number, number, number] {
+  const styleManager = StyleManager.getInstance()
+
   // Determine scale
-  let min = scale ? scale[0] : minValue || 0
-  let max = scale ? scale[1] : maxValue || 100
+  const min = scale ? scale[0] : minValue || 0
+  const max = scale ? scale[1] : maxValue || 100
 
   // Normalize value to 0-1
   let t = (value - min) / (max - min)
   t = Math.max(0, Math.min(1, t)) // Clamp to [0, 1]
 
-  // Viridis color approximation
-  return viridisColorRGB(t)
-}
-
-// Viridis gradient (polynomial approximation)
-function viridisColorRGB(t: number): [number, number, number] {
-  // Clamp t to [0, 1]
-  t = Math.max(0, Math.min(1, t))
-
-  // Polynomial approximation for Viridis
-  // Purple → Blue → Green → Yellow
-  const r = Math.max(0, Math.min(255, Math.round(255 * (0.267004 + t * (2.077963 * t - 2.141950)))))
-  const g = Math.max(0, Math.min(255, Math.round(255 * (0.004874 + t * (1.385520 - 0.790116 * t)))))
-  const b = Math.max(0, Math.min(255, Math.round(255 * (0.329415 + t * (1.100124 - 1.470975 * t)))))
-
-  return [r, g, b]
+  // Use StyleManager's viridis scale
+  const rgba = styleManager.getSequentialColorRGBA('viridis', t)
+  return [rgba[0], rgba[1], rgba[2]]
 }
 
 // Calculate min/max for numeric attribute from data
@@ -1906,7 +1936,16 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
     return hexToRgb(layerConfig.fillColor)
   }
 
-  // Default blue
+  // Priority 4: Layer-type defaults from StyleManager
+  const styleManager = StyleManager.getInstance()
+  if (layerConfig.type === 'arc') {
+    return hexToRgb(styleManager.getArcLayerStyle().color)
+  }
+  if (layerConfig.type === 'fill' || layerConfig.type === 'polygon') {
+    return hexToRgb(styleManager.getBoundaryLayerStyle().fillColor)
+  }
+
+  // Final fallback: default blue
   return [52, 152, 219]
 }
 
@@ -1942,15 +1981,22 @@ function getFeatureId(feature: any, layerConfig: LayerConfig): any {
 
   // Handle ID mismatch: GeoJSON may have simple cluster_id (e.g., '0')
   // while CSV has compound unique_id (e.g., 'od_0')
-  // If the featureId is numeric or doesn't contain the cluster_type prefix,
-  // construct the compound ID from cluster_type + '_' + cluster_id
-  const clusterType = feature.properties?.cluster_type
-  if (clusterType && featureId !== undefined) {
-    const featureIdStr = String(featureId)
-    // Check if featureId already has the prefix (e.g., 'origin_1' already contains 'origin')
-    if (!featureIdStr.startsWith(clusterType + '_') && !featureIdStr.includes('_')) {
-      // Construct compound ID: 'od' + '_' + '0' = 'od_0'
-      featureId = `${clusterType}_${featureIdStr}`
+  // Only construct compound IDs when tableColumn expects them (e.g., 'unique_id')
+  // If tableColumn is the same as geoProperty (e.g., both 'cluster_id'), use simple ID
+  const tableColumn = layerConfig.linkage.tableColumn
+  const geoProperty = layerConfig.linkage.geoProperty
+
+  // Only construct compound IDs if tableColumn differs from geoProperty
+  // This indicates we need to transform the ID (e.g., geoProperty='cluster_id', tableColumn='unique_id')
+  if (tableColumn !== geoProperty) {
+    const clusterType = feature.properties?.cluster_type
+    if (clusterType && featureId !== undefined) {
+      const featureIdStr = String(featureId)
+      // Check if featureId already has the prefix (e.g., 'origin_1' already contains 'origin')
+      if (!featureIdStr.startsWith(clusterType + '_') && !featureIdStr.includes('_')) {
+        // Construct compound ID: 'od' + '_' + '0' = 'od_0'
+        featureId = `${clusterType}_${featureIdStr}`
+      }
     }
   }
 
@@ -2220,12 +2266,15 @@ function buildCategoricalLegendItems(
 ): { label: string; color: string }[] {
   const items: { label: string; color: string }[] = []
 
-  // If custom colors provided, use those
+  // If custom colors provided, use those (sorted alphabetically)
   if (colorBy.colors) {
-    Object.entries(colorBy.colors).forEach(([value, color]) => {
+    const sortedKeys = Object.keys(colorBy.colors).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    )
+    sortedKeys.forEach((value) => {
       items.push({
-        label: String(value),
-        color: String(color),
+        label: toTitleCase(String(value)),
+        color: String(colorBy.colors[value]),
       })
     })
     return items
@@ -2242,12 +2291,17 @@ function buildCategoricalLegendItems(
     }
   })
 
-  uniqueValues.forEach((value) => {
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = Array.from(uniqueValues)
+    .map(v => String(v))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+
+  sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, colorBy.colors, colorBy.attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
-      label: String(value),
+      label: toTitleCase(value),
       color: hexColor,
     })
   })
@@ -2272,12 +2326,17 @@ function buildCategoricalLegendItemsFromAttribute(
     }
   })
 
-  uniqueValues.forEach((value) => {
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = Array.from(uniqueValues)
+    .map(v => String(v))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+
+  sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, undefined, attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
-      label: String(value),
+      label: toTitleCase(value),
       color: hexColor,
     })
   })
@@ -2304,12 +2363,17 @@ function buildCategoricalLegendItemsFromTable(
     }
   })
 
-  uniqueValues.forEach((value) => {
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = Array.from(uniqueValues)
+    .map(v => String(v))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+
+  sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, undefined, attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
-      label: String(value),
+      label: toTitleCase(value),
       color: hexColor,
     })
   })

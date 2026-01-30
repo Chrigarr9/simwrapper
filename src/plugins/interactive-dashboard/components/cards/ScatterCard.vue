@@ -120,47 +120,57 @@ function formatAxisLabel(column: string): string {
 }
 
 // Format a value based on column format
-function formatValue(value: number, column: string): string {
+function formatValue(value: any, column: string): string {
   const format = getColumnFormat(column)
-  if (!format || value === null || value === undefined) {
-    return typeof value === 'number' ? value.toFixed(2) : String(value)
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  // Ensure value is a number for numeric operations
+  const numValue = typeof value === 'number' ? value : parseFloat(value)
+  if (isNaN(numValue)) {
+    return String(value)
+  }
+
+  if (!format) {
+    return numValue.toFixed(2)
   }
 
   switch (format.type) {
     case 'time': {
       if (format.convertFrom === 'seconds') {
-        const hours = Math.floor(value / 3600)
-        const minutes = Math.floor((value % 3600) / 60)
+        const hours = Math.floor(numValue / 3600)
+        const minutes = Math.floor((numValue % 3600) / 60)
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
       }
-      return String(value)
+      return String(numValue)
     }
     case 'duration': {
       if (format.convertFrom === 'seconds') {
         if (format.unit === 'min') {
-          return `${(value / 60).toFixed(format.decimals ?? 1)} min`
+          return `${(numValue / 60).toFixed(format.decimals ?? 1)} min`
         }
-        return `${value.toFixed(0)} s`
+        return `${numValue.toFixed(0)} s`
       }
-      return String(value)
+      return String(numValue)
     }
     case 'distance': {
       if (format.convertFrom === 'meters') {
         if (format.unit === 'km') {
-          return `${(value / 1000).toFixed(format.decimals ?? 2)} km`
+          return `${(numValue / 1000).toFixed(format.decimals ?? 2)} km`
         }
-        return `${value.toFixed(0)} m`
+        return `${numValue.toFixed(0)} m`
       }
-      return String(value)
+      return String(numValue)
     }
     case 'percent': {
-      return `${(value * 100).toFixed(format.decimals ?? 1)}%`
+      return `${(numValue * 100).toFixed(format.decimals ?? 1)}%`
     }
     case 'decimal': {
-      return value.toFixed(format.decimals ?? 2)
+      return numValue.toFixed(format.decimals ?? 2)
     }
     default:
-      return String(value)
+      return String(numValue)
   }
 }
 
@@ -466,21 +476,33 @@ const renderChart = () => {
     })
   }
 
+  // Build axis configs with intelligent tick formatting
+  // Limit number of ticks to avoid crowding, similar to histogram approach
+  const xAxisConfig: any = {
+    title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11 } },
+    tickfont: { color: textColor, size: 10 },
+    gridcolor: gridColor,
+    linecolor: gridColor,
+    zerolinecolor: gridColor,
+    automargin: true,  // Allow Plotly to expand margins for long labels
+    nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
+    tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+  }
+
+  const yAxisConfig: any = {
+    title: { text: formatAxisLabel(currentYColumn.value), font: { color: textColor, size: 11 } },
+    tickfont: { color: textColor, size: 10 },
+    gridcolor: gridColor,
+    linecolor: gridColor,
+    zerolinecolor: gridColor,
+    automargin: true,  // Allow Plotly to expand margins for long labels
+    nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
+    tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+  }
+
   const layout = {
-    xaxis: {
-      title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
-      gridcolor: gridColor,
-      linecolor: gridColor,
-      zerolinecolor: gridColor,
-    },
-    yaxis: {
-      title: { text: formatAxisLabel(currentYColumn.value), font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
-      gridcolor: gridColor,
-      linecolor: gridColor,
-      zerolinecolor: gridColor,
-    },
+    xaxis: xAxisConfig,
+    yaxis: yAxisConfig,
     margin: { l: 60, r: hasCategories ? 100 : 15, t: 10, b: 45 },
     autosize: true,
     paper_bgcolor: bgColor,

@@ -85,6 +85,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
+import { StyleManager } from '../../managers/StyleManager'
 import { debugLog } from '../../utils/debug'
 import { toTitleCase } from '../../utils/labelFormatter'
 import ComparisonToggle from '../controls/ComparisonToggle.vue'
@@ -294,11 +295,14 @@ function getRowClasses(row: any): Record<string, boolean> {
 function formatCellValue(value: any, column: string): string {
   if (value === undefined || value === null) return ''
 
+  const styleManager = StyleManager.getInstance()
+  const defaultDecimals = styleManager.getNumberFormat().defaultDecimals
+
   const formats = props.tableConfig?.columns?.formats
   if (!formats || !formats[column]) {
-    // Default formatting for numbers
+    // Default formatting for numbers - use StyleManager
     if (typeof value === 'number') {
-      return Number.isInteger(value) ? value.toString() : value.toFixed(2)
+      return styleManager.formatNumber(value)
     }
     return String(value)
   }
@@ -318,7 +322,7 @@ function formatCellValue(value: any, column: string): string {
     }
     case 'duration': {
       if (format.convertFrom === 'seconds' && typeof value === 'number') {
-        const decimals = format.decimals ?? 1
+        const decimals = format.decimals ?? defaultDecimals
         if (format.unit === 'min') {
           return (value / 60).toFixed(decimals) + ' min'
         }
@@ -328,7 +332,7 @@ function formatCellValue(value: any, column: string): string {
     }
     case 'distance': {
       if (format.convertFrom === 'meters' && typeof value === 'number') {
-        const decimals = format.decimals ?? 2
+        const decimals = format.decimals ?? defaultDecimals
         if (format.unit === 'km') {
           return (value / 1000).toFixed(decimals) + ' km'
         }
@@ -338,7 +342,7 @@ function formatCellValue(value: any, column: string): string {
     }
     case 'decimal': {
       if (typeof value === 'number') {
-        const decimals = format.decimals ?? 2
+        const decimals = format.decimals ?? defaultDecimals
         return value.toFixed(decimals)
       }
       return String(value)

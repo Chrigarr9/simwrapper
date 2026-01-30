@@ -84,6 +84,32 @@ describe('statistics module', () => {
       expect(result.significant).toBe(false)
     })
 
+    it('should filter out empty strings (CSV empty cells)', () => {
+      // Simulates CSV data where empty cells become empty strings
+      // This is critical for handling missing cluster_price values
+      const x = [1, 2, '', 4, 5] as any[]
+      const y = [1, 2, 3, '', 5] as any[]
+
+      const result = correlationWithPValue(x, y)
+
+      // Should only use pairs (1,1), (2,2), (5,5) - 3 valid pairs
+      expect(result.n).toBe(3)
+      expect(result.r).toBeCloseTo(1, 3)
+    })
+
+    it('should handle mixed empty strings, nulls, and valid numbers', () => {
+      // Real-world scenario: CSV with mixed data types
+      const x = ['', null, 1, 2, 3, undefined, '4', 5] as any[]
+      const y = [1, 2, 1, 2, 3, 4, '', 5] as any[]
+
+      const result = correlationWithPValue(x, y)
+
+      // Valid pairs: (1,1), (2,2), (3,3), (5,5) - 4 valid numeric pairs
+      // Note: '4' as string should be parsed to number 4
+      expect(result.n).toBe(4)
+      expect(result.r).toBeCloseTo(1, 2)
+    })
+
     it('should detect significance for strong correlation with adequate sample size', () => {
       // Strong positive correlation with 10 samples
       const x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

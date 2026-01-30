@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { StyleManager, type SequentialScaleName } from '../../managers/StyleManager'
 
 interface LegendItem {
   label: string
@@ -43,6 +44,7 @@ interface Props {
   maxValue?: number
   clickable?: boolean
   isDarkMode?: boolean
+  sequentialScale?: SequentialScaleName
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -52,16 +54,17 @@ const props = withDefaults(defineProps<Props>(), {
   maxValue: 100,
   clickable: true,
   isDarkMode: false,
+  sequentialScale: 'viridis',
 })
 
 const emit = defineEmits<{
   itemClicked: [label: string]
 }>()
 
-// Compute gradient style for numeric legend
+// Compute gradient style for numeric legend using StyleManager
 const gradientStyle = computed(() => {
-  // Viridis gradient approximation
-  return 'linear-gradient(to right, #440154, #31688e, #35b779, #fde724)'
+  const styleManager = StyleManager.getInstance()
+  return styleManager.getSequentialGradientCSS(props.sequentialScale)
 })
 
 function handleItemClick(item: LegendItem) {
@@ -71,23 +74,9 @@ function handleItemClick(item: LegendItem) {
 }
 
 function formatNumber(value: number | undefined): string {
-  if (value === undefined || value === null) return '0'
-
-  // Handle very small numbers (scientific notation threshold)
-  if (Math.abs(value) > 0 && Math.abs(value) < 0.01) {
-    return value.toExponential(2) // e.g., 2.9e-3
-  }
-
-  // Handle very large numbers - use locale formatting with commas
-  if (Math.abs(value) >= 10000) {
-    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
-  }
-
-  // Handle numbers between 0.01 and 10000
-  if (Math.abs(value) >= 100) return value.toFixed(0)
-  if (Math.abs(value) >= 10) return value.toFixed(1)
-  if (Math.abs(value) >= 1) return value.toFixed(2)
-  return value.toFixed(3) // Small numbers like 0.123
+  // Use centralized number formatting from StyleManager
+  const styleManager = StyleManager.getInstance()
+  return styleManager.formatNumber(value)
 }
 </script>
 
