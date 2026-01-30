@@ -49,9 +49,6 @@ const emit = defineEmits<{
   isLoaded: []
 }>()
 
-// Dark mode access from global store
-const isDarkMode = computed(() => globalStore.state.isDarkMode)
-
 const plotContainer = ref<HTMLElement>()
 const selectedBins = ref<Set<number>>(new Set())
 const previousFilteredDataLength = ref(0)
@@ -249,12 +246,18 @@ const renderChart = () => {
 
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
   const bgColor = styleManager.getColor('theme.background.primary')
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
   const barColor = styleManager.getColor('chart.bar.default')
   // Selected color for user selection feedback
   const selectedColor = styleManager.getColor('chart.bar.selected')
+
+  // Scientific mode font configuration
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : undefined
 
   // Format tick values if column format is defined
   const tickvals = histogramData.value.map(d => d.bin)
@@ -331,10 +334,12 @@ const renderChart = () => {
   const shouldRotate = maxLabelLength > 4 && numBins > 3
 
   const xaxisConfig: any = {
-    title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11 } },
-    tickfont: { color: textColor, size: 10 },
+    title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11, family: fontFamily } },
+    tickfont: { color: textColor, size: 10, family: fontFamily },
     gridcolor: gridColor,
-    linecolor: gridColor,
+    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+    linewidth: isScientific ? 1.5 : 1,
+    showline: true,
     zerolinecolor: gridColor,
     automargin: true,  // Let Plotly expand margins for long labels
     tickangle: shouldRotate ? -45 : 0,
@@ -365,14 +370,20 @@ const renderChart = () => {
   const layout = {
     title: {
       text: '',  // Title is shown in card header
-      font: { color: textColor, size: 14 },
+      font: { color: textColor, size: 14, family: fontFamily },
+    },
+    font: {
+      family: fontFamily,
+      color: textColor,
     },
     xaxis: xaxisConfig,
     yaxis: {
-      title: { text: usePercentage ? 'Percentage [%]' : 'Count', font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
+      title: { text: usePercentage ? 'Percentage [%]' : 'Count', font: { color: textColor, size: 11, family: fontFamily } },
+      tickfont: { color: textColor, size: 10, family: fontFamily },
       gridcolor: gridColor,
-      linecolor: gridColor,
+      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+      linewidth: isScientific ? 1.5 : 1,
+      showline: true,
       zerolinecolor: gridColor,
       automargin: true,  // Let Plotly expand margins for large count values
     },
@@ -392,7 +403,7 @@ const renderChart = () => {
   }
 
   Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: false,
+    displayModeBar: !isScientific ? false : false,  // Always hide modebar (scientific mode too)
     responsive: true,
   })
 
@@ -439,8 +450,8 @@ watch(() => props.filteredData, (newData, oldData) => {
   renderChart()
 }, { deep: true })
 
-// Re-render on dark mode change
-watch(isDarkMode, () => {
+// Re-render on dark mode change or color scheme changes (including scientific mode)
+watch(() => globalStore.state.colorScheme, () => {
   renderChart()
 })
 
