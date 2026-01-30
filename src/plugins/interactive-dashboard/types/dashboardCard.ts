@@ -5,6 +5,8 @@
  * that manages card frame, header, buttons, and content slot.
  */
 
+import type { ExportConfig } from './export'
+
 /**
  * Configuration for a dashboard card, derived from YAML config.
  * This matches the card objects created in InteractiveDashboard.setupRows()
@@ -60,6 +62,15 @@ export interface CardConfig {
 
   /** Card number in the layout sequence */
   number?: number
+
+  /** Export configuration for this card */
+  exportConfig?: Partial<ExportConfig>
+
+  /** Custom export filename (overrides default title-based naming) */
+  exportName?: string
+
+  /** Whether this card supports export (default: true for chart types) */
+  exportable?: boolean
 
   /** Allow additional YAML properties */
   [key: string]: any
