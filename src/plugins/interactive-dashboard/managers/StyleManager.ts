@@ -201,6 +201,9 @@ interface ColorDefinitions {
     axisLineWidth: number
     markerBorderWidth: number
     hideInteractiveChrome: boolean  // Hide zoom buttons, tooltips in scientific mode
+    markerSymbols: string[]         // Plotly marker symbols for scatter plots
+    barPatterns: string[]           // Plotly pattern shapes for bars
+    piePatterns: string[]           // Plotly pattern shapes for pie slices
   }
 }
 
@@ -329,6 +332,9 @@ export class StyleManager {
       axisLineWidth: 1.5,
       markerBorderWidth: 1,
       hideInteractiveChrome: true,  // Hide zoom buttons, tooltips in scientific mode
+      markerSymbols: ['circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down', 'star', 'hexagon', 'pentagon'],
+      barPatterns: ['', '/', '\\', 'x', '-', '|', '+', '.'],  // '' means solid fill
+      piePatterns: ['', '/', '\\', 'x', '+', '-', '|', '.'],
     },
   }
 
@@ -409,8 +415,41 @@ export class StyleManager {
   /**
    * Get scientific mode configuration
    */
-  getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean } {
+  getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean; markerSymbols: string[]; barPatterns: string[]; piePatterns: string[] } {
     return { ...this.colors.scientific }
+  }
+
+  /**
+   * Get marker symbol for scientific mode scatter plots
+   *
+   * @param index - Category index
+   * @returns Plotly marker symbol (wraps around if index exceeds array length)
+   */
+  getScientificMarkerSymbol(index: number): string {
+    const symbols = this.colors.scientific.markerSymbols
+    return symbols[index % symbols.length]
+  }
+
+  /**
+   * Get bar pattern for scientific mode histograms
+   *
+   * @param index - Trace index
+   * @returns Plotly pattern shape (wraps around if index exceeds array length)
+   */
+  getScientificBarPattern(index: number): string {
+    const patterns = this.colors.scientific.barPatterns
+    return patterns[index % patterns.length]
+  }
+
+  /**
+   * Get pie slice pattern for scientific mode pie charts
+   *
+   * @param index - Slice index
+   * @returns Plotly pattern shape (wraps around if index exceeds array length)
+   */
+  getScientificPiePattern(index: number): string {
+    const patterns = this.colors.scientific.piePatterns
+    return patterns[index % patterns.length]
   }
 
   /**
