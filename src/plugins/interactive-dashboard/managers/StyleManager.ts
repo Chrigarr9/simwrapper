@@ -71,11 +71,12 @@ const CATEGORICAL_COLORS = [
 ]
 
 /**
- * Color palette type for theme-aware colors (light/dark variants)
+ * Color palette type for theme-aware colors (light/dark/scientific variants)
  */
 interface ThemeColorPalette {
   light: string
   dark: string
+  scientific: string
 }
 
 /**
@@ -193,6 +194,14 @@ interface ColorDefinitions {
 
   // Layer style defaults
   layers: LayerStyleDefaults
+
+  // Scientific mode configuration (for publication-ready output)
+  scientific: {
+    fontFamily: string
+    axisLineWidth: number
+    markerBorderWidth: number
+    hideInteractiveChrome: boolean  // Hide zoom buttons, tooltips in scientific mode
+  }
 }
 
 /**
@@ -200,7 +209,7 @@ interface ColorDefinitions {
  */
 export class StyleManager {
   private static instance: StyleManager | null = null
-  private currentMode: 'light' | 'dark' = 'dark'
+  private currentMode: 'light' | 'dark' | 'scientific' = 'dark'
   private styleElement: HTMLStyleElement | null = null
   private unsubscribe: (() => void) | null = null
 
@@ -213,17 +222,20 @@ export class StyleManager {
   private readonly colors: ColorDefinitions = {
     theme: {
       background: {
-        primary: { light: '#ffffff', dark: '#1e293b' },
-        secondary: { light: '#f8f9fa', dark: '#334155' },
-        tertiary: { light: '#f1f5f9', dark: '#475569' },
+        // Scientific colors: Pure white background for maximum print contrast
+        primary: { light: '#ffffff', dark: '#1e293b', scientific: '#ffffff' },
+        secondary: { light: '#f8f9fa', dark: '#334155', scientific: '#ffffff' },
+        tertiary: { light: '#f1f5f9', dark: '#475569', scientific: '#f5f5f5' },
       },
       text: {
-        primary: { light: '#374151', dark: '#e2e8f0' },
-        secondary: { light: '#6b7280', dark: '#94a3b8' },
+        // Scientific colors: Black text for publication readability
+        primary: { light: '#374151', dark: '#e2e8f0', scientific: '#000000' },
+        secondary: { light: '#6b7280', dark: '#94a3b8', scientific: '#333333' },
       },
       border: {
-        default: { light: '#e5e7eb', dark: '#475569' },
-        subtle: { light: '#f3f4f6', dark: '#334155' },
+        // Scientific colors: Black borders for crisp print output
+        default: { light: '#e5e7eb', dark: '#475569', scientific: '#000000' },
+        subtle: { light: '#f3f4f6', dark: '#334155', scientific: '#cccccc' },
       },
     },
 
@@ -259,10 +271,12 @@ export class StyleManager {
     // Chart colors (mode-aware)
     chart: {
       bar: {
-        default: { light: '#3b82f6', dark: '#60a5fa' },
-        selected: { light: '#ef4444', dark: '#f87171' },
+        // Scientific uses black for default bars (maximum contrast)
+        default: { light: '#3b82f6', dark: '#60a5fa', scientific: '#000000' },
+        selected: { light: '#ef4444', dark: '#f87171', scientific: '#666666' },
       },
-      grid: { light: '#e5e7eb', dark: '#334155' },
+      // Scientific uses light gray grid for subtlety
+      grid: { light: '#e5e7eb', dark: '#334155', scientific: '#cccccc' },
     },
 
     // Keep existing categorical colors
@@ -307,6 +321,14 @@ export class StyleManager {
       useGrouping: true,            // Use thousand separators (1,234.56)
       compactThreshold: 1000000,    // Use compact notation above 1M (1.2M)
       scientificThreshold: 0.01,    // Use scientific notation below 0.01 (1.2e-3)
+    },
+
+    // Scientific mode configuration (for publication-ready output)
+    scientific: {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      axisLineWidth: 1.5,
+      markerBorderWidth: 1,
+      hideInteractiveChrome: true,  // Hide zoom buttons, tooltips in scientific mode
     },
   }
 
@@ -363,18 +385,32 @@ export class StyleManager {
   /**
    * Get current color mode
    */
-  getMode(): 'light' | 'dark' {
+  getMode(): 'light' | 'dark' | 'scientific' {
     return this.currentMode
   }
 
   /**
    * Set color mode explicitly
    */
-  setMode(mode: 'light' | 'dark'): void {
+  setMode(mode: 'light' | 'dark' | 'scientific'): void {
     if (this.currentMode !== mode) {
       this.currentMode = mode
       this.injectCSSVariables()
     }
+  }
+
+  /**
+   * Check if currently in scientific mode
+   */
+  isScientificMode(): boolean {
+    return this.currentMode === 'scientific'
+  }
+
+  /**
+   * Get scientific mode configuration
+   */
+  getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean } {
+    return { ...this.colors.scientific }
   }
 
   /**
@@ -800,7 +836,13 @@ export class StyleManager {
    */
   private syncModeFromStore(): void {
     const colorScheme = globalStore.state.colorScheme
-    this.currentMode = colorScheme === ColorScheme.LightMode ? 'light' : 'dark'
+    if (colorScheme === ColorScheme.ScientificMode) {
+      this.currentMode = 'scientific'
+    } else if (colorScheme === ColorScheme.LightMode) {
+      this.currentMode = 'light'
+    } else {
+      this.currentMode = 'dark'
+    }
   }
 
   /**
@@ -811,7 +853,14 @@ export class StyleManager {
     this.unsubscribe = globalStore.watch(
       state => state.colorScheme,
       (newValue: ColorScheme) => {
-        const newMode = newValue === ColorScheme.LightMode ? 'light' : 'dark'
+        let newMode: 'light' | 'dark' | 'scientific'
+        if (newValue === ColorScheme.ScientificMode) {
+          newMode = 'scientific'
+        } else if (newValue === ColorScheme.LightMode) {
+          newMode = 'light'
+        } else {
+          newMode = 'dark'
+        }
         if (this.currentMode !== newMode) {
           this.currentMode = newMode
           this.injectCSSVariables()
@@ -877,6 +926,11 @@ export class StyleManager {
     this.colors.categorical.forEach((color, index) => {
       vars.push(`--dashboard-categorical-${index}: ${color}`)
     })
+
+    // Scientific mode indicator (1 or 0 for CSS usage)
+    vars.push(`--dashboard-scientific-mode: ${this.currentMode === 'scientific' ? 1 : 0}`)
+    // Scientific font family
+    vars.push(`--dashboard-font-scientific: ${this.colors.scientific.fontFamily}`)
 
     return `:root {\n  ${vars.join(';\n  ')};\n}`
   }
