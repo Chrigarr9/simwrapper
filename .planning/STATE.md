@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-22 (Phase 4.1 COMPLETE - Timeline Refinement)
+**Last Updated:** 2026-01-30 (Phase 4.2 INSERTED - Scientific Mode)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 5 ready to start - Graph Visualization (network diagrams with vue-cytoscape)
+**Current Focus:** Phase 4.2 - Scientific Mode (paper-ready visualizations with export functionality)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 4.1 of 8 (Timeline Refinement)
-**Plan:** 2/2 complete
-**Status:** Phase complete
-**Last activity:** 2026-01-22 - Completed 04.1-02-PLAN.md (Single-Select and Request Detail View)
+**Phase:** 4.2 of 10 (Scientific Mode)
+**Plan:** 2/6 complete
+**Status:** In progress
+**Last activity:** 2026-01-30 - Completed 04.2-02-PLAN.md (Export Utilities)
 
 **Progress:**
 ```
@@ -35,15 +35,17 @@ Phase 2.1: DashboardCard Component  [####] 100% (4/4 plans) COMPLETE
 Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
-Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE ← CURRENT
+Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
+Phase 4.2: Scientific Mode          [##  ] 33% (2/6 plans) ← CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Overall:** Phase 4.1 complete - Timeline UX simplified:
-- DONE: Mouse wheel zoom (cursor-centered), zoom controls relocated to minimap
-- DONE: Single-select with view switching to request detail view
-- Removed: Inline expandable detail panel, multi-select capability
-- Keep: Swim lane visualization, minimap, hover highlighting
+**Overall:** Phase 4.2 inserted for scientific styling and export functionality:
+- Scientific styling profile (white bg, black axes, publication fonts)
+- Per-plot export button (PNG/SVG/PDF) with configurable resolution
+- Bulk "Download All" functionality for entire dashboard
+- Separate plugin architecture (affects all visualizations)
+- Branch: feature/scientific-mode (based on feature/dashboard-unification)
 
 ---
 
@@ -137,6 +139,9 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Request detail view is view-only | No hover/click events emit in request view to prevent confusing cross-card interactions | 2026-01-22 |
 | Dynamic x-axis for request view | Request time windows scaled to ride constraint window instead of 24-hour range | 2026-01-22 |
 | Back button clears all selection state | Returning to rides view resets to unfiltered state for clean slate | 2026-01-22 |
+| Default 1200px width with 2x scale for ~300 DPI publication quality | Standard publication resolution for charts | 2026-01-30 |
+| Map export waits for tile loading via idle event | Ensures complete map capture without missing tiles | 2026-01-30 |
+| Memory cleanup with URL.revokeObjectURL after blob downloads | Prevents memory leaks from repeated downloads | 2026-01-30 |
 
 ### Roadmap Evolution
 
@@ -161,6 +166,13 @@ Phase 5:   Graph Visualization      [    ] 0%
   - Reason: Filtering currently reduces charts to single data points (e.g., one histogram bar); need to show filtered subset against baseline for context
   - Reference: Pattern already implemented in commuter-requests plugin (ComparisonToggle, overlay bars, concentric pies)
   - Requirements: COMP-01 to COMP-06 (6 new requirements)
+
+- Phase 4.2 inserted after Phase 4.1: Scientific Mode (URGENT) - 2026-01-30
+  - Reason: Need paper-ready visualizations for dissertation - current web-optimized styling not suitable for academic publications
+  - Scope: Separate plugin alongside interactive-dashboard (affects all visualizations, not just interactive)
+  - Features: Scientific styling profile (white bg, black axes, publication fonts), per-plot and bulk export
+  - Branch: feature/scientific-mode (based on feature/dashboard-unification)
+  - Requirements: SCI-01 to SCI-05 (5 new requirements)
 
 ### TODOs
 
@@ -267,11 +279,13 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed Phase 4.1 (Timeline Refinement) - both plans complete.
+**Where we left off:** Inserted Phase 4.2 (Scientific Mode) - ready for planning.
 
-**Next action:** Plan Phase 5 (Graph Visualization) - `/gsd:plan-phase 5`
+**Next action:** Plan Phase 4.2 (Scientific Mode) - `/gsd:plan-phase 4.2`
 
-**Phase progress:** Phase 4.1 complete (2/2 plans). Ready to start Phase 5.
+**Phase progress:** Phase 4.2 inserted (0 plans). Needs planning before execution.
+
+**Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
 
 **Plan 03-01 Completed (2026-01-21):**
 
@@ -542,3 +556,18 @@ Single-select and request detail view:
 - Commits: d3eda5ab (single-select), 191b2d18 (request view)
 
 *State updated: 2026-01-22 (Phase 4.1 complete - Timeline Refinement)*
+
+**Plan 04.2-02 Completed (2026-01-30):**
+
+Export utilities for chart and map export:
+- Installed JSZip ^3.10.1 for bulk ZIP export
+- Created export type definitions (ExportFormat, ExportConfig, ExportResult, CardExportInfo)
+- Implemented exportPlotlyChart() with Plotly.toImage for base64 PNG/SVG export
+- Implemented exportMapCanvas() with tile loading wait via idle event
+- Implemented exportAllChartsAsZip() with DEFLATE compression and unique filename handling
+- Added sanitizeFilename() helper for safe filename generation
+- Memory cleanup with URL.revokeObjectURL for blob downloads
+- Files: types/export.ts, utils/exportUtils.ts
+- Commits: 9ef01b44 (jszip), 0dedad03 (types), 3a54bab7 (utils)
+
+*State updated: 2026-01-30 (Plan 04.2-02 complete - Export Utilities)*
