@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Plan 04.2-05 complete - Export All Button)
+**Last Updated:** 2026-01-30 (Plan 04.2-06 complete - MapCard Scientific Mode)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 5/7 complete
+**Plan:** 6/7 complete
 **Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-05-PLAN.md (Export All Button)
+**Last activity:** 2026-01-30 - Completed 04.2-06-PLAN.md (MapCard Scientific Mode)
 
 **Progress:**
 ```
@@ -36,7 +36,7 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [#####  ] 71% (5/7 plans) <- CURRENT
+Phase 4.2: Scientific Mode          [######  ] 86% (6/7 plans) <- CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -155,6 +155,8 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Export button visible for 6 chart types | histogram, scatter, pie, correlation-matrix, timeline, map have exportable content | 2026-01-30 |
 | Array-style defineEmits for Vue 2.7 | Typed emit syntax causes "not callable" errors in some Vue 2.7 configs; array syntax works | 2026-01-30 |
 | Export All button in header between title and favorite | Natural placement for dashboard-level action without cluttering individual cards | 2026-01-30 |
+| Hide MapLibre controls in scientific mode | Zoom buttons, compass, attribution not suitable for publication figures | 2026-01-30 |
+| data-exportable-map attribute for map export detection | DashboardCard detects maps via attribute, not fragile DOM queries | 2026-01-30 |
 
 ### Roadmap Evolution
 
@@ -292,11 +294,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed 04.2-05 (Export All Button)
+**Where we left off:** Completed 04.2-06 (MapCard Scientific Mode)
 
-**Next action:** Execute Plan 04.2-06 (remaining plans or Phase 5)
+**Next action:** Execute Plan 04.2-07 (final plan of Phase 4.2)
 
-**Phase progress:** Phase 4.2 (5/7 plans complete)
+**Phase progress:** Phase 4.2 (6/7 plans complete)
 
 **Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
 
@@ -624,3 +626,16 @@ Export All button for bulk dashboard export:
 - Commits: b5703f30 (component), 5917c59c (integration)
 
 *State updated: 2026-01-30 (Plan 04.2-05 complete - Export All Button)*
+
+**Plan 04.2-06 Completed (2026-01-30):**
+
+MapCard scientific mode styling and export support:
+- Added isScientificMode computed property linked to StyleManager.isScientificMode()
+- Added data-exportable-map attribute for DashboardCard export detection
+- Added scientific-mode CSS class binding to map container
+- Hide MapLibre controls (zoom buttons, compass, attribution) in scientific mode via CSS :deep()
+- Added colorScheme watcher to update styling when theme changes
+- Files: MapCard.vue (modified)
+- Commits: 6560a0b5
+
+*State updated: 2026-01-30 (Plan 04.2-06 complete - MapCard Scientific Mode)*
