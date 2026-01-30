@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Quick task 006 - Scientific markers/patterns)
+**Last Updated:** 2026-01-30 (Quick task 007 - Scientific mode polish)
 
 ---
 
@@ -288,6 +288,7 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 | 002 | Dashboard unification - InteractiveDashboard without table config | 2026-01-21 | Standard mode enabled |
 | 003 | Dashboard visualization polish - axis labels, multi-select, density mode | 2026-01-28 | Scientific publication readiness |
 | 006 | Scientific mode markers and patterns for print accessibility | 2026-01-30 | Grayscale-ready charts |
+| 007 | Scientific mode polish - comparison styling and labels | 2026-01-30 | Publication-ready comparison mode |
 
 ---
 
