@@ -179,8 +179,7 @@ export default defineComponent({
 
       if (!contentWrapper.value) {
         console.warn('[DashboardCard] contentWrapper is null')
-        showExportDropdown.value = false
-        return
+                return
       }
 
       // Build export config from card settings
@@ -200,12 +199,10 @@ export default defineComponent({
           console.log('[DashboardCard] Calling downloadPlotlyChart...')
           await downloadPlotlyChart(plotElement, config)
           console.log('[DashboardCard] downloadPlotlyChart completed')
-          showExportDropdown.value = false
-          return
+                    return
         } catch (error) {
           console.error('[DashboardCard] Plotly export failed:', error)
-          showExportDropdown.value = false
-          return
+                    return
         }
       }
 
@@ -229,18 +226,15 @@ export default defineComponent({
           link.click()
           document.body.removeChild(link)
           console.log('[DashboardCard] Map export download triggered')
-          showExportDropdown.value = false
-          return
+                    return
         } catch (error) {
           console.error('[DashboardCard] Map export failed:', error)
-          showExportDropdown.value = false
-          return
+                    return
         }
       }
 
       console.warn('[DashboardCard] No exportable element (Plotly or map) found in card', props.card.type)
-      showExportDropdown.value = false
-    }
+          }
 
     /**
      * Emit resize event with current dimensions
