@@ -274,10 +274,10 @@ const renderChart = () => {
         y: -0.1,
       },
       annotations: [
-        // Center annotation showing count
+        // Center annotation showing count (and ring legend in comparison mode)
         {
           text: props.showComparison
-            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:9px">of ${props.baselineData?.length || 0}</span>`
+            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:9px">of ${props.baselineData?.length || 0}</span><br><span style="font-size:8px">inner: filtered</span>`
             : `<b>${pieData.value.reduce((sum, d) => sum + d.value, 0)}</b>`,
           x: 0.5,
           y: 0.5,
@@ -286,16 +286,6 @@ const renderChart = () => {
           showarrow: false,
           font: { size: 14, color: textColor, family: fontFamily },
         },
-        // Ring legend annotation (only in comparison mode)
-        ...(props.showComparison ? [{
-          text: '<b>Inner:</b> Filtered · <b>Outer:</b> Baseline',
-          x: 0.5,
-          y: -0.02,
-          xref: 'paper',
-          yref: 'paper',
-          showarrow: false,
-          font: { size: 9, color: textColor, family: fontFamily },
-        }] : []),
       ],
     },
     {
