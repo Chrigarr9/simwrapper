@@ -277,6 +277,8 @@ const renderChart = () => {
   const barWidth = binSize * 0.85  // 85% of bin size for slight gap between bars
 
   // Baseline trace (if comparison mode) - shown in background with low opacity
+  // Uses same pattern as filtered trace (they represent the same data series)
+  // Differentiation comes from opacity/transparency, not pattern
   debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
     debugLog('[HistogramCard] Adding baseline trace (density mode)')
@@ -289,11 +291,11 @@ const renderChart = () => {
       marker: {
         color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
         pattern: isScientific ? {
-          shape: '.',  // Dots for baseline (filtered uses '/')
+          shape: '/',  // Same pattern as filtered (diagonal) - they belong together
           bgcolor: 'rgba(156, 163, 175, 0.3)',
           fgcolor: 'rgba(100, 100, 100, 0.5)',
-          size: 6,
-          solidity: 0.3
+          size: 8,
+          solidity: 0.3  // Lighter solidity for baseline
         } : undefined,
       },
       hovertemplate: usePercentage

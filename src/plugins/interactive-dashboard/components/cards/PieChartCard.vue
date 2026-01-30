@@ -208,12 +208,35 @@ const renderChart = () => {
       return baseColor + '80' // Add 50% alpha (hex 80 = 128/255)
     })
 
+    // In scientific mode, match patterns to filtered slices by category label
+    // This creates visual unity between inner (filtered) and outer (baseline) slices
+    const baselinePatterns = isScientific
+      ? baselinePieData.value.map(d => {
+          // Find the index of this category in pieData to get matching pattern
+          const filteredIndex = pieData.value.findIndex(fd => fd.label === d.label)
+          return filteredIndex >= 0
+            ? styleManager.getScientificPiePattern(filteredIndex)
+            : styleManager.getScientificPiePattern(0)
+        })
+      : undefined
+
     traces.push({
       labels: baselinePieData.value.map(d => toTitleCase(d.label)),
       values: baselinePieData.value.map(d => d.value),
       type: 'pie',
       marker: {
         colors: baselineColors,
+        pattern: isScientific ? {
+          shape: baselinePatterns,
+          bgcolor: baselineColors,
+          fgcolor: baselinePieData.value.map(() => textColor),
+          size: 10,
+          solidity: 0.4
+        } : undefined,
+        line: {
+          color: lineColor,
+          width: isScientific ? 2 : 1,
+        },
       },
       textinfo: 'none', // No text on baseline ring
       hovertemplate: '<b>Baseline: %{label}</b><br>%{value} (%{percent})<extra></extra>',
