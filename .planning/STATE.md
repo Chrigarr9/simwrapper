@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 2/6 complete
+**Plan:** 1/7 complete
 **Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-02-PLAN.md (Export Utilities)
+**Last activity:** 2026-01-30 - Completed 04.2-01-PLAN.md (Scientific Mode Theme Foundation)
 
 **Progress:**
 ```
@@ -36,7 +36,7 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [##  ] 33% (2/6 plans) ← CURRENT
+Phase 4.2: Scientific Mode          [#      ] 14% (1/7 plans) ← CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -142,6 +142,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Default 1200px width with 2x scale for ~300 DPI publication quality | Standard publication resolution for charts | 2026-01-30 |
 | Map export waits for tile loading via idle event | Ensures complete map capture without missing tiles | 2026-01-30 |
 | Memory cleanup with URL.revokeObjectURL after blob downloads | Prevents memory leaks from repeated downloads | 2026-01-30 |
+| ScientificMode uses pure white background (#ffffff) | Maximum print contrast for publication-ready output | 2026-01-30 |
+| Scientific text is pure black (#000000) | Publication readability with maximum contrast | 2026-01-30 |
+| Three-way theme cycling: Dark -> Light -> Scientific -> Dark | Consistent UX for toggling between modes | 2026-01-30 |
+| Added 'scientific' to BG_COLOR_DASHBOARD/BG_COLOR_PLOTLY_FACETS | Prevents TypeScript errors when indexing by ColorScheme | 2026-01-30 |
 
 ### Roadmap Evolution
 
