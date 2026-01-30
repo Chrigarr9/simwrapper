@@ -35,8 +35,6 @@ const emit = defineEmits<{
   isLoaded: []
 }>()
 
-// Dark mode access from global store
-const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
 // Color map for consistent category colors
 const colorMap = ref<Map<string, string>>(new Map())
@@ -106,9 +104,15 @@ const renderChart = () => {
 
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
   const bgColor = styleManager.getColor('theme.background.primary')
   const textColor = styleManager.getColor('theme.text.primary')
   const lineColor = styleManager.getColor('theme.border.default')
+
+  // Scientific mode font configuration
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : undefined
 
   // Get colors - use color map for each category, darken if selected
   const colors = pieData.value.map(d => {
@@ -144,6 +148,7 @@ const renderChart = () => {
   })
 
   // Main pie chart (inner ring when comparison active)
+  // Scientific mode uses thicker slice outlines for publication clarity
   const mainTrace = {
     labels: pieData.value.map(d => toTitleCase(d.label)),
     values: pieData.value.map(d => d.value),
@@ -156,14 +161,14 @@ const renderChart = () => {
           selectedCategories.value.has(d.label) ? '#ffffff' : lineColor
         ),
         width: pieData.value.map(d =>
-          selectedCategories.value.has(d.label) ? 3 : 1
+          selectedCategories.value.has(d.label) ? 3 : (isScientific ? 2 : 1)
         ),
       },
     },
     textposition: textPositions,
     texttemplate: textTemplate,
-    textfont: { color: textColor, size: 11 },
-    outsidetextfont: { color: textColor, size: 10 },
+    textfont: { color: textColor, size: 11, family: fontFamily },
+    outsidetextfont: { color: textColor, size: 10, family: fontFamily },
     insidetextorientation: 'horizontal',  // Keep inside text readable
     hovertemplate: '%{label}: %{value} (%{percent})<extra></extra>',
     hole: props.showComparison ? 0.4 : 0.3,  // Smaller hole for inner ring
@@ -198,9 +203,13 @@ const renderChart = () => {
     plotContainer.value,
     traces,
     {
+      font: {
+        family: fontFamily,
+        color: textColor,
+      },
       title: {
         text: '',  // Title is shown in card header
-        font: { color: textColor },
+        font: { color: textColor, family: fontFamily },
       },
       margin: { t: 10, b: 30, l: 10, r: 10 },  // Extra bottom margin for outside labels
       autosize: true,
@@ -209,7 +218,7 @@ const renderChart = () => {
       uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
       showlegend: true,
       legend: {
-        font: { color: textColor, size: 11 },
+        font: { color: textColor, size: 11, family: fontFamily },
         bgcolor: 'transparent',
         orientation: 'h',
         x: 0.5,
@@ -226,12 +235,12 @@ const renderChart = () => {
           xref: 'paper',
           yref: 'paper',
           showarrow: false,
-          font: { size: 14, color: textColor },
+          font: { size: 14, color: textColor, family: fontFamily },
         },
       ],
     },
     {
-      displayModeBar: false,
+      displayModeBar: !isScientific ? false : false,  // Always hide modebar
       responsive: true,
     }
   )
@@ -281,8 +290,8 @@ watch(() => props.filteredData, (newData, oldData) => {
   renderChart()
 }, { deep: true })
 
-// Re-render on dark mode change
-watch(isDarkMode, () => {
+// Re-render on color scheme changes (including scientific mode)
+watch(() => globalStore.state.colorScheme, () => {
   renderChart()
 })
 

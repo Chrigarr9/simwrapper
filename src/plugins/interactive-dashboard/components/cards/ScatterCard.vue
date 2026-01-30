@@ -66,9 +66,6 @@ const emit = defineEmits<{
   isLoaded: []
 }>()
 
-// Dark mode access from global store
-const isDarkMode = computed(() => globalStore.state.isDarkMode)
-
 const plotContainer = ref<HTMLElement>()
 const selectedPoints = ref<Set<any>>(new Set())
 
@@ -297,6 +294,7 @@ const renderChart = () => {
 
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
   const bgColor = styleManager.getColor('theme.background.primary')
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
@@ -304,6 +302,11 @@ const renderChart = () => {
   // Interaction states - consistent with MapCard
   const highlightColor = styleManager.getColor('interaction.hover')
   const selectedColor = styleManager.getColor('interaction.selected')
+
+  // Scientific mode font configuration
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : undefined
 
   // Build traces - one per category for proper legend, or single trace if no categories
   const traces: any[] = []
@@ -479,10 +482,12 @@ const renderChart = () => {
   // Build axis configs with intelligent tick formatting
   // Limit number of ticks to avoid crowding, similar to histogram approach
   const xAxisConfig: any = {
-    title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11 } },
-    tickfont: { color: textColor, size: 10 },
+    title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11, family: fontFamily } },
+    tickfont: { color: textColor, size: 10, family: fontFamily },
     gridcolor: gridColor,
-    linecolor: gridColor,
+    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+    linewidth: isScientific ? 1.5 : 1,
+    showline: true,
     zerolinecolor: gridColor,
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
@@ -490,10 +495,12 @@ const renderChart = () => {
   }
 
   const yAxisConfig: any = {
-    title: { text: formatAxisLabel(currentYColumn.value), font: { color: textColor, size: 11 } },
-    tickfont: { color: textColor, size: 10 },
+    title: { text: formatAxisLabel(currentYColumn.value), font: { color: textColor, size: 11, family: fontFamily } },
+    tickfont: { color: textColor, size: 10, family: fontFamily },
     gridcolor: gridColor,
-    linecolor: gridColor,
+    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+    linewidth: isScientific ? 1.5 : 1,
+    showline: true,
     zerolinecolor: gridColor,
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
@@ -501,6 +508,10 @@ const renderChart = () => {
   }
 
   const layout = {
+    font: {
+      family: fontFamily,
+      color: textColor,
+    },
     xaxis: xAxisConfig,
     yaxis: yAxisConfig,
     margin: { l: 60, r: hasCategories ? 100 : 15, t: 10, b: 45 },
@@ -514,14 +525,14 @@ const renderChart = () => {
       y: 1,
       xanchor: 'left',
       yanchor: 'top',
-      font: { color: textColor, size: 10 },
+      font: { color: textColor, size: 10, family: fontFamily },
       bgcolor: 'rgba(0,0,0,0)',
       borderwidth: 0,
     } : undefined,
   }
 
   Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: false,
+    displayModeBar: !isScientific ? false : false,  // Always hide modebar (scientific mode too)
     responsive: true,
   })
 
@@ -619,8 +630,8 @@ watch([() => props.hoveredIds, () => props.selectedIds], () => {
   renderChart()
 }, { deep: true })
 
-// Re-render on dark mode change
-watch(isDarkMode, () => {
+// Re-render on color scheme changes (including scientific mode)
+watch(() => globalStore.state.colorScheme, () => {
   renderChart()
 })
 
