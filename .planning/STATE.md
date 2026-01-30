@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Plan 04.2-06 complete - MapCard Scientific Mode)
+**Last Updated:** 2026-01-30 (Phase 4.2 complete - Scientific Mode)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Core Value:** One styling configuration controls all visualizations
 
-**Current Focus:** Phase 4.2 - Scientific Mode (paper-ready visualizations with export functionality)
+**Current Focus:** Phase 5 - Graph Visualization (upcoming)
 
 **Key Files:**
 - PROJECT.md - Project definition and constraints
@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 6/7 complete
-**Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-06-PLAN.md (MapCard Scientific Mode)
+**Phase:** 4.2 of 10 (Scientific Mode) - COMPLETE
+**Plan:** 7/7 complete
+**Status:** Complete - Ready for Phase 5
+**Last activity:** 2026-01-30 - Completed Phase 4.2 (Scientific Mode)
 
 **Progress:**
 ```
@@ -36,16 +36,16 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [######  ] 86% (6/7 plans) <- CURRENT
-Phase 5:   Graph Visualization      [    ] 0%
+Phase 4.2: Scientific Mode          [#######] 100% (7/7 plans) COMPLETE
+Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 ```
 
-**Overall:** Phase 4.2 inserted for scientific styling and export functionality:
-- Scientific styling profile (white bg, black axes, publication fonts)
-- Per-plot export button (PNG/SVG/PDF) with configurable resolution
-- Bulk "Download All" functionality for entire dashboard
-- Separate plugin architecture (affects all visualizations)
-- Branch: feature/scientific-mode (based on feature/dashboard-unification)
+**Phase 4.2 Delivered:**
+- Scientific styling profile (white bg, black axes, Arial font)
+- Theme toggle button in dashboard header (cycles Dark → Light → Scientific)
+- Per-card PNG export button for all exportable card types
+- Bulk "Download All" as ZIP with charts and maps
+- Maps hide interactive controls in scientific mode
 
 ---
 
@@ -53,10 +53,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 26 |
+| Plans completed | 33 |
 | Quick tasks completed | 3 |
 | Plans requiring revision | 0 |
-| Requirements completed | 23/25 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06) |
+| Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
 | Research phases triggered | 1 (Phase 3 research) |
 
 ---
@@ -294,13 +294,16 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed 04.2-06 (MapCard Scientific Mode)
+**Where we left off:** Phase 4.2 (Scientific Mode) COMPLETE
 
-**Next action:** Execute Plan 04.2-07 (final plan of Phase 4.2)
+**Next action:** Plan or execute Phase 5 (Graph Visualization)
+- Use `/gsd:discuss-phase 5` to discuss requirements
+- Use `/gsd:plan-phase 5` to create implementation plans
+- Use `/gsd:execute-phase 5` to execute after planning
 
-**Phase progress:** Phase 4.2 (6/7 plans complete)
+**Phase progress:** Phase 4.2 complete (7/7 plans), Phase 5 not started (0/? plans)
 
-**Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
+**Branch:** `feature/scientific-mode` (ready for merge or continue with Phase 5)
 
 **Plan 04.2-03 Completed (2026-01-30):**
 
@@ -639,3 +642,16 @@ MapCard scientific mode styling and export support:
 - Commits: 6560a0b5
 
 *State updated: 2026-01-30 (Plan 04.2-06 complete - MapCard Scientific Mode)*
+
+**Plan 04.2-07 Completed (2026-01-30):**
+
+End-to-end verification and fixes for Scientific Mode:
+- Added theme toggle button to dashboard header (cycles Dark → Light → Scientific)
+- Fixed per-card export: expanded isExportable types (scatter-plot, pie-chart, bar, line, area, heatmap)
+- Simplified export UX: removed dropdown, direct PNG export button
+- Fixed Export All: added map canvas detection via [data-exportable-map] selector
+- All requirements verified: SCI-01 to SCI-05
+- Files: InteractiveDashboard.vue, DashboardCard.vue, ExportAllButton.vue
+- Commits: 13640312, 06b4cd69, 54030cae, 7187cb73, fafcf7f7, 7bc6e8bf, 5c5a3327
+
+*State updated: 2026-01-30 (Phase 4.2 COMPLETE - Scientific Mode)*

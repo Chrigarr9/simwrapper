@@ -354,13 +354,15 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 **Plans:** 7 plans
 
 Plans:
-- [ ] 04.2-01-PLAN.md — Extend theming system with scientific mode (ColorScheme, store, StyleManager)
-- [ ] 04.2-02-PLAN.md — Create export utilities and install JSZip dependency
-- [ ] 04.2-03-PLAN.md — Add scientific styling to Plotly-based chart cards
-- [ ] 04.2-04-PLAN.md — Add per-card export button to DashboardCard component
-- [ ] 04.2-05-PLAN.md — Create Export All button and integrate into dashboard
-- [ ] 04.2-06-PLAN.md — Add scientific mode and export support to MapCard
-- [ ] 04.2-07-PLAN.md — Verification and polish
+- [x] 04.2-01-PLAN.md — Extend theming system with scientific mode (ColorScheme, store, StyleManager)
+- [x] 04.2-02-PLAN.md — Create export utilities and install JSZip dependency
+- [x] 04.2-03-PLAN.md — Add scientific styling to Plotly-based chart cards
+- [x] 04.2-04-PLAN.md — Add per-card export button to DashboardCard component
+- [x] 04.2-05-PLAN.md — Create Export All button and integrate into dashboard
+- [x] 04.2-06-PLAN.md — Add scientific mode and export support to MapCard
+- [x] 04.2-07-PLAN.md — Verification and polish
+
+**Completed:** 2026-01-30
 
 **Details:**
 Scientific papers typically require high contrast black-on-white color schemes, serif or specific sans-serif fonts (Times New Roman, Arial), clean axis labels with proper scientific notation, no UI chrome, and vector-ready output quality.
@@ -414,10 +416,10 @@ This is implemented as a **separate plugin** alongside interactive-dashboard bec
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
 | 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
 | 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-05, TIME-06 | Complete | 100% |
-| 4.2 | Scientific Mode (INSERTED) | SCI-01 to SCI-05 | Not Started | 0% |
+| 4.2 | Scientific Mode (INSERTED) | SCI-01 to SCI-05 | Complete | 100% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 7/10 phases complete (70%)
+**Overall Progress:** 8/10 phases complete (80%)
 
 ---
 
@@ -465,4 +467,4 @@ This is implemented as a **separate plugin** alongside interactive-dashboard bec
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-30 — Phase 4.2 inserted (Scientific Mode for paper-ready visualizations)*
+*Last updated: 2026-01-30 — Phase 4.2 completed (Scientific Mode with theme toggle, per-card PNG export, bulk ZIP export)*
