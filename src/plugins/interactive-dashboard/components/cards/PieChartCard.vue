@@ -130,24 +130,35 @@ const renderChart = () => {
   // Calculate total for percentage threshold
   const total = pieData.value.reduce((sum, d) => sum + d.value, 0)
 
-  // Determine text position per slice based on size
-  // Scientific mode: ALL labels outside when patterns are active (cleaner for publication)
+  // Determine text position per slice based on size and mode
+  // Comparison mode: NO outside labels (constrained domain causes overlap issues)
+  // Scientific mode (no comparison): outside labels for pattern readability
   const textPositions = pieData.value.map(d => {
     const pct = (d.value / total) * 100
+    if (props.showComparison) {
+      // Comparison mode: inside only for large slices, rely on legend for others
+      if (pct >= 20) return 'inside'
+      return 'none'  // Legend shows categories
+    }
     if (isScientific) {
-      // Scientific mode: always outside for readability over patterns
-      if (pct >= 2) return 'outside'
-      return 'none'  // Hide tiny slice labels
+      // Scientific mode (no comparison): outside for readability over patterns
+      if (pct >= 5) return 'outside'
+      return 'none'
     }
     // Standard mode
     if (pct >= 10) return 'inside'
     if (pct >= 3) return 'outside'
-    return 'none'  // Hide labels for tiny slices - hover still shows details
+    return 'none'
   })
 
   // Only show label+percent for slices that have visible text
   const textTemplate = pieData.value.map(d => {
     const pct = (d.value / total) * 100
+    if (props.showComparison) {
+      // Comparison mode: shorter labels for inside positioning
+      if (pct >= 20) return '%{percent}'  // Just percent, legend shows category
+      return ''
+    }
     if (pct >= 10) return '%{label}<br>%{percent}'  // Inside: label on top, percent below
     if (pct >= 3) return '%{label} %{percent}'  // Outside: inline
     return ''  // Hidden
@@ -274,17 +285,17 @@ const renderChart = () => {
         y: -0.1,
       },
       annotations: [
-        // Center annotation showing count (and ring legend in comparison mode)
+        // Center annotation showing count
         {
           text: props.showComparison
-            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:9px">of ${props.baselineData?.length || 0}</span><br><span style="font-size:8px">inner: filtered</span>`
+            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:10px">of ${props.baselineData?.length || 0}</span>`
             : `<b>${pieData.value.reduce((sum, d) => sum + d.value, 0)}</b>`,
           x: 0.5,
           y: 0.5,
           xref: 'paper',
           yref: 'paper',
           showarrow: false,
-          font: { size: 14, color: textColor, family: fontFamily },
+          font: { size: 16, color: textColor, family: fontFamily },
         },
       ],
     },
