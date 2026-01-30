@@ -326,6 +326,7 @@ const renderChart = () => {
       marker: {
         color: 'rgba(156, 163, 175, 0.3)', // Gray with 30% opacity
         size: props.markerSize * 0.8,      // Slightly smaller
+        symbol: isScientific ? 'circle-open' : undefined,  // Hollow circle in scientific mode
         line: {
           color: 'rgba(156, 163, 175, 0.5)',
           width: 0.5,
@@ -339,7 +340,7 @@ const renderChart = () => {
     // Create separate traces for each category (enables proper legend)
     const categoryColors = generateCategoryColors(categories)
 
-    categories.forEach((category) => {
+    categories.forEach((category, categoryIndex) => {
       const categoryIndices: number[] = []
       const categoryX: number[] = []
       const categoryY: number[] = []
@@ -408,6 +409,7 @@ const renderChart = () => {
           marker: {
             color: categoryMarkerColors,
             size: categorySizes,
+            symbol: isScientific ? styleManager.getScientificMarkerSymbol(categoryIndex) : undefined,
             line: {
               color: categoryLineColors,
               width: categoryLineWidths,
