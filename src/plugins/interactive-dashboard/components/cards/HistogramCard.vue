@@ -277,8 +277,7 @@ const renderChart = () => {
   const barWidth = binSize * 0.85  // 85% of bin size for slight gap between bars
 
   // Baseline trace (if comparison mode) - shown in background with low opacity
-  // Uses same pattern as filtered trace (they represent the same data series)
-  // Differentiation comes from opacity/transparency, not pattern
+  // NO patterns - just opacity difference distinguishes baseline from filtered
   debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
     debugLog('[HistogramCard] Adding baseline trace (density mode)')
@@ -289,14 +288,11 @@ const renderChart = () => {
       name: 'Baseline (All Data)',
       width: barWidth,  // Match filtered trace width
       marker: {
-        color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
-        pattern: isScientific ? {
-          shape: '/',  // Same pattern as filtered (diagonal) - they belong together
-          bgcolor: 'rgba(156, 163, 175, 0.3)',
-          fgcolor: 'rgba(100, 100, 100, 0.5)',
-          size: 8,
-          solidity: 0.3  // Lighter solidity for baseline
-        } : undefined,
+        color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity - no pattern
+        line: {
+          color: 'rgba(156, 163, 175, 0.5)',
+          width: 1,
+        },
       },
       hovertemplate: usePercentage
         ? '<b>%{x}</b><br>Baseline: %{y:.1f}%<extra></extra>'
@@ -304,7 +300,7 @@ const renderChart = () => {
     })
   }
 
-  // Filtered trace - on top with full colors
+  // Filtered trace - on top with full colors (solid, no patterns)
   traces.push({
     x: displayData.map(d => d.bin),
     y: displayData.map(d => d.count),
@@ -315,18 +311,10 @@ const renderChart = () => {
       color: displayData.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor
       ),
-      // Add pattern in scientific mode when comparison is active
-      pattern: (isScientific && props.showComparison) ? {
-        shape: '/',  // Diagonal lines for filtered trace
-        bgcolor: 'transparent',
-        fgcolor: barColor,
-        size: 8,
-        solidity: 0.5
-      } : undefined,
+      // Solid color - no patterns. In comparison mode, add outline to distinguish from baseline
       line: {
-        // Use background color for bar outline to create subtle separation
-        color: bgColor,
-        width: 1,
+        color: props.showComparison ? textColor : bgColor,  // Dark outline in comparison mode
+        width: props.showComparison ? 1.5 : 1,
       },
     },
     hovertemplate: usePercentage

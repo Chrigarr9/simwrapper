@@ -65,10 +65,24 @@ const pieData = computed(() => {
   // Sort by count descending for display
   const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
 
-  // Build color map using ALPHABETICALLY sorted values for consistent colors
-  // This ensures same category always gets same color regardless of count order
+  // Build color map using ALL categories (from baseline if available, else filtered)
+  // This ensures consistent colors in comparison mode when filtered has fewer categories
   const styleManager = StyleManager.getInstance()
-  const alphabeticallySorted = Array.from(counts.keys()).sort((a, b) =>
+  const dataSourceForColors = (props.showComparison && props.baselineData?.length > 0)
+    ? props.baselineData
+    : props.filteredData
+
+  // Collect all unique categories from the data source
+  const allCategories = new Set<string>()
+  dataSourceForColors.forEach(row => {
+    const val = row[props.column]
+    if (val !== null && val !== undefined) {
+      allCategories.add(String(val))
+    }
+  })
+
+  // Sort alphabetically for consistent color assignment
+  const alphabeticallySorted = Array.from(allCategories).sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' })
   )
   colorMap.value = styleManager.buildCategoricalColorMap(alphabeticallySorted)
