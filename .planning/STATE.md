@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Phase 4.2 INSERTED - Scientific Mode)
+**Last Updated:** 2026-01-30 (Plan 04.2-03 complete - Plotly Charts Scientific Styling)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 1/7 complete
+**Plan:** 3/7 complete
 **Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-01-PLAN.md (Scientific Mode Theme Foundation)
+**Last activity:** 2026-01-30 - Completed 04.2-03-PLAN.md (Plotly Charts Scientific Styling)
 
 **Progress:**
 ```
@@ -36,7 +36,7 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [#      ] 14% (1/7 plans) ← CURRENT
+Phase 4.2: Scientific Mode          [###    ] 43% (3/7 plans) ← CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -146,6 +146,10 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Scientific text is pure black (#000000) | Publication readability with maximum contrast | 2026-01-30 |
 | Three-way theme cycling: Dark -> Light -> Scientific -> Dark | Consistent UX for toggling between modes | 2026-01-30 |
 | Added 'scientific' to BG_COLOR_DASHBOARD/BG_COLOR_PLOTLY_FACETS | Prevents TypeScript errors when indexing by ColorScheme | 2026-01-30 |
+| ColorScheme watcher pattern for chart re-rendering | All Plotly cards watch globalStore.state.colorScheme for theme changes | 2026-01-30 |
+| Scientific axis styling: black 1.5px lines with showline:true | Crisp print output with consistent axis visibility | 2026-01-30 |
+| TimelineCard hides zoom controls in scientific mode | Interactive UI chrome not suitable for publication | 2026-01-30 |
+| PieChartCard uses 2px slice outlines in scientific mode | Thicker outlines for print clarity | 2026-01-30 |
 
 ### Roadmap Evolution
 
@@ -283,13 +287,23 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Inserted Phase 4.2 (Scientific Mode) - ready for planning.
+**Where we left off:** Completed 04.2-03 (Plotly Charts Scientific Styling)
 
-**Next action:** Plan Phase 4.2 (Scientific Mode) - `/gsd:plan-phase 4.2`
+**Next action:** Execute Plan 04.2-04 (MapCard Scientific Styling)
 
-**Phase progress:** Phase 4.2 inserted (0 plans). Needs planning before execution.
+**Phase progress:** Phase 4.2 (3/7 plans complete)
 
 **Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
+
+**Plan 04.2-03 Completed (2026-01-30):**
+
+Plotly charts scientific styling:
+- All 5 Plotly-based cards support scientific mode (HistogramCard, ScatterCard, PieChartCard, CorrelationMatrixCard, TimelineCard)
+- Scientific mode applies Arial font family to all text elements
+- Black axis lines with 1.5px width in scientific mode
+- Cards watch globalStore.state.colorScheme for theme-reactive re-rendering
+- TimelineCard hides zoom controls and viewport indicator in scientific mode
+- PieChartCard uses thicker slice outlines (2px) in scientific mode
 
 **Plan 03-01 Completed (2026-01-21):**
 
