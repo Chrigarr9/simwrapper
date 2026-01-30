@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Plan 04.2-04 complete - Per-Card Export Button)
+**Last Updated:** 2026-01-30 (Plan 04.2-05 complete - Export All Button)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 4/7 complete
+**Plan:** 5/7 complete
 **Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-04-PLAN.md (Per-Card Export Button)
+**Last activity:** 2026-01-30 - Completed 04.2-05-PLAN.md (Export All Button)
 
 **Progress:**
 ```
@@ -36,7 +36,7 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [####   ] 57% (4/7 plans) <- CURRENT
+Phase 4.2: Scientific Mode          [#####  ] 71% (5/7 plans) <- CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -153,6 +153,8 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Export dropdown closes on mouse leave | Better UX than requiring explicit close click | 2026-01-30 |
 | Map export PNG-only (SVG unavailable for WebGL canvas) | Canvas toDataURL cannot produce SVG from WebGL content | 2026-01-30 |
 | Export button visible for 6 chart types | histogram, scatter, pie, correlation-matrix, timeline, map have exportable content | 2026-01-30 |
+| Array-style defineEmits for Vue 2.7 | Typed emit syntax causes "not callable" errors in some Vue 2.7 configs; array syntax works | 2026-01-30 |
+| Export All button in header between title and favorite | Natural placement for dashboard-level action without cluttering individual cards | 2026-01-30 |
 
 ### Roadmap Evolution
 
@@ -290,11 +292,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed 04.2-04 (Per-Card Export Button)
+**Where we left off:** Completed 04.2-05 (Export All Button)
 
-**Next action:** Execute Plan 04.2-05 (Bulk Export)
+**Next action:** Execute Plan 04.2-06 (remaining plans or Phase 5)
 
-**Phase progress:** Phase 4.2 (4/7 plans complete)
+**Phase progress:** Phase 4.2 (5/7 plans complete)
 
 **Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
 
@@ -607,3 +609,18 @@ Per-card export button in DashboardCard header:
 - Commits: 26541ee4 (types), 576c3ddc (component)
 
 *State updated: 2026-01-30 (Plan 04.2-04 complete - Per-Card Export Button)*
+
+**Plan 04.2-05 Completed (2026-01-30):**
+
+Export All button for bulk dashboard export:
+- Created ExportAllButton.vue component in components/controls/
+- Finds all Plotly charts via document.querySelectorAll('.dashboard-card .js-plotly-plot')
+- Exports each chart to PNG using existing exportPlotlyChart utility
+- Bundles all exports into ZIP via exportAllChartsAsZip
+- Integrated button into InteractiveDashboard header (between title and favorite star)
+- Shows spinner progress indication during export
+- ZIP filename based on dashboard title
+- Files: ExportAllButton.vue (created), InteractiveDashboard.vue (modified)
+- Commits: b5703f30 (component), 5917c59c (integration)
+
+*State updated: 2026-01-30 (Plan 04.2-05 complete - Export All Button)*
