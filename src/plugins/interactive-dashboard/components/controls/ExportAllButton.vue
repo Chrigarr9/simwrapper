@@ -36,46 +36,67 @@ const emit = defineEmits(['exportStart', 'exportComplete', 'exportError'])
 
 const isExporting = ref(false)
 
-/**
- * Find all exportable Plotly charts in the dashboard
- */
-function findExportableCharts(): { element: HTMLElement; title: string; type: string }[] {
-  const charts: { element: HTMLElement; title: string; type: string }[] = []
-
-  // Find all Plotly chart elements
-  const plotElements = document.querySelectorAll('.dashboard-card .js-plotly-plot')
-
-  plotElements.forEach((element) => {
-    // Find parent dashboard-card to get title
-    const card = element.closest('.dashboard-card')
-    if (!card) return
-
-    // Get title from card header
-    const titleElement = card.querySelector('.card-header h3')
-    const title = titleElement?.textContent?.trim() || 'chart'
-
-    // Determine chart type from parent classes or data attributes
-    const cardContent = element.closest('.card-content')
-    const typeClass = cardContent?.querySelector('[class*="Card"]')?.className || ''
-    const type = typeClass.includes('histogram') ? 'histogram'
-      : typeClass.includes('scatter') ? 'scatter'
-      : typeClass.includes('pie') ? 'pie'
-      : typeClass.includes('correlation') ? 'correlation'
-      : typeClass.includes('timeline') ? 'timeline'
-      : 'chart'
-
-    charts.push({
-      element: element as HTMLElement,
-      title,
-      type,
-    })
-  })
-
-  return charts
+interface ExportableItem {
+  element: HTMLElement | HTMLCanvasElement
+  title: string
+  type: 'plotly' | 'map'
 }
 
 /**
- * Export all charts as a ZIP file
+ * Find all exportable elements in the dashboard (Plotly charts and maps)
+ */
+function findExportableItems(): ExportableItem[] {
+  const items: ExportableItem[] = []
+
+  // Find all Plotly chart elements
+  const plotElements = document.querySelectorAll('.dashboard-card .js-plotly-plot')
+  plotElements.forEach((element) => {
+    const card = element.closest('.dashboard-card')
+    if (!card) return
+    const titleElement = card.querySelector('.card-header h3')
+    const title = titleElement?.textContent?.trim() || 'chart'
+    items.push({
+      element: element as HTMLElement,
+      title,
+      type: 'plotly',
+    })
+  })
+
+  // Find all map canvases
+  const mapContainers = document.querySelectorAll('.dashboard-card [data-exportable-map]')
+  mapContainers.forEach((container) => {
+    const canvas = container.querySelector('canvas') as HTMLCanvasElement
+    if (!canvas) return
+    const card = container.closest('.dashboard-card')
+    if (!card) return
+    const titleElement = card.querySelector('.card-header h3')
+    const title = titleElement?.textContent?.trim() || 'map'
+    items.push({
+      element: canvas,
+      title,
+      type: 'map',
+    })
+  })
+
+  return items
+}
+
+/**
+ * Export a map canvas to an ExportResult
+ */
+async function exportMapCanvasToResult(canvas: HTMLCanvasElement, filename: string): Promise<ExportResult> {
+  const dataUrl = canvas.toDataURL('image/png')
+  const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+  return {
+    data: base64Data,
+    extension: 'png',
+    filename,
+    mimeType: 'image/png',
+  }
+}
+
+/**
+ * Export all charts and maps as a ZIP file
  */
 async function handleExportAll() {
   if (isExporting.value) return
@@ -84,27 +105,37 @@ async function handleExportAll() {
   emit('exportStart')
 
   try {
-    const charts = findExportableCharts()
+    const items = findExportableItems()
+    console.log('[ExportAllButton] Found exportable items:', items.length)
 
-    if (charts.length === 0) {
-      console.warn('No exportable charts found')
+    if (items.length === 0) {
+      console.warn('[ExportAllButton] No exportable items found')
+      isExporting.value = false
       return
     }
 
     const results: ExportResult[] = []
 
-    // Export each chart
-    for (const chart of charts) {
+    // Export each item
+    for (const item of items) {
       try {
-        const result = await exportPlotlyChart(chart.element, {
-          format: props.format,
-          width: props.width,
-          scale: props.scale,
-          filename: sanitizeFilename(chart.title, chart.type),
-        })
-        results.push(result)
+        const filename = sanitizeFilename(item.title, item.type)
+
+        if (item.type === 'plotly') {
+          const result = await exportPlotlyChart(item.element as HTMLElement, {
+            format: props.format,
+            width: props.width,
+            scale: props.scale,
+            filename,
+          })
+          results.push(result)
+        } else if (item.type === 'map') {
+          // Maps always export as PNG
+          const result = await exportMapCanvasToResult(item.element as HTMLCanvasElement, filename)
+          results.push(result)
+        }
       } catch (error) {
-        console.warn(`Failed to export chart "${chart.title}":`, error)
+        console.warn(`[ExportAllButton] Failed to export "${item.title}":`, error)
       }
     }
 
@@ -113,9 +144,10 @@ async function handleExportAll() {
       const zipFilename = sanitizeFilename(props.dashboardTitle, 'dashboard') + '-export'
       await exportAllChartsAsZip(results, zipFilename)
       emit('exportComplete', results.length)
+      console.log('[ExportAllButton] ZIP export completed with', results.length, 'items')
     }
   } catch (error) {
-    console.error('Export all failed:', error)
+    console.error('[ExportAllButton] Export all failed:', error)
     emit('exportError', error as Error)
   } finally {
     isExporting.value = false

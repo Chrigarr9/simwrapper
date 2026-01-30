@@ -127,11 +127,20 @@ export default defineComponent({
     /**
      * Whether this card supports export
      * Default: true for chart types (histogram, scatter, pie, correlation-matrix, timeline, map)
+     * Includes both old chart types (scatter, pie) and new interactive dashboard types (scatter-plot, pie-chart)
      * Can be overridden with exportable: false in YAML
      */
     const isExportable = computed(() => {
       if (props.card.exportable === false) return false
-      const exportableTypes = ['histogram', 'scatter', 'pie', 'correlation-matrix', 'timeline', 'map']
+      const exportableTypes = [
+        'histogram',
+        'scatter', 'scatter-plot',
+        'pie', 'pie-chart',
+        'correlation-matrix',
+        'timeline',
+        'map',
+        'bar', 'line', 'area', 'heatmap',  // Other Plotly-based charts
+      ]
       return exportableTypes.includes(props.card.type)
     })
 
@@ -168,7 +177,13 @@ export default defineComponent({
      * Exports the card's visualization using the appropriate method
      */
     async function handleExport(format: 'png' | 'svg' = 'png') {
-      if (!contentWrapper.value) return
+      console.log('[DashboardCard] handleExport called, format:', format, 'card:', props.card.id)
+
+      if (!contentWrapper.value) {
+        console.warn('[DashboardCard] contentWrapper is null')
+        showExportDropdown.value = false
+        return
+      }
 
       // Build export config from card settings
       const config: Partial<ExportConfig> = {
@@ -176,16 +191,21 @@ export default defineComponent({
         filename: props.card.exportName || sanitizeFilename(props.card.title, props.card.type),
         ...props.card.exportConfig,
       }
+      console.log('[DashboardCard] Export config:', config)
 
-      // Try Plotly chart first
+      // Try Plotly chart first - look for the element Plotly creates
       const plotElement = contentWrapper.value.querySelector('.js-plotly-plot') as HTMLElement
+      console.log('[DashboardCard] Found Plotly element:', !!plotElement)
+
       if (plotElement) {
         try {
+          console.log('[DashboardCard] Calling downloadPlotlyChart...')
           await downloadPlotlyChart(plotElement, config)
+          console.log('[DashboardCard] downloadPlotlyChart completed')
           showExportDropdown.value = false
           return
         } catch (error) {
-          console.error('Plotly export failed:', error)
+          console.error('[DashboardCard] Plotly export failed:', error)
           showExportDropdown.value = false
           return
         }
@@ -194,9 +214,12 @@ export default defineComponent({
       // Try MapLibre canvas (for map cards)
       const mapContainer = contentWrapper.value.querySelector('[data-exportable-map]')
       const mapCanvas = mapContainer?.querySelector('canvas') as HTMLCanvasElement
+      console.log('[DashboardCard] Found map container:', !!mapContainer, 'canvas:', !!mapCanvas)
+
       if (mapCanvas) {
         try {
           const filename = config.filename || sanitizeFilename(props.card.title, 'map')
+          console.log('[DashboardCard] Exporting map canvas as:', filename)
           // Note: Maps only support PNG export (SVG not supported for WebGL canvas)
           const dataUrl = mapCanvas.toDataURL('image/png')
 
@@ -207,16 +230,17 @@ export default defineComponent({
           document.body.appendChild(link)
           link.click()
           document.body.removeChild(link)
+          console.log('[DashboardCard] Map export download triggered')
           showExportDropdown.value = false
           return
         } catch (error) {
-          console.error('Map export failed:', error)
+          console.error('[DashboardCard] Map export failed:', error)
           showExportDropdown.value = false
           return
         }
       }
 
-      console.warn('No exportable element (Plotly or map) found in card')
+      console.warn('[DashboardCard] No exportable element (Plotly or map) found in card', props.card.type)
       showExportDropdown.value = false
     }
 
