@@ -12,6 +12,15 @@
       button.btn-icon(v-if="card.info" @click="toggleInfo" :title="showInfo ? 'Hide Info' : 'Show Info'")
         i.fa.fa-info-circle
 
+      //- Export dropdown button (for exportable cards)
+      .export-dropdown(v-if="isExportable" @mouseleave="showExportDropdown = false")
+        button.btn-icon(@click="showExportDropdown = !showExportDropdown" title="Export")
+          i.fa.fa-download
+
+        .dropdown-menu(v-show="showExportDropdown")
+          button.dropdown-item(@click="handleExport('png')") Export PNG
+          button.dropdown-item(@click="handleExport('svg')") Export SVG
+
       button.btn-icon(@click="handleFullscreenClick" :title="isFullscreen ? 'Restore' : 'Enlarge'")
         i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
 
@@ -61,6 +70,8 @@
  */
 import { defineComponent, ref, computed, PropType, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import type { CardConfig } from '../types/dashboardCard'
+import { downloadPlotlyChart, sanitizeFilename } from '../utils/exportUtils'
+import type { ExportConfig } from '../types/export'
 
 export default defineComponent({
   name: 'DashboardCard',
@@ -110,6 +121,20 @@ export default defineComponent({
     // This is managed locally by DashboardCard, NOT by the parent
     const showInfo = ref(false)
 
+    // Export dropdown visibility state
+    const showExportDropdown = ref(false)
+
+    /**
+     * Whether this card supports export
+     * Default: true for chart types (histogram, scatter, pie, correlation-matrix, timeline, map)
+     * Can be overridden with exportable: false in YAML
+     */
+    const isExportable = computed(() => {
+      if (props.card.exportable === false) return false
+      const exportableTypes = ['histogram', 'scatter', 'pie', 'correlation-matrix', 'timeline', 'map']
+      return exportableTypes.includes(props.card.type)
+    })
+
     // Ref for content wrapper element (used by ResizeObserver)
     const contentWrapper = ref<HTMLElement | null>(null)
 
@@ -136,6 +161,63 @@ export default defineComponent({
      */
     function clearErrors() {
       emit('clear-errors', props.card.id)
+    }
+
+    /**
+     * Handle export button click
+     * Exports the card's visualization using the appropriate method
+     */
+    async function handleExport(format: 'png' | 'svg' = 'png') {
+      if (!contentWrapper.value) return
+
+      // Build export config from card settings
+      const config: Partial<ExportConfig> = {
+        format,
+        filename: props.card.exportName || sanitizeFilename(props.card.title, props.card.type),
+        ...props.card.exportConfig,
+      }
+
+      // Try Plotly chart first
+      const plotElement = contentWrapper.value.querySelector('.js-plotly-plot') as HTMLElement
+      if (plotElement) {
+        try {
+          await downloadPlotlyChart(plotElement, config)
+          showExportDropdown.value = false
+          return
+        } catch (error) {
+          console.error('Plotly export failed:', error)
+          showExportDropdown.value = false
+          return
+        }
+      }
+
+      // Try MapLibre canvas (for map cards)
+      const mapContainer = contentWrapper.value.querySelector('[data-exportable-map]')
+      const mapCanvas = mapContainer?.querySelector('canvas') as HTMLCanvasElement
+      if (mapCanvas) {
+        try {
+          const filename = config.filename || sanitizeFilename(props.card.title, 'map')
+          // Note: Maps only support PNG export (SVG not supported for WebGL canvas)
+          const dataUrl = mapCanvas.toDataURL('image/png')
+
+          // Trigger download
+          const link = document.createElement('a')
+          link.href = dataUrl
+          link.download = `${filename}.png`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          showExportDropdown.value = false
+          return
+        } catch (error) {
+          console.error('Map export failed:', error)
+          showExportDropdown.value = false
+          return
+        }
+      }
+
+      console.warn('No exportable element (Plotly or map) found in card')
+      showExportDropdown.value = false
     }
 
     /**
@@ -260,9 +342,12 @@ export default defineComponent({
 
     return {
       showInfo,
+      showExportDropdown,
+      isExportable,
       contentWrapper,
       toggleInfo,
       handleFullscreenClick,
+      handleExport,
       clearErrors,
       showHeader,
       cardClasses,
@@ -368,6 +453,40 @@ export default defineComponent({
     &:hover {
       background-color: var(--dashboard-bg-tertiary, #ffffff20);
       opacity: 1;
+    }
+  }
+}
+
+// Export dropdown button and menu
+.export-dropdown {
+  position: relative;
+  display: inline-block;
+
+  .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
+    border: 1px solid var(--dashboard-border-default);
+    border-radius: 4px;
+    z-index: 100;
+    min-width: 120px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+    .dropdown-item {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+      color: var(--dashboard-text-primary);
+      font-size: 0.9rem;
+
+      &:hover {
+        background-color: var(--dashboard-bg-tertiary);
+      }
     }
   }
 }
