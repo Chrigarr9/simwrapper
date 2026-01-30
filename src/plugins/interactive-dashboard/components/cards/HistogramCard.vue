@@ -276,8 +276,9 @@ const renderChart = () => {
   const binSize = props.binSize || 1
   const barWidth = binSize * 0.85  // 85% of bin size for slight gap between bars
 
-  // Baseline trace (if comparison mode) - shown in background with low opacity
+  // Baseline trace (if comparison mode) - styled from StyleManager
   // NO patterns - just opacity difference distinguishes baseline from filtered
+  const comparisonConfig = styleManager.getComparisonConfig()
   debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
     debugLog('[HistogramCard] Adding baseline trace (density mode)')
@@ -288,10 +289,10 @@ const renderChart = () => {
       name: 'Baseline (All Data)',
       width: barWidth,  // Match filtered trace width
       marker: {
-        color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity - no pattern
+        color: styleManager.getComparisonBaselineColor(),  // From StyleManager
         line: {
-          color: 'rgba(156, 163, 175, 0.5)',
-          width: 1,
+          color: comparisonConfig.baseline.lineColor,
+          width: comparisonConfig.baseline.lineWidth,
         },
       },
       hovertemplate: usePercentage
@@ -311,10 +312,10 @@ const renderChart = () => {
       color: displayData.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor
       ),
-      // Solid color - no patterns. In comparison mode, add outline to distinguish from baseline
+      // Solid color - no patterns. In comparison mode, add outline from StyleManager
       line: {
-        color: props.showComparison ? textColor : bgColor,  // Dark outline in comparison mode
-        width: props.showComparison ? 1.5 : 1,
+        color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
+        width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
       },
     },
     hovertemplate: usePercentage

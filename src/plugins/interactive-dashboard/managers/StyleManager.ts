@@ -89,6 +89,23 @@ interface FilterStyleConfig {
 }
 
 /**
+ * Comparison mode styling configuration
+ * Controls how baseline vs filtered data is distinguished in charts
+ */
+interface ComparisonStyleConfig {
+  baseline: {
+    color: string           // Gray color for baseline
+    opacity: number         // 0-1 opacity for baseline
+    lineColor: string       // Border/line color
+    lineWidth: number       // Border width
+  }
+  filtered: {
+    lineColor: string       // Outline color for filtered (to distinguish from baseline)
+    lineWidth: number       // Outline width
+  }
+}
+
+/**
  * Sequential color scale names
  */
 type SequentialScaleName = 'viridis' | 'blues' | 'reds' | 'greens' | 'plasma'
@@ -161,6 +178,9 @@ interface ColorDefinitions {
 
   // Filter interaction styling
   filter: FilterStyleConfig
+
+  // Comparison mode styling (baseline vs filtered)
+  comparison: ComparisonStyleConfig
 
   // Sequential color scales for numeric data
   sequentialScales: Record<SequentialScaleName, string[]>
@@ -254,6 +274,20 @@ export class StyleManager {
       nonFilteredAlpha: 15,        // Very transparent for non-filtered items (more dim than dimmedAlpha)
       filteredWidthMultiplier: 1.2, // Slight width boost for filtered items
       nonFilteredWidthPx: 1,       // Minimum width for dimmed items
+    },
+
+    // Comparison mode styling - how baseline vs filtered data is distinguished
+    comparison: {
+      baseline: {
+        color: '#9ca3af',     // Gray-400 for baseline
+        opacity: 0.3,         // 30% opacity for baseline
+        lineColor: '#9ca3af', // Gray-400 border
+        lineWidth: 1,         // Thin border
+      },
+      filtered: {
+        lineColor: '#374151', // Gray-700 for dark outline on filtered
+        lineWidth: 1.5,       // Slightly thicker outline to distinguish
+      },
     },
 
     // Sequential color scales for numeric data visualization
@@ -417,6 +451,27 @@ export class StyleManager {
    */
   getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean; markerSymbols: string[]; barPatterns: string[]; piePatterns: string[] } {
     return { ...this.colors.scientific }
+  }
+
+  /**
+   * Get comparison mode styling configuration
+   * Used by chart components to style baseline vs filtered data consistently
+   */
+  getComparisonConfig(): ComparisonStyleConfig {
+    return { ...this.colors.comparison }
+  }
+
+  /**
+   * Get baseline color with opacity for comparison mode
+   * Returns rgba string ready for use in Plotly
+   */
+  getComparisonBaselineColor(): string {
+    const { color, opacity } = this.colors.comparison.baseline
+    // Convert hex to rgba
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`
   }
 
   /**
