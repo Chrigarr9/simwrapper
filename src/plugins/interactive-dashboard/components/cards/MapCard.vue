@@ -20,7 +20,12 @@
       </div>
     </div>
 
-    <div :id="mapId" class="map-container"></div>
+    <div
+      :id="mapId"
+      class="map-container"
+      :class="{ 'scientific-mode': isScientificMode }"
+      data-exportable-map="true"
+    ></div>
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
       <div>Loading map...</div>
@@ -237,6 +242,9 @@ const layerRoles = ref<Map<string, LayerColoringRole>>(new Map())
 // Dark mode access from global store (Critical Fix #2)
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
+// Scientific mode for publication-ready exports
+const isScientificMode = computed(() => StyleManager.getInstance().isScientificMode())
+
 // Map controls computed
 const hasMapControls = computed(() => {
   return !!props.mapControlsConfig?.geometryType || !!props.mapControlsConfig?.colorBy
@@ -388,6 +396,17 @@ watch(isDarkMode, (newVal) => {
         map.value.addControl(deckOverlay.value as any)
       }
     })
+  }
+})
+
+// Watch for colorScheme changes to update scientific mode styling
+watch(() => globalStore.state.colorScheme, () => {
+  // Scientific mode styling is handled via CSS class binding (isScientificMode computed)
+  // This watcher ensures re-evaluation when colorScheme changes
+  debugLog('[MapCard] colorScheme changed, scientific mode:', isScientificMode.value)
+  // Force layer update in case scientific mode affects layer styling
+  if (map.value) {
+    updateLayers()
   }
 })
 
@@ -2505,6 +2524,19 @@ function cleanup() {
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* Scientific mode: hide interactive controls for clean export */
+.map-container.scientific-mode :deep(.maplibregl-ctrl-group) {
+  display: none !important;
+}
+
+.map-container.scientific-mode :deep(.maplibregl-ctrl-attrib) {
+  display: none !important;
+}
+
+.map-container.scientific-mode :deep(.maplibregl-ctrl-fullscreen) {
+  display: none !important;
 }
 
 .loading-overlay {
