@@ -14,12 +14,12 @@
 
       //- Export dropdown button (for exportable cards)
       .export-dropdown(v-if="isExportable" @mouseleave="showExportDropdown = false")
-        button.btn-icon(@click="showExportDropdown = !showExportDropdown" title="Export")
+        button.btn-icon(@click.stop="toggleExportDropdown" title="Export")
           i.fa.fa-download
 
         .dropdown-menu(v-show="showExportDropdown")
-          button.dropdown-item(@click="handleExport('png')") Export PNG
-          button.dropdown-item(@click="handleExport('svg')") Export SVG
+          button.dropdown-item(@click.stop="doExport('png')") Export PNG
+          button.dropdown-item(@click.stop="doExport('svg')") Export SVG
 
       button.btn-icon(@click="handleFullscreenClick" :title="isFullscreen ? 'Restore' : 'Enlarge'")
         i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
@@ -123,6 +123,19 @@ export default defineComponent({
 
     // Export dropdown visibility state
     const showExportDropdown = ref(false)
+
+    // Wrapper to log dropdown toggle
+    function toggleExportDropdown() {
+      console.log('[DashboardCard] toggleExportDropdown clicked, current state:', showExportDropdown.value)
+      showExportDropdown.value = !showExportDropdown.value
+      console.log('[DashboardCard] toggleExportDropdown new state:', showExportDropdown.value)
+    }
+
+    // Wrapper to log and call export
+    function doExport(format: 'png' | 'svg') {
+      console.log('[DashboardCard] doExport clicked with format:', format)
+      handleExport(format)
+    }
 
     /**
      * Whether this card supports export
@@ -370,6 +383,8 @@ export default defineComponent({
       isExportable,
       contentWrapper,
       toggleInfo,
+      toggleExportDropdown,
+      doExport,
       handleFullscreenClick,
       handleExport,
       clearErrors,
