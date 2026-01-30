@@ -8,6 +8,15 @@
       .dtitles.flex1
         h2 {{ title }}
         p {{ description }}
+
+      .header-controls
+        export-all-button(
+          :dashboard-title="title"
+          format="png"
+          :width="1200"
+          :scale="2"
+        )
+
       .favstar
         p.favorite-icon(title="Favorite"
           :class="{'is-favorite': isFavorite}"
@@ -165,6 +174,7 @@ import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
 import DashboardCard from './components/DashboardCard.vue'
 import ComparisonToggle from './components/controls/ComparisonToggle.vue'
+import ExportAllButton from './components/controls/ExportAllButton.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -179,7 +189,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -1485,6 +1495,14 @@ export default defineComponent({
   p {
     line-height: 1.4rem;
   }
+}
+
+// Header controls (Export All button, etc.)
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: 16px;
 }
 
 // Map controls (cluster type, color-by selectors)
