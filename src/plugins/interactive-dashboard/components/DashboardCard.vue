@@ -17,9 +17,20 @@
         button.btn-icon(@click.stop="toggleExportDropdown" title="Export")
           i.fa.fa-download
 
-        .dropdown-menu(v-if="showExportDropdown")
-          button.dropdown-item(type="button" @click.stop.prevent="doExport('png')") Export PNG
-          button.dropdown-item(type="button" @click.stop.prevent="doExport('svg')") Export SVG
+        .dropdown-menu(
+          v-if="showExportDropdown"
+          :style="{ position: 'absolute', top: '100%', right: '0', background: '#333', border: '2px solid red', zIndex: 9999, padding: '8px', minWidth: '140px' }"
+        )
+          button.dropdown-item(
+            type="button"
+            @click.stop.prevent="doExport('png')"
+            :style="{ display: 'block', padding: '8px 12px', color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }"
+          ) Export PNG
+          button.dropdown-item(
+            type="button"
+            @click.stop.prevent="doExport('svg')"
+            :style="{ display: 'block', padding: '8px 12px', color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }"
+          ) Export SVG
 
       button.btn-icon(@click="handleFullscreenClick" :title="isFullscreen ? 'Restore' : 'Enlarge'")
         i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
@@ -127,8 +138,14 @@ export default defineComponent({
     // Wrapper to log dropdown toggle
     function toggleExportDropdown() {
       console.log('[DashboardCard] toggleExportDropdown clicked, current state:', showExportDropdown.value)
+      console.log('[DashboardCard] card type:', props.card.type, 'isExportable:', isExportable.value)
       showExportDropdown.value = !showExportDropdown.value
       console.log('[DashboardCard] toggleExportDropdown new state:', showExportDropdown.value)
+      // Debug: manually check if DOM element exists after state change
+      setTimeout(() => {
+        const menu = document.querySelector('.dropdown-menu')
+        console.log('[DashboardCard] dropdown-menu element exists:', !!menu)
+      }, 100)
     }
 
     // Wrapper to log and call export
@@ -505,18 +522,20 @@ export default defineComponent({
     position: absolute;
     top: 100%;
     right: 0;
-    background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
-    border: 1px solid var(--dashboard-border-default);
+    background-color: #333 !important;
+    border: 2px solid #f00 !important;
     border-radius: 4px;
-    z-index: 100;
-    min-width: 120px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 9999 !important;
+    min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    padding: 4px 0;
 
     .dropdown-item {
       display: block;
       width: 100%;
-      padding: 8px 12px;
+      padding: 10px 16px;
       border: none;
+      color: #fff !important;
       background: none;
       text-align: left;
       cursor: pointer;
