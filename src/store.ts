@@ -248,27 +248,42 @@ export default new Vuex.Store({
       state.resizeEvents += 1
     },
     setTheme(state, value: string) {
-      state.colorScheme = value == 'light' ? ColorScheme.LightMode : ColorScheme.DarkMode
+      if (value === 'light') {
+        state.colorScheme = ColorScheme.LightMode
+      } else if (value === 'scientific') {
+        state.colorScheme = ColorScheme.ScientificMode
+      } else {
+        state.colorScheme = ColorScheme.DarkMode
+      }
 
       console.log('THEME:', state.colorScheme)
 
       state.isDarkMode = state.colorScheme === ColorScheme.DarkMode
 
       if (isMainThread) localStorage.setItem('colorscheme', state.colorScheme)
+
+      // Scientific mode uses white background like light mode
       document.body.style.backgroundColor =
-        state.colorScheme === ColorScheme.LightMode ? '#edebe4' : '#2d3133'
+        state.colorScheme === ColorScheme.DarkMode ? '#2d3133' : '#edebe4'
     },
     rotateColors(state) {
-      state.colorScheme =
-        state.colorScheme === ColorScheme.DarkMode ? ColorScheme.LightMode : ColorScheme.DarkMode
+      // Cycle: Dark -> Light -> Scientific -> Dark
+      if (state.colorScheme === ColorScheme.DarkMode) {
+        state.colorScheme = ColorScheme.LightMode
+      } else if (state.colorScheme === ColorScheme.LightMode) {
+        state.colorScheme = ColorScheme.ScientificMode
+      } else {
+        state.colorScheme = ColorScheme.DarkMode
+      }
 
       console.log('THEME:', state.colorScheme)
 
       state.isDarkMode = state.colorScheme === ColorScheme.DarkMode
 
       if (isMainThread) localStorage.setItem('colorscheme', state.colorScheme)
+
       document.body.style.backgroundColor =
-        state.colorScheme === ColorScheme.LightMode ? '#edebe4' : '#2d3133'
+        state.colorScheme === ColorScheme.DarkMode ? '#2d3133' : '#edebe4'
     },
     setLocale(state, value: string) {
       state.locale = value.toLocaleLowerCase()
