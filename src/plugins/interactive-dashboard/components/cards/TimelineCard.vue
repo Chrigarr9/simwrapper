@@ -1,5 +1,5 @@
 <template lang="pug">
-.timeline-card
+.timeline-card(:class="{ 'scientific-mode': isScientificMode }")
   //- Back button for request detail view
   .detail-header(v-if="viewMode === 'requests'")
     button.back-btn(@click="handleBackToRides")
@@ -10,7 +10,7 @@
   .plot-container(ref="plotContainer")
 
   .minimap-container(v-if="viewMode === 'rides'")
-    .minimap-controls
+    .minimap-controls(v-if="!isScientificMode")
       button.zoom-btn(@click="zoomIn" title="Zoom in")
         i.fa.fa-plus
       button.zoom-btn(@click="zoomOut" title="Zoom out")
@@ -18,7 +18,7 @@
       button.zoom-btn(@click="resetZoom" title="Reset zoom")
         i.fa.fa-compress
     .minimap(ref="minimapContainer" @click="handleMinimapClick")
-    .viewport-indicator(:style="viewportIndicatorStyle")
+    .viewport-indicator(:style="viewportIndicatorStyle" v-if="!isScientificMode")
 </template>
 
 <script setup lang="ts">
@@ -143,8 +143,8 @@ const detailRideId = ref<string | null>(null)
 // Internal state
 const selectedRides = ref<Set<any>>(new Set())
 
-// Dark mode from global store
-const isDarkMode = computed(() => globalStore.state.isDarkMode)
+// Scientific mode computed for template binding
+const isScientificMode = computed(() => StyleManager.getInstance().isScientificMode())
 
 /**
  * Extended timeline item with constraint window and degree information
@@ -839,9 +839,15 @@ function renderChart() {
 
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
   const bgColor = styleManager.getColor('theme.background.primary')
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
+
+  // Scientific mode font configuration
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : undefined
 
   // Choose data based on view mode
   const items = viewMode.value === 'requests' ? requestTimelineData.value : timelineData.value
@@ -1002,15 +1008,21 @@ function renderChart() {
   }
 
   const layout = {
+    font: {
+      family: fontFamily,
+      color: textColor,
+    },
     title: {
       text: '',  // Title shown in card header
-      font: { color: textColor, size: 14 },
+      font: { color: textColor, size: 14, family: fontFamily },
     },
     xaxis: {
-      title: { text: 'Time of Day', font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
+      title: { text: 'Time of Day', font: { color: textColor, size: 11, family: fontFamily } },
+      tickfont: { color: textColor, size: 10, family: fontFamily },
       gridcolor: gridColor,
-      linecolor: gridColor,
+      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+      linewidth: isScientific ? 1.5 : 1,
+      showline: true,
       zerolinecolor: gridColor,
       range: xAxisRange,
       tickmode: 'array',
@@ -1018,10 +1030,12 @@ function renderChart() {
       ticktext: tickText,
     },
     yaxis: {
-      title: { text: '', font: { color: textColor, size: 11 } },
-      tickfont: { color: textColor, size: 10 },
+      title: { text: '', font: { color: textColor, size: 11, family: fontFamily } },
+      tickfont: { color: textColor, size: 10, family: fontFamily },
       gridcolor: gridColor,
-      linecolor: gridColor,
+      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
+      linewidth: isScientific ? 1.5 : 1,
+      showline: true,
       showticklabels: false,  // No labels for swim lanes
       range: yRange,
     },
@@ -1035,7 +1049,7 @@ function renderChart() {
   }
 
   Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: false,
+    displayModeBar: !isScientific ? false : false,  // Always hide modebar
     responsive: true,
   })
 
@@ -1097,8 +1111,8 @@ watch(() => props.selectedIds, (newIds) => {
   }
 }, { deep: true })
 
-// Re-render on dark mode change
-watch(isDarkMode, () => {
+// Re-render on color scheme changes (including scientific mode)
+watch(() => globalStore.state.colorScheme, () => {
   renderChart()
   renderMinimap()
 })

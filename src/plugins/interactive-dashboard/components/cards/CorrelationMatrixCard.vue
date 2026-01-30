@@ -39,8 +39,6 @@ const emit = defineEmits<{
   isLoaded: []
 }>()
 
-// Dark mode access from global store
-const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
 // Reactive state
 const plotContainer = ref<HTMLElement>()
@@ -139,8 +137,14 @@ function renderChart() {
 
   // Theme colors from StyleManager
   const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
   const bgColor = styleManager.getColor('theme.background.primary')
   const textColor = styleManager.getColor('theme.text.primary')
+
+  // Scientific mode font configuration
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : undefined
 
   const matrix = correlationData.value.matrix
   const pValues = correlationData.value.pValues
@@ -171,7 +175,8 @@ function renderChart() {
           showarrow: false,
           font: {
             color: textColorAnnotation,
-            size: 10
+            size: 10,
+            family: fontFamily,
           }
         })
       }
@@ -196,8 +201,8 @@ function renderChart() {
     customdata: buildCustomData(),
     showscale: true,
     colorbar: {
-      title: { text: 'r', font: { color: textColor } },
-      tickfont: { color: textColor },
+      title: { text: 'r', font: { color: textColor, family: fontFamily } },
+      tickfont: { color: textColor, family: fontFamily },
     }
   }
 
@@ -207,14 +212,18 @@ function renderChart() {
   const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLabelLength - 10) * 5)
 
   const layout = {
+    font: {
+      family: fontFamily,
+      color: textColor,
+    },
     xaxis: {
-      tickfont: { color: textColor, size: 10 },
+      tickfont: { color: textColor, size: 10, family: fontFamily },
       tickangle: -45,
       side: 'bottom',
       automargin: true,  // Allow Plotly to expand margins for long labels
     },
     yaxis: {
-      tickfont: { color: textColor, size: 10 },
+      tickfont: { color: textColor, size: 10, family: fontFamily },
       autorange: 'reversed',  // Top-to-bottom matches matrix convention
       automargin: true,  // Allow Plotly to expand margins for long labels
     },
@@ -225,7 +234,7 @@ function renderChart() {
   }
 
   Plotly.newPlot(plotContainer.value, [trace], layout, {
-    displayModeBar: false,
+    displayModeBar: !isScientific ? false : false,  // Always hide modebar
     responsive: true,
   })
 
@@ -349,7 +358,8 @@ function handleResize() {
 
 // Watch handlers
 watch(() => props.filteredData, debouncedCalculate, { deep: true })
-watch(isDarkMode, renderChart)
+// Re-render on color scheme changes (including scientific mode)
+watch(() => globalStore.state.colorScheme, renderChart)
 
 // Lifecycle hooks
 onMounted(() => {
