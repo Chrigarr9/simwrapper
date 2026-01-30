@@ -305,6 +305,14 @@ const renderChart = () => {
       color: displayData.map(d =>
         selectedBins.value.has(d.bin) ? selectedColor : barColor
       ),
+      // Add pattern in scientific mode when comparison is active
+      pattern: (isScientific && props.showComparison) ? {
+        shape: '/',  // Diagonal lines for filtered trace
+        bgcolor: 'transparent',
+        fgcolor: barColor,
+        size: 8,
+        solidity: 0.5
+      } : undefined,
       line: {
         // Use background color for bar outline to create subtle separation
         color: bgColor,

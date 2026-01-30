@@ -149,12 +149,24 @@ const renderChart = () => {
 
   // Main pie chart (inner ring when comparison active)
   // Scientific mode uses thicker slice outlines for publication clarity
+  // Generate distinct patterns per slice in scientific mode
+  const slicePatterns = isScientific
+    ? pieData.value.map((_, i) => styleManager.getScientificPiePattern(i))
+    : undefined
+
   const mainTrace = {
     labels: pieData.value.map(d => toTitleCase(d.label)),
     values: pieData.value.map(d => d.value),
     type: 'pie',
     marker: {
       colors,
+      pattern: isScientific ? {
+        shape: slicePatterns,
+        bgcolor: colors,
+        fgcolor: pieData.value.map(() => textColor),  // Pattern lines in text color
+        size: 10,
+        solidity: 0.4
+      } : undefined,
       line: {
         // Selected slices get white border for contrast, others use theme border
         color: pieData.value.map(d =>
