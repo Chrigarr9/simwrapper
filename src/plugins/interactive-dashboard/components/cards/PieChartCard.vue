@@ -180,9 +180,18 @@ const renderChart = () => {
 
   // Main pie chart (inner ring when comparison active)
   // Scientific mode uses thicker slice outlines for publication clarity
+
+  // Build consistent pattern index based on alphabetically sorted categories (from colorMap)
+  // This ensures same category always gets same pattern regardless of filter state
+  const sortedCategories = Array.from(colorMap.value.keys())
+  const getCategoryPatternIndex = (label: string) => {
+    const idx = sortedCategories.indexOf(label)
+    return idx >= 0 ? idx : 0
+  }
+
   // Generate distinct patterns per slice in scientific mode
   const slicePatterns = isScientific
-    ? pieData.value.map((_, i) => styleManager.getScientificPiePattern(i))
+    ? pieData.value.map(d => styleManager.getScientificPiePattern(getCategoryPatternIndex(d.label)))
     : undefined
 
   const mainTrace: any = {
@@ -190,6 +199,8 @@ const renderChart = () => {
     values: pieData.value.map(d => d.value),
     type: 'pie',
     name: props.showComparison ? 'Filtered (inner)' : undefined,
+    // In comparison mode, hide legend from inner trace (baseline shows all categories)
+    showlegend: !props.showComparison,
     marker: {
       colors,
       pattern: isScientific ? {
@@ -226,23 +237,17 @@ const renderChart = () => {
   traces.push(mainTrace)
 
   // Baseline ring (if comparison mode) - outer ring with transparency
+  // Uses same patterns as filtered (matched by category), only opacity differs
   if (props.showComparison && baselinePieData.value.length > 0) {
-    // Use same color map but with transparency
+    // Use same color map but with transparency (50% opacity)
     const baselineColors = baselinePieData.value.map(d => {
       const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
       return baseColor + '80' // Add 50% alpha (hex 80 = 128/255)
     })
 
-    // In scientific mode, match patterns to filtered slices by category label
-    // This creates visual unity between inner (filtered) and outer (baseline) slices
+    // In scientific mode, use consistent pattern index from colorMap (same as filtered)
     const baselinePatterns = isScientific
-      ? baselinePieData.value.map(d => {
-          // Find the index of this category in pieData to get matching pattern
-          const filteredIndex = pieData.value.findIndex(fd => fd.label === d.label)
-          return filteredIndex >= 0
-            ? styleManager.getScientificPiePattern(filteredIndex)
-            : styleManager.getScientificPiePattern(0)
-        })
+      ? baselinePieData.value.map(d => styleManager.getScientificPiePattern(getCategoryPatternIndex(d.label)))
       : undefined
 
     traces.push({
@@ -268,7 +273,7 @@ const renderChart = () => {
       hovertemplate: '<b>Baseline: %{label}</b><br>%{value} (%{percent})<extra></extra>',
       hole: 0.7, // Large hole for outer ring
       domain: { x: [0, 1], y: [0, 1] }, // Full area
-      showlegend: false,  // Don't duplicate category labels - we'll add annotation instead
+      showlegend: true,  // Show ALL categories in legend (baseline has all)
     })
   }
 
@@ -284,19 +289,20 @@ const renderChart = () => {
         text: '',  // Title is shown in card header
         font: { color: textColor, family: fontFamily },
       },
-      margin: { t: 10, b: 40, l: 15, r: 15 },  // Extra margin for outside labels
+      margin: { t: 10, b: 15, l: 15, r: 100 },  // Right margin for legend
       autosize: true,
       paper_bgcolor: bgColor,
       plot_bgcolor: bgColor,
       uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
       showlegend: true,
       legend: {
-        font: { color: textColor, size: 11, family: fontFamily },
+        font: { color: textColor, size: 10, family: fontFamily },
         bgcolor: 'transparent',
-        orientation: 'h',
-        x: 0.5,
-        xanchor: 'center',
-        y: -0.1,
+        orientation: 'v',  // Vertical legend on the right
+        x: 1.02,
+        xanchor: 'left',
+        y: 0.5,
+        yanchor: 'middle',
       },
       annotations: [
         // Center annotation showing count
@@ -311,6 +317,17 @@ const renderChart = () => {
           showarrow: false,
           font: { size: 16, color: textColor, family: fontFamily },
         },
+        // Ring legend annotation (comparison mode only)
+        ...(props.showComparison ? [{
+          text: `<span style="font-size:9px"><b>Inner:</b> Filtered<br><b>Outer:</b> Baseline</span>`,
+          x: 1.02,
+          y: 0.05,
+          xref: 'paper',
+          yref: 'paper',
+          xanchor: 'left',
+          showarrow: false,
+          font: { size: 9, color: textColor, family: fontFamily },
+        }] : []),
       ],
     },
     {
