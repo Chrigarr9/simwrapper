@@ -13,13 +13,13 @@
         i.fa.fa-info-circle
 
       //- Export dropdown button (for exportable cards)
-      .export-dropdown(v-if="isExportable" @mouseleave="showExportDropdown = false")
+      .export-dropdown(v-if="isExportable")
         button.btn-icon(@click.stop="toggleExportDropdown" title="Export")
           i.fa.fa-download
 
-        .dropdown-menu(v-show="showExportDropdown")
-          button.dropdown-item(@click.stop="doExport('png')") Export PNG
-          button.dropdown-item(@click.stop="doExport('svg')") Export SVG
+        .dropdown-menu(v-if="showExportDropdown")
+          button.dropdown-item(type="button" @click.stop.prevent="doExport('png')") Export PNG
+          button.dropdown-item(type="button" @click.stop.prevent="doExport('svg')") Export SVG
 
       button.btn-icon(@click="handleFullscreenClick" :title="isFullscreen ? 'Restore' : 'Enlarge'")
         i.fa(:class="isFullscreen ? 'fa-compress' : 'fa-expand'")
