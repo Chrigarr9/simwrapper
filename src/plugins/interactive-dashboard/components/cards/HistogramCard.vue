@@ -10,6 +10,7 @@ import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal'
@@ -287,6 +288,13 @@ const renderChart = () => {
       width: barWidth,  // Match filtered trace width
       marker: {
         color: 'rgba(156, 163, 175, 0.3)', // Gray with low opacity
+        pattern: isScientific ? {
+          shape: '.',  // Dots for baseline (filtered uses '/')
+          bgcolor: 'rgba(156, 163, 175, 0.3)',
+          fgcolor: 'rgba(100, 100, 100, 0.5)',
+          size: 6,
+          solidity: 0.3
+        } : undefined,
       },
       hovertemplate: usePercentage
         ? '<b>%{x}</b><br>Baseline: %{y:.1f}%<extra></extra>'

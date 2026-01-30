@@ -11,6 +11,7 @@ import { StyleManager } from '../../managers/StyleManager'
 import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal' | 'percent'
@@ -329,7 +330,7 @@ const renderChart = () => {
         symbol: isScientific ? 'circle-open' : undefined,  // Hollow circle in scientific mode
         line: {
           color: 'rgba(156, 163, 175, 0.5)',
-          width: 0.5,
+          width: isScientific ? 1 : 0.5,  // Thicker line in scientific mode
         },
       },
       showlegend: true,
@@ -403,7 +404,7 @@ const renderChart = () => {
           y: categoryY,
           mode: 'markers',
           type: 'scatter',
-          name: category,
+          name: toTitleCase(category),
           text: categoryText,
           hoverinfo: 'text',
           marker: {
