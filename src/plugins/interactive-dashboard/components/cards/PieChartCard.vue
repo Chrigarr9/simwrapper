@@ -131,9 +131,16 @@ const renderChart = () => {
   const total = pieData.value.reduce((sum, d) => sum + d.value, 0)
 
   // Determine text position per slice based on size
-  // Large slices (>10%): inside, Medium (3-10%): outside, Small (<3%): none
+  // Scientific mode: be more aggressive about outside labels due to patterns
   const textPositions = pieData.value.map(d => {
     const pct = (d.value / total) * 100
+    if (isScientific) {
+      // Scientific mode: be more aggressive about outside labels due to patterns
+      if (pct >= 15) return 'inside'
+      if (pct >= 2) return 'outside'
+      return 'none'
+    }
+    // Standard mode
     if (pct >= 10) return 'inside'
     if (pct >= 3) return 'outside'
     return 'none'  // Hide labels for tiny slices - hover still shows details
@@ -179,7 +186,11 @@ const renderChart = () => {
     },
     textposition: textPositions,
     texttemplate: textTemplate,
-    textfont: { color: textColor, size: 11, family: fontFamily },
+    textfont: {
+      color: isScientific ? '#000000' : textColor,  // Pure black for scientific
+      size: 11,
+      family: fontFamily
+    },
     outsidetextfont: { color: textColor, size: 10, family: fontFamily },
     insidetextorientation: 'horizontal',  // Keep inside text readable
     hovertemplate: '%{label}: %{value} (%{percent})<extra></extra>',
@@ -223,7 +234,7 @@ const renderChart = () => {
         text: '',  // Title is shown in card header
         font: { color: textColor, family: fontFamily },
       },
-      margin: { t: 10, b: 30, l: 10, r: 10 },  // Extra bottom margin for outside labels
+      margin: { t: 10, b: 40, l: 15, r: 15 },  // Extra margin for outside labels
       autosize: true,
       paper_bgcolor: bgColor,
       plot_bgcolor: bgColor,
