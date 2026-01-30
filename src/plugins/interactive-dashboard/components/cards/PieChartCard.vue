@@ -131,14 +131,13 @@ const renderChart = () => {
   const total = pieData.value.reduce((sum, d) => sum + d.value, 0)
 
   // Determine text position per slice based on size
-  // Scientific mode: be more aggressive about outside labels due to patterns
+  // Scientific mode: ALL labels outside when patterns are active (cleaner for publication)
   const textPositions = pieData.value.map(d => {
     const pct = (d.value / total) * 100
     if (isScientific) {
-      // Scientific mode: be more aggressive about outside labels due to patterns
-      if (pct >= 15) return 'inside'
+      // Scientific mode: always outside for readability over patterns
       if (pct >= 2) return 'outside'
-      return 'none'
+      return 'none'  // Hide tiny slice labels
     }
     // Standard mode
     if (pct >= 10) return 'inside'
@@ -161,10 +160,11 @@ const renderChart = () => {
     ? pieData.value.map((_, i) => styleManager.getScientificPiePattern(i))
     : undefined
 
-  const mainTrace = {
+  const mainTrace: any = {
     labels: pieData.value.map(d => toTitleCase(d.label)),
     values: pieData.value.map(d => d.value),
     type: 'pie',
+    name: props.showComparison ? 'Filtered (inner)' : undefined,
     marker: {
       colors,
       pattern: isScientific ? {
@@ -224,6 +224,7 @@ const renderChart = () => {
       labels: baselinePieData.value.map(d => toTitleCase(d.label)),
       values: baselinePieData.value.map(d => d.value),
       type: 'pie',
+      name: 'Baseline (outer)',
       marker: {
         colors: baselineColors,
         pattern: isScientific ? {
@@ -242,6 +243,7 @@ const renderChart = () => {
       hovertemplate: '<b>Baseline: %{label}</b><br>%{value} (%{percent})<extra></extra>',
       hole: 0.7, // Large hole for outer ring
       domain: { x: [0, 1], y: [0, 1] }, // Full area
+      showlegend: false,  // Don't duplicate category labels - we'll add annotation instead
     })
   }
 
@@ -272,6 +274,7 @@ const renderChart = () => {
         y: -0.1,
       },
       annotations: [
+        // Center annotation showing count
         {
           text: props.showComparison
             ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:9px">of ${props.baselineData?.length || 0}</span>`
@@ -283,6 +286,16 @@ const renderChart = () => {
           showarrow: false,
           font: { size: 14, color: textColor, family: fontFamily },
         },
+        // Ring legend annotation (only in comparison mode)
+        ...(props.showComparison ? [{
+          text: '<b>Inner:</b> Filtered · <b>Outer:</b> Baseline',
+          x: 0.5,
+          y: -0.02,
+          xref: 'paper',
+          yref: 'paper',
+          showarrow: false,
+          font: { size: 9, color: textColor, family: fontFamily },
+        }] : []),
       ],
     },
     {
