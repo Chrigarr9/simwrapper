@@ -1,7 +1,7 @@
 # Project State: SimWrapper Interactive Dashboard Enhancements
 
 **Initialized:** 2026-01-20
-**Last Updated:** 2026-01-30 (Plan 04.2-03 complete - Plotly Charts Scientific Styling)
+**Last Updated:** 2026-01-30 (Plan 04.2-04 complete - Per-Card Export Button)
 
 ---
 
@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.2 of 10 (Scientific Mode)
-**Plan:** 3/7 complete
+**Plan:** 4/7 complete
 **Status:** In progress
-**Last activity:** 2026-01-30 - Completed 04.2-03-PLAN.md (Plotly Charts Scientific Styling)
+**Last activity:** 2026-01-30 - Completed 04.2-04-PLAN.md (Per-Card Export Button)
 
 **Progress:**
 ```
@@ -36,7 +36,7 @@ Phase 3:   Correlation Analysis     [####] 100% (4/4 plans) COMPLETE
 Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
-Phase 4.2: Scientific Mode          [###    ] 43% (3/7 plans) ← CURRENT
+Phase 4.2: Scientific Mode          [####   ] 57% (4/7 plans) <- CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -150,6 +150,9 @@ Phase 5:   Graph Visualization      [    ] 0%
 | Scientific axis styling: black 1.5px lines with showline:true | Crisp print output with consistent axis visibility | 2026-01-30 |
 | TimelineCard hides zoom controls in scientific mode | Interactive UI chrome not suitable for publication | 2026-01-30 |
 | PieChartCard uses 2px slice outlines in scientific mode | Thicker outlines for print clarity | 2026-01-30 |
+| Export dropdown closes on mouse leave | Better UX than requiring explicit close click | 2026-01-30 |
+| Map export PNG-only (SVG unavailable for WebGL canvas) | Canvas toDataURL cannot produce SVG from WebGL content | 2026-01-30 |
+| Export button visible for 6 chart types | histogram, scatter, pie, correlation-matrix, timeline, map have exportable content | 2026-01-30 |
 
 ### Roadmap Evolution
 
@@ -287,11 +290,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Completed 04.2-03 (Plotly Charts Scientific Styling)
+**Where we left off:** Completed 04.2-04 (Per-Card Export Button)
 
-**Next action:** Execute Plan 04.2-04 (MapCard Scientific Styling)
+**Next action:** Execute Plan 04.2-05 (Bulk Export)
 
-**Phase progress:** Phase 4.2 (3/7 plans complete)
+**Phase progress:** Phase 4.2 (4/7 plans complete)
 
 **Branch:** `feature/scientific-mode` (based on `feature/dashboard-unification`)
 
@@ -589,3 +592,18 @@ Export utilities for chart and map export:
 - Commits: 9ef01b44 (jszip), 0dedad03 (types), 3a54bab7 (utils)
 
 *State updated: 2026-01-30 (Plan 04.2-02 complete - Export Utilities)*
+
+**Plan 04.2-04 Completed (2026-01-30):**
+
+Per-card export button in DashboardCard header:
+- Extended CardConfig type with exportConfig, exportName, exportable fields
+- Added export dropdown button with PNG/SVG options to DashboardCard header
+- Implemented handleExport() function for both Plotly charts and MapLibre canvas
+- Export uses card title for default filename via sanitizeFilename()
+- Export button visible for 6 exportable chart types (histogram, scatter, pie, correlation-matrix, timeline, map)
+- Dropdown menu with theme-aware styling (CSS variables)
+- Map export PNG-only (WebGL canvas cannot produce SVG)
+- Files: dashboardCard.ts, DashboardCard.vue
+- Commits: 26541ee4 (types), 576c3ddc (component)
+
+*State updated: 2026-01-30 (Plan 04.2-04 complete - Per-Card Export Button)*
