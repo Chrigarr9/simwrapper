@@ -2,8 +2,8 @@
 
 **Created:** 2026-01-20
 **Depth:** Standard (5-8 phases)
-**Total Phases:** 9 (including 4 inserted)
-**Total v1 Requirements:** 22
+**Total Phases:** 10 (including 5 inserted)
+**Total v1 Requirements:** 27
 
 ---
 
@@ -330,6 +330,59 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 
 ---
 
+## Phase 4.2: Scientific Mode (INSERTED)
+
+**Goal:** Create a "scientific" styling profile for paper-ready visualizations with per-plot and bulk export functionality
+
+**Depends on:** Phase 4.1 (builds on complete dashboard feature set)
+
+**Requirements:**
+- SCI-01: Scientific styling profile with white background, black text/axes, publication-appropriate fonts
+- SCI-02: Clean plot layouts without interactive UI chrome (zoom controls, tooltips hidden)
+- SCI-03: Per-plot export button (PNG/SVG/PDF) with configurable resolution
+- SCI-04: Bulk export "Download All" functionality for entire dashboard
+- SCI-05: Export format and resolution configurable via YAML or global settings
+
+**Success Criteria:**
+1. User enables scientific mode and all charts switch to white background, black axes, publication fonts
+2. User sees export button on each card (only in scientific mode) and can download individual plots
+3. User configures export resolution in YAML (e.g., `exportWidth: 1200`) and exports match that resolution
+4. User clicks "Download All" and receives ZIP with all dashboard plots
+5. User can select export format (PNG, SVG, PDF) via dropdown or YAML config
+6. Maps export via deck.gl canvas, charts export via Plotly's downloadImage API
+
+**Plans:** 7 plans
+
+Plans:
+- [ ] 04.2-01-PLAN.md — Extend theming system with scientific mode (ColorScheme, store, StyleManager)
+- [ ] 04.2-02-PLAN.md — Create export utilities and install JSZip dependency
+- [ ] 04.2-03-PLAN.md — Add scientific styling to Plotly-based chart cards
+- [ ] 04.2-04-PLAN.md — Add per-card export button to DashboardCard component
+- [ ] 04.2-05-PLAN.md — Create Export All button and integrate into dashboard
+- [ ] 04.2-06-PLAN.md — Add scientific mode and export support to MapCard
+- [ ] 04.2-07-PLAN.md — Verification and polish
+
+**Details:**
+Scientific papers typically require high contrast black-on-white color schemes, serif or specific sans-serif fonts (Times New Roman, Arial), clean axis labels with proper scientific notation, no UI chrome, and vector-ready output quality.
+
+This is implemented as a **separate plugin** alongside interactive-dashboard because:
+- Scientific styling affects ALL visualizations (maps, charts, tables)
+- Export functionality needs access to rendered components
+- Could work with standard dashboards too, not just interactive ones
+- Clean separation of concerns: interactive behavior vs. presentation/export
+
+**Implementation Approach:**
+- Extend StyleManager with a `scientificMode` theme alongside dark/light
+- Add print-friendly CSS media queries
+- Use Plotly's `Plotly.downloadImage()` for chart exports
+- Use deck.gl's `deck.canvas.toDataURL()` for map exports
+- DashboardCard wrapper handles export button rendering consistently
+- Consider headless/batch export mode for future automation
+
+**Research Flag:** Yes - Need to research best export formats/resolution for academic publishing, existing Plotly/deck.gl export APIs
+
+---
+
 ## Phase 5: Graph Visualization
 
 **Goal:** User can visualize path cover structure showing rides as nodes and feasibility connections as edges
@@ -361,9 +414,10 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 | 3.1 | Comparison Mode (INSERTED) | COMP-01 to COMP-06 | Complete | 100% |
 | 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
 | 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-05, TIME-06 | Complete | 100% |
+| 4.2 | Scientific Mode (INSERTED) | SCI-01 to SCI-05 | Not Started | 0% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 7/9 phases complete (78%)
+**Overall Progress:** 7/10 phases complete (70%)
 
 ---
 
@@ -400,10 +454,15 @@ Phase 4 delivered a feature-complete timeline, but user feedback indicates it ha
 | TIME-05 | Phase 4.1 | Yes |
 | TIME-06 | Phase 4.1 | Yes |
 | GRPH-01 | Phase 5 | Yes |
+| SCI-01 | Phase 4.2 | Yes |
+| SCI-02 | Phase 4.2 | Yes |
+| SCI-03 | Phase 4.2 | Yes |
+| SCI-04 | Phase 4.2 | Yes |
+| SCI-05 | Phase 4.2 | Yes |
 
-**Coverage:** 28/29 requirements mapped (TIME-04 deferred - user handles via existing FilterManager)
+**Coverage:** 33/34 requirements mapped (TIME-04 deferred - user handles via existing FilterManager)
 
 ---
 
 *Roadmap created: 2026-01-20*
-*Last updated: 2026-01-22 — Phase 4.1 revised (2 plans, TIME-04 deferred)*
+*Last updated: 2026-01-30 — Phase 4.2 inserted (Scientific Mode for paper-ready visualizations)*
