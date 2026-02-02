@@ -338,7 +338,7 @@ export class StyleManager {
       // Boundary layer defaults (for cluster outlines with fill)
       boundary: {
         fillColor: '#9b59b6',
-        fillOpacity: 0.8,
+        fillOpacity: 1.0,
         lineColor: '#8e44ad',
         lineWidth: 2,
       },

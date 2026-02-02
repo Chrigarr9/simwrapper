@@ -1438,8 +1438,10 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   const styleManager = StyleManager.getInstance()
   const filterStyle = styleManager.getFilterStyle()
 
-  // Get the configured fill opacity (respecting fillOpacity: 0 for outline-only layers)
-  const configuredOpacity = layerConfig.fillOpacity ?? 0.7
+  // Get the configured fill opacity from StyleManager (single source of truth)
+  // Only respect layerConfig.fillOpacity if explicitly set to 0 (outline-only layers)
+  const boundaryDefaults = styleManager.getBoundaryLayerStyle()
+  const configuredOpacity = layerConfig.fillOpacity === 0 ? 0 : boundaryDefaults.fillOpacity
   const isOutlineOnly = configuredOpacity === 0
 
   // For outline-only layers (fillOpacity: 0), always return transparent fill
