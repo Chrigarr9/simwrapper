@@ -401,9 +401,16 @@ export default defineComponent({
       return this.filterManager ? this.filterManager.hasActiveFilters() : false
     },
 
-    // Effective show comparison: only true if comparison toggle is on AND filters are active
+    // Check if any selections are active (from scatter plots, maps, etc.)
+    // Use threshold of 2: single selection = highlight only, 2+ = comparison mode
+    hasActiveSelections(): boolean {
+      const SELECTION_FILTER_THRESHOLD = 2
+      return this.tableSelectedIds && this.tableSelectedIds.size >= SELECTION_FILTER_THRESHOLD
+    },
+
+    // Effective show comparison: true if comparison toggle is on AND (filters OR selections are active)
     effectiveShowComparison(): boolean {
-      return this.showComparison && this.hasActiveFilters
+      return this.showComparison && (this.hasActiveFilters || this.hasActiveSelections)
     },
 
   },
@@ -580,12 +587,11 @@ export default defineComponent({
 
     handleTableRowClick(row: any) {
       const rowId = this.getRowId(row)
-      console.log('[InteractiveDashboard] Row clicked, rowId:', rowId, 'row:', row)
-      
+
       if (this.linkageManager) {
         this.linkageManager.toggleSelectedIds(new Set([rowId]))
       }
-      
+
       // NEW: Update parent selected value for sub-dashboards
       // If clicking the same row again, deselect it
       if (this.parentSelectedValue === String(rowId)) {
@@ -593,9 +599,6 @@ export default defineComponent({
       } else {
         this.parentSelectedValue = String(rowId)
       }
-      console.log('[InteractiveDashboard] Parent selection updated:', this.parentSelectedValue)
-      console.log('[InteractiveDashboard] subDashboards count:', this.yaml.subDashboards?.length || 0)
-      console.log('[InteractiveDashboard] subDashboardData:', Object.keys(this.subDashboardData))
       debugLog('[InteractiveDashboard] Parent selection:', this.parentSelectedValue)
     },
 
@@ -609,9 +612,8 @@ export default defineComponent({
     },
 
     handleAttributePairSelected(attrX: string, attrY: string) {
-      console.log('[InteractiveDashboard] handleAttributePairSelected:', attrX, attrY)
+      debugLog('[InteractiveDashboard] handleAttributePairSelected:', attrX, attrY)
       if (this.linkageManager) {
-        console.log('[InteractiveDashboard] Calling linkageManager.setSelectedAttributePair')
         this.linkageManager.setSelectedAttributePair(attrX, attrY)
       } else {
         console.warn('[InteractiveDashboard] linkageManager is null!')
@@ -821,15 +823,13 @@ export default defineComponent({
     },
 
     async setupDashboard() {
-      const instanceId = Math.random().toString(36).substring(7)
-      console.log(`[InteractiveDashboard:${instanceId}] setupDashboard starting, embedded: ${this.embedded}`)
-      
+      debugLog('[InteractiveDashboard] setupDashboard starting, embedded:', this.embedded)
+
       // Do we have config already or do we need to fetch it from the yaml file?
       if (this.embedded && this.embeddedYaml) {
         // NEW: Embedded mode - use provided YAML config directly
         this.yaml = this.embeddedYaml
-        console.log(`[InteractiveDashboard:${instanceId}] Embedded mode with YAML:`, this.yaml.header?.title || 'Sub-Dashboard')
-        console.log(`[InteractiveDashboard:${instanceId}] Embedded YAML full:`, JSON.stringify(this.yaml, null, 2))
+        debugLog('[InteractiveDashboard] Embedded mode with YAML:', this.yaml.header?.title || 'Sub-Dashboard')
       } else if (this.config) {
         this.yaml = this.config
       } else if (this.gist) {
@@ -1187,16 +1187,36 @@ export default defineComponent({
         },
         onSelectedIdsChange: (ids: Set<any>) => {
           this.tableSelectedIds = new Set(ids)
-          
+
+          // Selection-to-filter promotion with threshold
+          // Single selection = highlight only, 2+ selections = comparison mode
+          const SELECTION_FILTER_THRESHOLD = 2
+          const idColumn = this.yaml.table?.idColumn || 'id'
+
+          if (ids.size >= SELECTION_FILTER_THRESHOLD) {
+            // 2+ selections: create filter for comparison mode
+            this.filterManager!.setFilter(
+              'selection-filter',  // Unique filter ID for selection-based filtering
+              idColumn,
+              new Set(ids),
+              'categorical'
+            )
+            debugLog('[InteractiveDashboard] Selection-filter created with', ids.size, 'items')
+          } else {
+            // 0-1 selections: remove filter (highlight only, no comparison mode)
+            this.filterManager!.clearFilter('selection-filter')
+            debugLog('[InteractiveDashboard] Selection-filter cleared (below threshold)')
+          }
+
           // UPDATE: Also set parentSelectedValue for sub-dashboards
           // When a single row is selected, use it as the parent filter value
           if (ids.size === 1) {
             const selectedId = Array.from(ids)[0]
             this.parentSelectedValue = String(selectedId)
-            console.log('[InteractiveDashboard] parentSelectedValue updated from linkage:', this.parentSelectedValue)
+            debugLog('[InteractiveDashboard] parentSelectedValue updated from linkage:', this.parentSelectedValue)
           } else if (ids.size === 0) {
             this.parentSelectedValue = null
-            console.log('[InteractiveDashboard] parentSelectedValue cleared (no selection)')
+            debugLog('[InteractiveDashboard] parentSelectedValue cleared (no selection)')
           }
           // If multiple rows selected, keep the first one for sub-dashboard filtering
           // (or could clear it - depending on UX preference)
@@ -1207,7 +1227,7 @@ export default defineComponent({
       // If no table config, dashboard runs in "standard mode" - cards render without centralized data
       // FilterManager and LinkageManager are already initialized above
       if (!this.yaml.table) {
-        console.log('[InteractiveDashboard] No table configuration - running in standard dashboard mode')
+        debugLog('[InteractiveDashboard] No table configuration - running in standard dashboard mode')
         return
       }
 
@@ -1232,9 +1252,9 @@ export default defineComponent({
             
             // Apply parent filter if in embedded mode
             if (this.embedded && this.parentFilterColumn && this.parentFilterValue) {
-              console.log('[InteractiveDashboard] Embedded mode: filtering by', this.parentFilterColumn, '=', this.parentFilterValue)
+              debugLog('[InteractiveDashboard] Embedded mode: filtering by', this.parentFilterColumn, '=', this.parentFilterValue)
               data = data.filter((row: any) => String(row[this.parentFilterColumn]) === String(this.parentFilterValue))
-              console.log('[InteractiveDashboard] Filtered data count:', data.length)
+              debugLog('[InteractiveDashboard] Filtered data count:', data.length)
             }
             
             this.dataTableManager.setData(data)
@@ -1256,16 +1276,14 @@ export default defineComponent({
 
     // NEW: Initialize sub-dashboards - resolve file references and load their data
     async initializeSubDashboards() {
-      console.log('[InteractiveDashboard] initializeSubDashboards called')
-      console.log('[InteractiveDashboard] yaml.subDashboards:', this.yaml.subDashboards)
-      
+      debugLog('[InteractiveDashboard] initializeSubDashboards called')
+
       if (!this.yaml.subDashboards || !Array.isArray(this.yaml.subDashboards)) {
-        console.log('[InteractiveDashboard] No subDashboards configuration found')
         debugLog('[InteractiveDashboard] No subDashboards configuration found')
         return
       }
-      
-      console.log('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
+
+      debugLog('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
 
       // First pass: resolve file references
       const resolvedSubDashboards: any[] = []
@@ -1290,13 +1308,12 @@ export default defineComponent({
       
       // Replace with resolved configs
       this.yaml.subDashboards = resolvedSubDashboards
-      console.log('[InteractiveDashboard] Resolved', resolvedSubDashboards.length, 'subDashboards')
+      debugLog('[InteractiveDashboard] Resolved', resolvedSubDashboards.length, 'subDashboards')
 
       // Second pass: load data for each sub-dashboard
       for (const subConfig of this.yaml.subDashboards) {
         const dataset = subConfig.table?.dataset
-        console.log('[InteractiveDashboard] Processing subDashboard:', subConfig.title, 'dataset:', dataset)
-        
+
         if (!dataset) {
           console.warn('[InteractiveDashboard] SubDashboard missing table.dataset:', subConfig.title)
           continue
@@ -1304,16 +1321,13 @@ export default defineComponent({
 
         // Skip if already loaded (multiple sub-dashboards might share the same dataset)
         if (this.subDashboardData[dataset]) {
-          console.log('[InteractiveDashboard] Dataset already loaded:', dataset)
           debugLog('[InteractiveDashboard] Dataset already loaded:', dataset)
           continue
         }
 
         try {
-          console.log('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
           debugLog('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
           const filePath = `${this.xsubfolder}/${dataset}`
-          console.log('[InteractiveDashboard] Full file path:', filePath)
           const text = await this.fileApi.getFileText(filePath)
           
           // Parse CSV
@@ -1336,29 +1350,28 @@ export default defineComponent({
           }
           
           this.subDashboardData[dataset] = data
-          console.log('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
           debugLog('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
         } catch (e) {
           console.error('[InteractiveDashboard] Failed to load sub-dashboard dataset:', dataset, e)
           this.subDashboardData[dataset] = []
         }
       }
-      
-      console.log('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
+
+      debugLog('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
     },
 
     // NEW: Load sub-dashboard config from external YAML file
     async loadSubDashboardFile(filename: string, overrides: any): Promise<any> {
-      console.log('[InteractiveDashboard] Loading sub-dashboard file:', filename)
-      
+      debugLog('[InteractiveDashboard] Loading sub-dashboard file:', filename)
+
       try {
         // Load the YAML file (relative to current dashboard folder)
         const filePath = `${this.xsubfolder}/${filename}`
         const yamlText = await this.fileApi.getFileText(filePath)
         const fileConfig = YAML.parse(yamlText)
-        
-        console.log('[InteractiveDashboard] Loaded sub-dashboard file:', filename, 'title:', fileConfig.header?.title || fileConfig.title)
-        
+
+        debugLog('[InteractiveDashboard] Loaded sub-dashboard file:', filename, 'title:', fileConfig.header?.title || fileConfig.title)
+
         // Build the sub-dashboard config from the file
         // Use header.title or header.tab as the title, or fall back to filename
         const baseConfig = {
@@ -1367,14 +1380,14 @@ export default defineComponent({
           layout: fileConfig.layout,
           map: fileConfig.map,
         }
-        
+
         // Deep merge with overrides (overrides take precedence)
         const mergedConfig = this.deepMerge(baseConfig, overrides)
-        
+
         // Remove the 'file' property from the merged config
         delete mergedConfig.file
-        
-        console.log('[InteractiveDashboard] Merged sub-dashboard config:', mergedConfig.title)
+
+        debugLog('[InteractiveDashboard] Merged sub-dashboard config:', mergedConfig.title)
         return mergedConfig
       } catch (e) {
         console.error('[InteractiveDashboard] Failed to load sub-dashboard file:', filename, e)

@@ -153,16 +153,25 @@ function renderChart() {
   // Build annotations if showing values
   const annotations: any[] = []
   if (shouldShowValues.value) {
+    // Use compact format when matrix is cramped (many attributes)
+    const useCompactFormat = n > 6
+
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
         const r = matrix[i][j]
-        const p = pValues[i][j]
-        const isSignificant = p < props.pValueThreshold
 
-        // Format: correlation value with asterisk if significant
-        let text = r.toFixed(2)
-        if (isSignificant && i !== j) {
-          text += '*'
+        // Format correlation value
+        let text: string
+        if (Math.abs(r) === 1) {
+          // Perfect correlation: show as "1" or "-1"
+          text = r === 1 ? '1' : '-1'
+        } else if (useCompactFormat) {
+          // Compact format: remove leading zero (0.45 -> .45, -0.45 -> -.45)
+          const formatted = r.toFixed(2)
+          text = formatted.replace(/^(-?)0\./, '$1.')
+        } else {
+          // Full format
+          text = r.toFixed(2)
         }
 
         // Text color: white on dark cells, black on light cells

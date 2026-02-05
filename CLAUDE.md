@@ -341,6 +341,105 @@ See these docs in `src/plugins/interactive-dashboard/`:
 - **Imports:** Group by external, internal, relative
 - **Naming:** camelCase for variables/functions, PascalCase for components/classes
 
+## Known Pitfalls and Debugging Learnings
+
+### Plotly.js Event Handling
+
+Plotly.js has specific behavior around event handlers that can cause issues:
+
+1. **Register handlers ONCE** - Event handlers (`.on('plotly_click', ...)`) should only be registered during initialization, not on every update
+2. **Memory leaks** - Re-registering handlers without cleanup causes `MaxListenersExceededWarning` (e.g., "11 plotly_click listeners added")
+3. **newPlot vs react**:
+   - `Plotly.newPlot()` - Creates new chart, clears all event handlers
+   - `Plotly.react()` - Updates data/layout while preserving event handlers
+4. **Pattern**: Initialize chart once with `newPlot()` + register handlers, then use `react()` for updates
+
+```typescript
+// CORRECT pattern
+const initializeChart = () => {
+  Plotly.newPlot(container, traces, layout, config)
+  container.on('plotly_click', handleClick)  // Register ONCE
+}
+
+const updateChart = () => {
+  Plotly.react(container, traces, layout, config)  // Preserves handlers
+}
+
+// WRONG - causes memory leak
+const updateChart = () => {
+  Plotly.react(container, traces, layout, config)
+  container.on('plotly_click', handleClick)  // Adds duplicate listener every time!
+}
+```
+
+### Vue Reactivity with Sets
+
+Vue's reactivity system doesn't always track Set mutations properly:
+
+```typescript
+// Watch both reference AND size to catch all changes
+watch(
+  [
+    () => props.selectedIds,
+    () => props.selectedIds?.size ?? 0
+  ],
+  () => { /* handle change */ }
+)
+
+// When updating a Set, create a new instance to trigger reactivity
+hoveredIds.value = new Set(ids)  // ✓ Vue detects change
+hoveredIds.value.add(id)          // ✗ Vue may miss this
+```
+
+### Selection vs Filter Event Pattern
+
+Cards emit different events based on user intent:
+
+| Event | Intent | Example Cards | Threshold? |
+|-------|--------|---------------|------------|
+| `@filter` | "Filter to this category/bin" | HistogramCard, PieChartCard | No - immediate |
+| `@select` | "Mark/identify this item" | ScatterCard, DataTableCard | Yes - use threshold |
+| `@hover` | "Temporarily highlight" | All cards | No - immediate |
+
+**Threshold-based comparison mode** (for selection events):
+- 1 selection = highlight only, no comparison mode
+- 2+ selections = trigger comparison mode (selection-to-filter promotion)
+
+### Handling Overlapping Points in Scatter Plots
+
+When multiple data points share the same coordinates:
+
+```typescript
+// Use tolerance-based matching to find ALL points at a coordinate
+const findIdsAtCoordinate = (x: number, y: number): any[] => {
+  const xRange = Math.max(...data.x) - Math.min(...data.x)
+  const yRange = Math.max(...data.y) - Math.min(...data.y)
+  const xTolerance = Math.max(xRange * 0.001, 0.001)  // 0.1% of range
+  const yTolerance = Math.max(yRange * 0.001, 0.001)
+
+  return data.filter(row =>
+    Math.abs(row.x - x) < xTolerance &&
+    Math.abs(row.y - y) < yTolerance
+  )
+}
+```
+
+### Debugging Best Practices
+
+1. **Use `debugLog()` utility** instead of `console.log()` - controlled output via `src/plugins/interactive-dashboard/utils/debug.ts`
+2. **Check for event handler memory leaks** - Look for `MaxListenersExceededWarning` in console
+3. **Debounce rapid updates** - Prevent excessive re-renders that can break event handlers
+4. **Keep axis ranges stable** - Use baseline data (not filtered data) for axis range calculation to prevent zoom on filter
+
+### Comparison Mode Architecture
+
+When implementing comparison mode (baseline vs filtered data):
+
+1. **Baseline layer** - Gray/transparent, shows all data for context
+2. **Filtered layer** - Colored, shows selected/filtered items
+3. **Axis ranges** - Calculate from baseline data to prevent zooming when filtering
+4. **Skip baseline in interactions** - Check `curveNumber` to ignore clicks on baseline trace
+
 ## Resources
 
 - **Main Docs:** https://docs.simwrapper.app/docs

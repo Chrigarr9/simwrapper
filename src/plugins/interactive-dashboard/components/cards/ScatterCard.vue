@@ -38,7 +38,7 @@ interface Props {
   selectedIds?: Set<any>    // Selected IDs from linkage
   idColumn?: string         // Column to use as ID for linkage
   linkage?: {
-    type: 'filter'
+    type: 'select'  // Scatter plots only support selection linkage (visual highlighting), not filtering
     column: string
     behavior: 'toggle'
   }
@@ -61,14 +61,14 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  filter: [filterId: string, column: string, values: Set<any>, filterType: string]
   hover: [ids: Set<any>]
   select: [ids: Set<any>]
   isLoaded: []
 }>()
 
 const plotContainer = ref<HTMLElement>()
-const selectedPoints = ref<Set<any>>(new Set())
+// Note: Selection state is managed by the parent via props.selectedIds
+// We don't maintain local selection state to avoid sync issues
 
 // Current axis columns (can be overridden by attribute pair selection)
 const currentXColumn = ref(props.xColumn)
@@ -290,8 +290,163 @@ const baselineScatterData = computed(() => {
   return { x, y, ids, text }
 })
 
-const renderChart = () => {
+// Debounce timer for renderChart
+let renderTimeout: ReturnType<typeof setTimeout> | null = null
+// Track whether chart has been initialized (to know if we can use Plotly.react)
+let chartInitialized = false
+
+// Debounced render to prevent excessive re-renders
+const debouncedRenderChart = () => {
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+  }
+  renderTimeout = setTimeout(() => {
+    updateChart()
+    renderTimeout = null
+  }, 50)  // 50ms debounce
+}
+
+// Initial chart creation - registers event handlers
+const initializeChart = () => {
   if (!plotContainer.value || scatterData.value.x.length === 0) return
+
+  const { traces, layout, config } = buildChartData()
+
+  Plotly.newPlot(plotContainer.value, traces, layout, config)
+  chartInitialized = true
+
+  debugLog('[ScatterCard] Chart INITIALIZED, registering event handlers for:', props.title || 'untitled')
+
+  // Register event handlers ONCE during initialization
+  registerEventHandlers()
+}
+
+// Update chart data - uses Plotly.react to preserve event handlers
+const updateChart = () => {
+  if (!plotContainer.value) return
+
+  // If no data, nothing to render
+  if (scatterData.value.x.length === 0) return
+
+  const { traces, layout, config } = buildChartData()
+
+  if (chartInitialized) {
+    // Use Plotly.react to update data/layout (preserves event handlers)
+    Plotly.react(plotContainer.value, traces, layout, config)
+    debugLog('[ScatterCard] Chart updated for:', props.title || 'untitled')
+  } else {
+    // First render - initialize
+    initializeChart()
+  }
+}
+
+// Find all IDs at a given x,y coordinate (handles overlapping points)
+const findIdsAtCoordinate = (x: number, y: number): any[] => {
+  const ids: any[] = []
+
+  // Calculate tolerance based on data range (0.1% of range, minimum 0.001)
+  const xRange = Math.max(...scatterData.value.x) - Math.min(...scatterData.value.x)
+  const yRange = Math.max(...scatterData.value.y) - Math.min(...scatterData.value.y)
+  const xTolerance = Math.max(xRange * 0.001, 0.001)
+  const yTolerance = Math.max(yRange * 0.001, 0.001)
+
+  // Search in filtered data
+  props.filteredData?.forEach((row) => {
+    const rowX = row[currentXColumn.value]
+    const rowY = row[currentYColumn.value]
+    const id = props.idColumn ? row[props.idColumn] : null
+
+    if (id && Math.abs(rowX - x) < xTolerance && Math.abs(rowY - y) < yTolerance) {
+      ids.push(id)
+    }
+  })
+
+  return ids
+}
+
+// Register click/hover event handlers (called only once during initialization)
+const registerEventHandlers = () => {
+  if (!plotContainer.value) return
+
+  // Click handler for point selection - handles ALL overlapping points at same coordinates
+  plotContainer.value.on('plotly_click', (data: any) => {
+    debugLog('[ScatterCard] CLICK EVENT FIRED!', data.points.length, 'points')
+    const point = data.points[0]
+
+    // Skip baseline trace (trace 0 when comparison mode is on)
+    if (props.showComparison && point.curveNumber === 0) {
+      debugLog('[ScatterCard] Skipping - clicked on baseline trace')
+      return
+    }
+
+    // Get the clicked coordinates
+    const clickedX = point.x
+    const clickedY = point.y
+    debugLog('[ScatterCard] Clicked at coordinates:', clickedX, clickedY)
+
+    // Find ALL points at these coordinates (handles overlapping points)
+    const clickedIds = findIdsAtCoordinate(clickedX, clickedY)
+    debugLog('[ScatterCard] Found IDs at coordinates:', clickedIds)
+
+    if (clickedIds.length === 0) {
+      debugLog('[ScatterCard] No IDs found for clicked point - idColumn may be missing or empty')
+      return
+    }
+
+    // Toggle selection behavior: clicking adds/removes ALL overlapping points from selection set
+    const newSelection = new Set(props.selectedIds || [])
+    debugLog('[ScatterCard] Current selection before toggle:', Array.from(newSelection))
+
+    // Check if ALL clicked IDs are already selected (then deselect all of them)
+    const allAlreadySelected = clickedIds.every(id => newSelection.has(id))
+
+    if (allAlreadySelected) {
+      // Deselect all clicked IDs
+      clickedIds.forEach(id => newSelection.delete(id))
+      debugLog('[ScatterCard] Deselected', clickedIds.length, 'points')
+    } else {
+      // Add all clicked IDs to selection
+      clickedIds.forEach(id => newSelection.add(id))
+      debugLog('[ScatterCard] Selected', clickedIds.length, 'points, total now:', newSelection.size)
+    }
+
+    debugLog('[ScatterCard] Emitting select with:', Array.from(newSelection))
+    emit('select', newSelection)
+  })
+
+  // Hover handler - handles ALL overlapping points at same coordinates
+  plotContainer.value.on('plotly_hover', (data: any) => {
+    debugLog('[ScatterCard] HOVER EVENT FIRED!')
+    const point = data.points[0]
+
+    // Skip baseline trace
+    if (props.showComparison && point.curveNumber === 0) {
+      return
+    }
+
+    // Get the hovered coordinates
+    const hoveredX = point.x
+    const hoveredY = point.y
+
+    // Find ALL points at these coordinates
+    const hoveredIds = findIdsAtCoordinate(hoveredX, hoveredY)
+
+    if (hoveredIds.length > 0) {
+      emit('hover', new Set(hoveredIds))
+    }
+  })
+
+  // Unhover handler - clear hover when mouse leaves point
+  plotContainer.value.on('plotly_unhover', () => {
+    emit('hover', new Set())
+  })
+}
+
+// Build chart data (traces, layout, config) - separated from rendering
+const buildChartData = () => {
+  if (!plotContainer.value || scatterData.value.x.length === 0) {
+    return { traces: [], layout: {}, config: {} }
+  }
 
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
@@ -368,7 +523,7 @@ const renderChart = () => {
 
             const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize
             const isHovered = id && props.hoveredIds?.has(id)
-            const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+            const isSelected = id && props.selectedIds?.has(id)
 
             // Size: 1.5x larger for highlighted/selected points
             if (isSelected || isHovered) {
@@ -427,7 +582,6 @@ const renderChart = () => {
   } else {
     // Single trace - no categories
     const markerColors = scatterData.value.ids.map((id, i) => {
-      if (id && selectedPoints.value.has(id)) return selectedColor
       if (id && props.selectedIds?.has(id)) return selectedColor
       if (id && props.hoveredIds?.has(id)) return highlightColor
       return scatterData.value.colors[i] || defaultColor
@@ -436,14 +590,14 @@ const renderChart = () => {
     const markerSizes = scatterData.value.ids.map((id, i) => {
       const baseSize = scatterData.value.sizes[i]
       const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      const isSelected = id && props.selectedIds?.has(id)
       // 1.5x size for highlighted/selected points
       return (isSelected || isHovered) ? baseSize * 1.5 : baseSize
     })
 
     const lineWidths = scatterData.value.ids.map((id) => {
       const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      const isSelected = id && props.selectedIds?.has(id)
       if (isSelected) return 3
       if (isHovered) return 2.5
       return 0.5
@@ -451,14 +605,14 @@ const renderChart = () => {
 
     const lineColors = scatterData.value.ids.map((id) => {
       const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      const isSelected = id && props.selectedIds?.has(id)
       // White border for highlighted/selected, text color for normal
       return (isSelected || isHovered) ? '#ffffff' : textColor
     })
 
     const opacities = scatterData.value.ids.map((id) => {
       const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && (props.selectedIds?.has(id) || selectedPoints.value.has(id))
+      const isSelected = id && props.selectedIds?.has(id)
       // Full opacity for highlighted/selected, reduced for normal
       return (isSelected || isHovered) ? 1.0 : 0.7
     })
@@ -484,6 +638,18 @@ const renderChart = () => {
 
   // Build axis configs with intelligent tick formatting
   // Limit number of ticks to avoid crowding, similar to histogram approach
+
+  // Calculate axis ranges from BASELINE data (all data) to keep consistent view
+  // This prevents zooming when filtering - baseline shows full range even when filtered
+  const xDataForRange = baselineScatterData.value.x.length > 0 ? baselineScatterData.value.x : scatterData.value.x
+  const yDataForRange = baselineScatterData.value.y.length > 0 ? baselineScatterData.value.y : scatterData.value.y
+  const xMin = Math.min(...xDataForRange)
+  const xMax = Math.max(...xDataForRange)
+  const yMin = Math.min(...yDataForRange)
+  const yMax = Math.max(...yDataForRange)
+  const xPadding = (xMax - xMin) * 0.05 || 1  // 5% padding, fallback to 1 if range is 0
+  const yPadding = (yMax - yMin) * 0.05 || 1
+
   const xAxisConfig: any = {
     title: { text: formatAxisLabel(currentXColumn.value), font: { color: textColor, size: 11, family: fontFamily } },
     tickfont: { color: textColor, size: 10, family: fontFamily },
@@ -495,6 +661,7 @@ const renderChart = () => {
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
     tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+    range: [xMin - xPadding, xMax + xPadding],  // Fixed range from baseline prevents zooming
   }
 
   const yAxisConfig: any = {
@@ -508,6 +675,7 @@ const renderChart = () => {
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
     tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+    range: [yMin - yPadding, yMax + yPadding],  // Fixed range from baseline prevents zooming
   }
 
   const layout = {
@@ -534,59 +702,12 @@ const renderChart = () => {
     } : undefined,
   }
 
-  Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: !isScientific ? false : false,  // Always hide modebar (scientific mode too)
+  const config = {
+    displayModeBar: false,  // Always hide modebar
     responsive: true,
-  })
+  }
 
-  // Click handler for point selection
-  plotContainer.value.on('plotly_click', (data: any) => {
-    const curveNumber = data.points[0].curveNumber
-
-    // Ignore clicks on baseline trace (always trace 0 when comparison mode is on)
-    if (props.showComparison && curveNumber === 0) {
-      return
-    }
-
-    const point = data.points[0]
-    // Get ID from customdata if available (category traces), otherwise use global index
-    const id = point.customdata?.id ?? scatterData.value.ids[point.pointIndex]
-
-    if (!id) return
-
-    // Toggle point in selection
-    if (selectedPoints.value.has(id)) {
-      selectedPoints.value.delete(id)
-    } else {
-      selectedPoints.value.add(id)
-    }
-
-    // Emit selection event
-    emit('select', new Set(selectedPoints.value))
-
-    // Emit filter if linkage configured
-    if (props.linkage?.type === 'filter' && props.linkage.column) {
-      const filterId = `scatter-${props.xColumn}-${props.yColumn}`
-      emit('filter', filterId, props.linkage.column, new Set(selectedPoints.value), 'categorical')
-    }
-
-    renderChart()
-  })
-
-  // Hover handler
-  plotContainer.value.on('plotly_hover', (data: any) => {
-    const point = data.points[0]
-    // Get ID from customdata if available (category traces), otherwise use global index
-    const id = point.customdata?.id ?? scatterData.value.ids[point.pointIndex]
-    if (id) {
-      emit('hover', new Set([id]))
-    }
-  })
-
-  // Unhover handler
-  plotContainer.value.on('plotly_unhover', () => {
-    emit('hover', new Set())
-  })
+  return { traces, layout, config }
 }
 
 // LinkageObserver for attribute pair selection
@@ -594,7 +715,7 @@ const linkageObserver: LinkageObserver = {
   onHoveredIdsChange: () => {},      // Not used in scatter
   onSelectedIdsChange: () => {},     // Not used in scatter
   onAttributePairSelected: (attrX: string, attrY: string) => {
-    console.log('[ScatterCard] onAttributePairSelected called:', attrX, attrY, 'listening:', props.listenToAttributePairSelection)
+    debugLog('[ScatterCard] onAttributePairSelected called:', attrX, attrY)
     if (!props.listenToAttributePairSelection) return
 
     // Check if attributes exist in data
@@ -604,7 +725,7 @@ const linkageObserver: LinkageObserver = {
       const hasY = attrY in sampleRow
 
       if (hasX && hasY) {
-        console.log('[ScatterCard] Updating axes to:', attrX, attrY)
+        debugLog('[ScatterCard] Updating axes to:', attrX, attrY)
         currentXColumn.value = attrX
         currentYColumn.value = attrY
         // Re-render will happen via watch on currentXColumn/currentYColumn
@@ -618,24 +739,34 @@ const linkageObserver: LinkageObserver = {
 // Watch for current axis column changes
 watch([currentXColumn, currentYColumn], () => {
   debugLog('[ScatterCard] Axes changed to:', currentXColumn.value, currentYColumn.value)
-  renderChart()
+  debouncedRenderChart()
 })
 
 // Watch for data changes
 watch(() => props.filteredData, () => {
   debugLog('[ScatterCard] filteredData changed, re-rendering')
-  renderChart()
+  debouncedRenderChart()
 }, { deep: true })
 
 // Watch for hover/selection changes from linkage
-watch([() => props.hoveredIds, () => props.selectedIds], () => {
-  debugLog('[ScatterCard] hoveredIds or selectedIds changed')
-  renderChart()
-}, { deep: true })
+// Watch both the Set reference AND size to ensure changes are detected
+// (Vue's reactivity doesn't always track Set changes properly)
+watch(
+  [
+    () => props.hoveredIds,
+    () => props.selectedIds,
+    () => props.hoveredIds?.size ?? 0,
+    () => props.selectedIds?.size ?? 0
+  ],
+  () => {
+    debugLog('[ScatterCard] hoveredIds or selectedIds changed, hovered:', props.hoveredIds?.size, 'selected:', props.selectedIds?.size)
+    debouncedRenderChart()
+  }
+)
 
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, () => {
-  renderChart()
+  debouncedRenderChart()
 })
 
 // Resize observer for responsive chart sizing
@@ -656,8 +787,14 @@ function handleResize() {
   }, 100)
 }
 
+// Mouse leave handler to clear hover when leaving the chart area
+// This is a fallback in case plotly_unhover doesn't fire reliably
+function handleMouseLeave() {
+  emit('hover', new Set())
+}
+
 onMounted(() => {
-  renderChart()
+  initializeChart()
 
   // Set up resize observer to handle container size changes
   if (plotContainer.value) {
@@ -666,15 +803,18 @@ onMounted(() => {
       nextTick(() => handleResize())
     })
     resizeObserver.observe(plotContainer.value)
+
+    // Add mouseleave handler as fallback for clearing hover
+    plotContainer.value.addEventListener('mouseleave', handleMouseLeave)
   }
 
   // Also listen for window resize events (for fullscreen)
   window.addEventListener('resize', handleResize)
 
   // Register observer if listening is enabled
-  console.log('[ScatterCard] onMounted - listenToAttributePairSelection:', props.listenToAttributePairSelection, 'linkageManager:', !!props.linkageManager)
+  debugLog('[ScatterCard] onMounted - listenToAttributePairSelection:', props.listenToAttributePairSelection)
   if (props.listenToAttributePairSelection && props.linkageManager) {
-    console.log('[ScatterCard] Registering as observer for attribute pair events')
+    debugLog('[ScatterCard] Registering as observer for attribute pair events')
     props.linkageManager.addObserver(linkageObserver)
   }
 
@@ -683,7 +823,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Clean up resize observer and timeout
+  // Reset chart state
+  chartInitialized = false
+
+  // Clean up resize observer and timeouts
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
@@ -692,7 +835,16 @@ onUnmounted(() => {
     clearTimeout(resizeTimeout)
     resizeTimeout = null
   }
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+    renderTimeout = null
+  }
   window.removeEventListener('resize', handleResize)
+
+  // Clean up mouseleave handler
+  if (plotContainer.value) {
+    plotContainer.value.removeEventListener('mouseleave', handleMouseLeave)
+  }
 
   // Unregister observer
   if (props.linkageManager) {

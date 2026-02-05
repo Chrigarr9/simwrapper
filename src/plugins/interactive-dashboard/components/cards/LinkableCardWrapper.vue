@@ -53,10 +53,13 @@ const filterObserver: FilterObserver = {
 
 const linkageObserver: LinkageObserver = {
   onHoveredIdsChange: (ids: Set<any>) => {
-    hoveredIds.value = ids
+    // Create a new Set to ensure Vue's reactivity detects the change
+    hoveredIds.value = new Set(ids)
   },
   onSelectedIdsChange: (ids: Set<any>) => {
-    selectedIds.value = ids
+    debugLog('[LinkableCardWrapper] onSelectedIdsChange for card:', props.card.title || props.card.type, 'ids size:', ids.size)
+    // Create a new Set to ensure Vue's reactivity detects the change
+    selectedIds.value = new Set(ids)
   },
 }
 
@@ -93,7 +96,7 @@ const handleSelect = (ids: Set<any>) => {
     }
   }
 
-  debugLog('[LinkableCardWrapper] Select event:', ids, 'behavior:', behavior)
+  debugLog('[LinkableCardWrapper] Select event for card:', props.card.title || props.card.type, 'ids size:', ids.size, 'behavior:', behavior)
 
   if (behavior === 'toggle') {
     props.linkageManager.toggleSelectedIds(ids)

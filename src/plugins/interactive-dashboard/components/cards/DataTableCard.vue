@@ -375,10 +375,24 @@ function handleRowLeave() {
   emit('hover', new Set())
 }
 
-// Handle row click
+// Handle row click - toggle selection (adds/removes from selection set)
+// This allows accumulating multiple selections for comparison mode (threshold-based)
+// Single selection = highlight only, 2+ selections = comparison mode
 function handleRowClick(row: any) {
   const rowId = getRowId(row)
-  emit('select', new Set([rowId]))
+
+  // Toggle behavior: clicking adds/removes from selection set
+  const newSelection = new Set(props.selectedIds || [])
+  const wasSelected = newSelection.has(rowId)
+
+  if (wasSelected) {
+    newSelection.delete(rowId)
+  } else {
+    newSelection.add(rowId)
+  }
+
+  debugLog('[DataTableCard] Selection toggled - rowId:', rowId, 'wasSelected:', wasSelected, 'newSize:', newSelection.size)
+  emit('select', newSelection)
 }
 
 // Clear all filters
@@ -391,9 +405,9 @@ function handleClearAllFilters() {
   }
 }
 
-// Debug: watch showComparison prop changes
+// Watch showComparison prop changes (for debugging)
 watch(() => props.showComparison, (newVal, oldVal) => {
-  console.log('[DataTableCard] showComparison prop changed:', oldVal, '->', newVal)
+  debugLog('[DataTableCard] showComparison changed:', oldVal, '->', newVal)
 })
 
 // Scroll to hovered row when hover comes from map

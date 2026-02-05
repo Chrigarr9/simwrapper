@@ -890,6 +890,9 @@ function updateLayers() {
         layers.push(layer)
         const arcTips = createArcArrowTips(layerConfig, features)
         if (arcTips) layers.push(arcTips)
+        // Add circular markers for self-loops (same origin/destination)
+        const selfLoopMarkers = createSelfLoopMarkers(layerConfig, features)
+        if (selfLoopMarkers) layers.push(selfLoopMarkers)
         return
 
       case 'scatterplot':
@@ -983,9 +986,10 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
       })
 
     case 'arc':
+      // Filter out self-loops for baseline - they don't render well as zero-length arcs
       return new ArcLayer({
         id: `baseline-arc-${layerConfig.name}`,
-        data: features,
+        data: features.filter(f => !isSelfLoop(f)),
         pickable: false,
         greatCircle: false,
 
@@ -1099,9 +1103,10 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
       })
 
     case 'arc':
+      // Filter out self-loops - they're handled by createSelfLoopMarkers
       return new ArcLayer({
         id: `highlight-arc-${layerConfig.name}`,
-        data: highlightedFeatures,
+        data: highlightedFeatures.filter(f => !isSelfLoop(f)),
         pickable: false,
         greatCircle: false,
 
@@ -1139,7 +1144,7 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
 
         getPosition: (d: any) => d.geometry.coordinates as Position,
         getRadius: (d: any) => getFeatureRadius(d, layerConfig) * 1.5, // 50% larger
-        getFillColor: (d: any) => getFeaturePointColor(d, layerConfig),
+        getFillColor: (d: any) => getFeatureColor(d, layerConfig),
         getLineColor: [255, 255, 255, 255], // White outline for visibility
         lineWidthMinPixels: 3,
 
@@ -1274,17 +1279,28 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
   }
 }
 
+// Helper to detect if arc is a self-loop (same origin and destination)
+function isSelfLoop(feature: any): boolean {
+  const coords = feature.geometry?.coordinates
+  if (!coords || coords.length < 2) return false
+  const [src, tgt] = coords
+  // Check if source and target are the same (within small tolerance)
+  return Math.abs(src[0] - tgt[0]) < 0.0001 && Math.abs(src[1] - tgt[1]) < 0.0001
+}
+
 // ArcLayer Factory
 function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | null {
   try {
     const sortedFeatures = sortFeaturesByState(features, layerConfig)
+    // Filter out self-loops - they're rendered as circular markers instead
+    const arcFeatures = sortedFeatures.filter(f => !isSelfLoop(f))
 
     // Get arc layer defaults from StyleManager (single source of truth)
     const arcDefaults = StyleManager.getInstance().getArcLayerStyle()
 
     return new ArcLayer({
       id: `arc-${layerConfig.name}`,
-      data: sortedFeatures,
+      data: arcFeatures,
       pickable: true,
       greatCircle: false,
 
@@ -1314,12 +1330,55 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
   }
 }
 
+// Self-loop markers - circular rings indicating flows within the same cluster
+function createSelfLoopMarkers(layerConfig: LayerConfig, features: any[]): ScatterplotLayer | null {
+  const selfLoops = features.filter(f => isSelfLoop(f))
+  if (selfLoops.length === 0) return null
+
+  try {
+    return new ScatterplotLayer({
+      id: `self-loops-${layerConfig.name}`,
+      data: selfLoops,
+      pickable: true,
+      stroked: true,
+      filled: false,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 40,
+
+      getPosition: (d: any) => d.geometry.coordinates[0] as Position,
+      getRadius: (d: any) => {
+        // Scale radius based on flow width for consistency
+        const width = getFeatureWidth(d, layerConfig)
+        return Math.max(10, width * 4)
+      },
+      getLineColor: (d: any) => getFeatureColor(d, layerConfig),
+      getLineWidth: (d: any) => Math.max(2, getFeatureWidth(d, layerConfig)),
+      lineWidthUnits: 'pixels',
+
+      onClick: (info: any) => handleClick(info),
+      onHover: (info: any) => handleHover(info),
+
+      updateTriggers: {
+        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
+      },
+    })
+  } catch (error) {
+    console.error(`[MapCard] Failed to create self-loop markers:`, error)
+    return null
+  }
+}
+
 // Automatic arrow tips for ArcLayer
 function createArcArrowTips(layerConfig: LayerConfig, features: any[]): ScatterplotLayer | null {
   try {
+    // Filter out self-loops - they're shown as circular markers instead
+    const arcFeatures = features.filter(f => !isSelfLoop(f))
+
     return new ScatterplotLayer({
       id: `arc-tips-${layerConfig.name}`,
-      data: features,
+      data: arcFeatures,
       pickable: true,
       radiusMinPixels: 2,
       radiusMaxPixels: 6,
