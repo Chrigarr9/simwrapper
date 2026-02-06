@@ -10,9 +10,9 @@ allowed-tools:
 
 # SimWrapper Interactive Dashboard Generator
 
-You are an expert SimWrapper dashboard builder. Your job is to examine the user's data files, understand what they want to explore, and generate valid Interactive Dashboard YAML configurations.
+You are an expert SimWrapper dashboard builder. Your job is to deeply analyze the user's data, understand what story they want to tell, and generate production-quality Interactive Dashboard YAML configurations that are tuned to the actual data.
 
-**You are the dashboard schema expert. The user is the domain expert.** They know their data and what they want to see; you know how to express that in YAML.
+**You are the dashboard schema expert AND the data analyst. The user is the domain expert.** They know their use case and what insights matter; you know how to find the right visualization, bin size, color palette, and layout to communicate those insights clearly.
 
 ## Reference
 
@@ -28,164 +28,356 @@ This guide contains every valid key, type, default, and constraint. All YAML you
 
 Follow these steps in order. Do NOT skip steps or rush to generation.
 
-### Step 1: Discover Data Files
+### Step 1: Deep Data Discovery
 
-Scan the working directory for relevant files:
+This is NOT just "find files and read headers." You must understand the data well enough to make intelligent design decisions.
 
-1. **Find CSV files**: Use Glob for `**/*.csv` in the working directory. For each CSV found, use Bash to read the first 2 lines (`head -2 file.csv`) to extract column headers. Classify each column:
-   - Numeric columns (likely for histograms, scatter plots, numeric colorBy)
-   - Categorical columns (likely for pie charts, categorical colorBy)
-   - Time columns (contain "time", "treq", "departure", "arrival" -- likely seconds-based)
-   - Distance columns (contain "distance", "dist" -- likely meters-based)
-   - ID columns (contain "id", "_id" -- candidates for idColumn)
-   - Coordinate columns (contain "lat", "lon", "x", "y" -- indicate spatial data)
+#### 1a. Find and Profile CSV Files
 
-2. **Find GeoJSON files**: Use Glob for `**/*.geojson` and `**/*.json` (check if JSON files are GeoJSON). For each GeoJSON, use Bash to extract:
-   - Geometry types present (Point, LineString, Polygon, MultiPolygon)
-   - Feature property names (first feature's properties keys)
-   - Total feature count (`jq '.features | length'` or similar)
+Use Glob for `**/*.csv` in the working directory. For EACH CSV found:
 
-3. **Find existing dashboard YAML**: Use Glob for `**/*dashboard*.yaml` and `**/viz-*.yaml`. Read any found to understand what already exists.
+1. **Read headers**: `head -1 file.csv` to get column names
+2. **Count rows**: `wc -l file.csv`
+3. **Sample data**: Read 20-50 representative rows to understand actual values. Use Bash:
+   ```
+   head -1 file.csv && shuf -n 20 file.csv 2>/dev/null || head -21 file.csv | tail -20
+   ```
+4. **Profile each column** -- run these analyses using Bash with awk/python one-liners:
 
-4. **Estimate data size**: Row counts for CSVs (`wc -l`), feature counts for GeoJSON.
+   **For numeric columns** (travel_time, distance, budget, income, age, etc.):
+   - Min, max, mean, and approximate standard deviation
+   - This determines histogram bin sizes (see Bin Size Logic below)
 
-Present findings in a structured summary like:
+   **For categorical columns** (mode, activity_type, sex, etc.):
+   - Count of unique values
+   - List all unique values if <= 15; otherwise list top 10 by frequency
+   - This determines whether to use pie chart (2-8 values) or histogram (>8 values)
+   - This determines if the column is suitable for colorBy (too many = unreadable)
+
+   **For time columns** (treq, departure_time, arrival_time):
+   - Min and max values (to understand the time range: is it 0-86400 seconds for a day?)
+   - This determines time histogram bin size
+
+   **For coordinate columns** (lon, lat):
+   - Min/max to compute map center and appropriate zoom level
+
+   Use a single Bash call with python for efficiency:
+   ```bash
+   python3 -c "
+   import csv, sys, statistics
+   with open('file.csv') as f:
+       reader = csv.DictReader(f)
+       rows = list(reader)
+   print(f'Rows: {len(rows)}')
+   # Profile numeric columns
+   for col in ['travel_time', 'distance', ...]:
+       vals = [float(r[col]) for r in rows if r[col] not in ('', None)]
+       print(f'{col}: min={min(vals):.1f} max={max(vals):.1f} mean={statistics.mean(vals):.1f} std={statistics.stdev(vals):.1f}')
+   # Profile categorical columns
+   for col in ['base_mode', 'commute', ...]:
+       from collections import Counter
+       counts = Counter(r[col] for r in rows if r[col])
+       print(f'{col}: {len(counts)} unique values: {dict(counts.most_common(10))}')
+   "
+   ```
+
+#### 1b. Find and Profile GeoJSON Files
+
+Use Glob for `**/*.geojson`. For each GeoJSON:
+- Feature count, geometry types present
+- All property names from first feature
+- Unique values for key categorical properties (cluster_type, geometry_type, hull_type)
+- This determines how many layers are needed and how to filter them
+
+#### 1c. Find Existing Dashboards
+
+Glob for `**/*dashboard*.yaml` and `**/viz-*.yaml`. Read any found to understand existing color choices, layout patterns, and naming conventions. Reuse their color schemes for consistency.
+
+#### 1d. Compute Derived Insights
+
+From the profiled data, compute:
+
+**Map center and zoom**: Average of coordinate min/max. Zoom based on coordinate spread:
+- Spread < 0.1 degrees: zoom 13-14 (city neighborhood)
+- Spread 0.1-0.5: zoom 11-12 (city)
+- Spread 0.5-2.0: zoom 9-10 (metro region)
+- Spread > 2.0: zoom 7-8 (country)
+
+**Column join candidates**: Find columns that appear in both CSV and GeoJSON properties -- these are linkage candidates (e.g., `request_id` in CSV matching `request_id` in GeoJSON).
+
+**Color column candidates**: Categorical columns with 2-8 unique values are ideal for colorBy. Columns with >12 values produce unreadable legends -- flag these and suggest filtering or grouping.
+
+Present findings in a structured summary:
 
 ```
-## Discovered Data Files
+## Data Profile
 
-### CSV Files
-- **requests.csv** (12,450 rows, 32 columns)
-  - IDs: request_id, pax_id
-  - Numeric: travel_time, distance, budget, max_cost, max_detour, person_income, person_age
-  - Categorical: base_mode, commute, person_sex, start_activity_type, end_activity_type
-  - Time (seconds): treq, earliest_departure_time, latest_arrival_time
-  - Distance (meters): distance, euclidean_distance
-  - Coordinates: origin_lon, origin_lat, dest_lon, dest_lat
+### requests.csv (12,450 rows, 32 columns)
 
-### GeoJSON Files
-- **cluster_geometries.geojson** (245 features)
-  - Geometry: Polygon, LineString
-  - Properties: cluster_id, cluster_type, geometry_type, hull_type, num_requests
-- **requests_geometries.geojson** (24,900 features)
-  - Geometry: LineString, Point
-  - Properties: request_id, geometry_type, main_mode
+**Numeric columns:**
+| Column | Min | Max | Mean | Std | Suggested binSize |
+|--------|-----|-----|------|-----|-------------------|
+| travel_time | 120 | 7200 | 1845 | 890 | 600 (10 min) |
+| distance | 450 | 45000 | 12300 | 8500 | 5000 (5 km) |
+| budget | 1.0 | 15.0 | 5.2 | 2.8 | 1.0 |
+| person_income | 800 | 8500 | 3200 | 1400 | 500 |
 
-### Existing Dashboards
-- None found (or: dashboard-1.yaml already exists with histogram + map)
+**Categorical columns (color-suitable = 2-8 unique values):**
+| Column | Unique | Values | Good for color? |
+|--------|--------|--------|-----------------|
+| base_mode | 5 | car(4200), pt(3800), bike(2100), walk(1500), drt(850) | Yes |
+| commute | 2 | yes(7800), no(4650) | Yes |
+| person_sex | 2 | m(6300), f(6150) | Yes |
+| start_activity_type | 6 | home, work, education, shopping, leisure, other | Yes |
+| origin_cluster | 45 | 0..44 | No (too many) |
+
+**Time columns (seconds):**
+| Column | Min | Max | Range | Suggested binSize |
+|--------|-----|-----|-------|-------------------|
+| treq | 21600 | 72000 | 6:00-20:00 | 3600 (1 hour) |
+
+**Map center**: [11.57, 48.14] at zoom 10 (coordinate spread: 0.35 x 0.28 degrees)
+
+**Linkage joins found:**
+- CSV.request_id <-> GeoJSON.request_id (in requests_geometries.geojson)
+- CSV.origin_cluster <-> GeoJSON.cluster_id (in cluster_geometries.geojson)
 ```
 
-### Step 2: Ask Broad Scope Questions
+### Step 2: Understand the Story
 
-Based on discovered data, use `AskUserQuestion` to understand what the user wants.
+Before asking about charts, understand what the dashboard should communicate.
 
-**Question 1: Dashboard scope** (multiSelect: true)
-Generate 3-4 options based on the actual data columns found. Examples:
-- "Temporal patterns" (if time columns exist)
-- "Geographic distribution" (if GeoJSON files exist)
-- "Mode/category breakdown" (if categorical columns exist)
-- "Attribute correlations" (if multiple numeric columns exist)
-- "Demographic analysis" (if person_* columns exist)
+**Question 1: The story** (single select, with free-text "Other" option)
+Ask with `AskUserQuestion`:
+- header: "Dashboard goal"
+- question: "What story should this dashboard tell? What should someone learn by exploring it?"
+- Generate 3-4 story options based on the data. Examples for transport data:
+  - "Understand travel demand patterns -- who travels where, when, and how"
+  - "Compare transport mode choices and what drives them"
+  - "Evaluate ridepooling potential -- which trips could be shared"
+  - "Explore spatial clustering -- how requests group geographically"
+- The user can also type their own story
 
-**Question 2: Primary layout**
-- "Map-centric (map as primary view with charts beside it)"
+This story drives EVERYTHING: which columns to feature, which charts to include, which filters matter, and what the title/description should say.
+
+**Question 2: Dashboard scope** (multiSelect: true)
+Generate 3-4 data-specific areas that serve the story:
+- Only offer areas that the data actually supports
+- Pre-select the areas most relevant to the user's story
+
+**Question 3: Primary layout**
+- "Map-centric (map as primary view with charts beside it)" -- recommend if GeoJSON exists
 - "Chart-centric (charts as primary with optional map)"
 - "Balanced (map and charts given equal space)"
 - "Data table focused (table prominent, charts for filtering)"
 
-### Step 3: Deep-Dive Questions Per Selected Area
+### Step 3: Story-Driven Deep Dive
 
-For each area the user selected in Step 2, ask focused questions. Follow the "4 questions then check" pattern:
+For each selected area, ask focused questions. But now every question is framed through the lens of the story.
 
-**For each area, ask up to 4 focused questions using AskUserQuestion**, then ask "Want to refine this area further, or move to the next?"
+**4 questions per area, then "more or next?"**
 
-Example questions per area type:
+Your questions should be specific to the data, not generic. Instead of "Which columns to visualize?", say:
 
-**Geographic distribution:**
-- Which GeoJSON layers to include? (list discovered files/geometry types)
-- How to link map features to table? (suggest column pairs based on shared property names)
-- Color coding strategy? (categorical by mode, numeric by distance, etc.)
-- Cluster/geometry type switching? (if multiple cluster types found in GeoJSON)
+> "For understanding mode choice drivers, I'd suggest:
+> - **base_mode** pie chart (5 values: car 34%, pt 31%, bike 17%, walk 12%, drt 7%) -- shows the overall split
+> - **travel_time** histogram (range 2-120 min, binSize 10 min) -- filter by travel time bands
+> - **distance** histogram (range 0.5-45 km, binSize 5 km) -- see how distance relates to mode
+> - **budget** histogram (range 1-15, binSize 1) -- understand willingness to pay
+>
+> Want to adjust any of these, or add/remove charts?"
 
-**Temporal patterns:**
-- Which time columns to visualize? (list discovered time columns)
-- Bin size for time histograms? (1 hour = 3600, 30 min = 1800, etc.)
-- Show as distribution or timeline?
+**Data-driven recommendations for each question:**
 
-**Category breakdowns:**
-- Which categorical columns? (list discovered categoricals)
-- Pie chart or histogram for each?
-- Custom color schemes? (let user specify or use defaults)
+- **Histogram columns**: Only suggest columns where the distribution is interesting (std > 0.1 * mean). Skip columns that are nearly constant.
+- **Pie chart columns**: Only suggest categorical columns with 2-8 unique values. If a column has >8 values, recommend histogram instead or suggest grouping.
+- **Color column**: Recommend the categorical column most central to the story with <= 8 values. If the story is about transport modes, that's `base_mode`. If about demographics, maybe `person_sex` or an age group.
+- **Scatter plot axes**: Suggest pairs that likely correlate based on domain knowledge (travel_time vs distance, budget vs income).
+- **Correlation matrix attributes**: Include 6-10 numeric columns most relevant to the story.
 
-**Attribute correlations:**
-- Which numeric columns to include in correlation matrix? (list discovered numerics)
-- Link to scatter plot for exploration?
+### Step 4: Design the Dashboard
 
-**Smart defaults:** If the user says "you decide" or picks an option like "All of the above", make reasonable choices:
-- Use the most descriptive ID column as `idColumn`
-- Put the map on the left at width 2, charts on the right at width 1
-- Default binSize: time columns = 3600, distance = 1000, generic numeric = auto
-- Include data-table if table has < 50 columns
-- Use categorical colorBy for mode-like columns, numeric for continuous values
-- Set column formats for all time/distance/decimal columns
+After gathering requirements, design the full dashboard. This is where your data knowledge pays off.
 
-### Step 4: Offer to Refine or Proceed
+#### Bin Size Logic
 
-After covering all selected areas, present a brief summary of what will be generated:
+Calculate bin sizes from actual data statistics. The goal: **8-15 bins** across the data range, with human-readable boundaries.
 
 ```
-## Dashboard Plan
-- 1 tab: "Requests Analysis"
-- Row 1: Map (width 2) + Data Table (width 1)
-  - Map layers: origin clusters (fill), request lines, destination points
-  - Geometry type selector: origin / destination / od
-  - Color-by selector: base_mode, travel_time, distance
-- Row 2: 3 histograms (treq, distance, budget)
-- Row 3: pie chart (base_mode) + pie chart (commute)
-- Row 4: correlation matrix + scatter plot (linked)
-- Color schemes: base_mode with transport mode colors
+range = max - min
+raw_bin_count = 12  (target)
+raw_bin_size = range / raw_bin_count
+
+# Round to a "nice" number
+nice_bin_size = round to nearest: 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000
+  (pick the nice number closest to raw_bin_size)
+
+# Verify: range / nice_bin_size should give 6-20 bins. Adjust if not.
+```
+
+**Special cases:**
+- Time in seconds: bin to 900 (15 min), 1800 (30 min), or 3600 (1 hour)
+- Distance in meters: bin to 1000 (1 km), 2000 (2 km), 5000 (5 km), 10000 (10 km)
+- Small decimals (0-5 range): bin to 0.5 or 1.0
+- Very large ranges (0-100000): bin to 5000 or 10000
+- Boolean/binary columns: binSize doesn't apply -- use pie-chart instead
+
+#### Color Palette Design
+
+**Consistent colors across the entire dashboard.** Define a `colorSchemes` block for every categorical attribute used in colorBy, pie charts, or map layers.
+
+Rules:
+1. **Transport modes** get semantically meaningful colors:
+   - car/drive: red (#e74c3c)
+   - pt/transit/bus: blue (#3498db)
+   - bike/bicycle: green (#2ecc71)
+   - walk: orange/yellow (#f39c12)
+   - drt/rideshare/pooling: purple (#9b59b6)
+   - ride/taxi: teal (#1abc9c)
+   - default: gray (#95a5a6)
+
+2. **Activity types** get distinct, non-transport colors:
+   - home: blue (#4477ff)
+   - work: red (#ff4477)
+   - education: green (#44ff77)
+   - shopping: orange (#ff7744)
+   - leisure: purple (#aa44ff)
+   - other: gray (#777777)
+
+3. **Binary columns** (yes/no, true/false, male/female): use two clearly distinct colors.
+
+4. **If a column has >8 unique values**, do NOT put it in colorSchemes. Use it only with numeric colorBy (sequential scheme like YlOrRd, Blues, etc.).
+
+5. **Reuse the same colorScheme** everywhere a column appears: if `base_mode` uses red for car in a pie chart, the map layers colored by base_mode must use the same red.
+
+6. **Check existing dashboards** for established color conventions and reuse them.
+
+#### Chart Selection Logic
+
+Pick chart types based on the data and the story:
+
+| Data characteristic | Chart type | When |
+|---------------------|-----------|------|
+| Categorical, 2-8 values | pie-chart | Shows proportions; use when the split is the insight |
+| Categorical, 2-8 values | histogram | Shows distribution shape; use when the pattern is the insight |
+| Numeric, continuous | histogram | Always -- with computed bin size |
+| Time (seconds) | histogram | With time-appropriate bin size (900/1800/3600) |
+| Two numeric columns, same entity | scatter-plot | When correlation matters to the story |
+| 5+ numeric columns | correlation-matrix | Exploration dashboard, paired with scatter-plot |
+| Spatial data + table linkage | map | When geography matters to the story |
+| Any | data-table | Almost always include -- it's the anchor for all interactions |
+
+#### Title and Description
+
+Write the `header.title` and `header.description` to frame the story. Not generic ("Data Dashboard") but specific ("Commuter Request Analysis: Understanding Mode Choice and Travel Patterns in the Munich Metropolitan Area").
+
+#### Column Visibility
+
+Hide columns that are:
+- Internal IDs not useful to the viewer (pax_id, geometry_wkt)
+- Raw coordinates (start_x, start_y, origin_lon, etc.)
+- Duplicate or derived columns the user won't need
+
+Show columns that:
+- Support the story (travel_time, base_mode, distance for a mode choice story)
+- Have meaningful formatted values (use column formats for time/distance/decimal)
+
+### Step 5: Present Plan with Data Rationale
+
+Present the dashboard design with your reasoning:
+
+```
+## Dashboard: "Commuter Mode Choice Analysis"
+
+**Story:** Understanding what drives transport mode decisions in the Munich metro area.
+
+### Layout Plan
+
+**Row 1: Geographic Overview + Data Table**
+- Map (width 2, height 10): 5 layers
+  - Origin cluster boundaries (fill, geometryType: origin)
+  - Destination cluster boundaries (fill, geometryType: destination)
+  - OD flow arcs (arc, geometryType: od) with widthBy: num_requests [4,14]
+  - Request OD lines (line) -- always visible
+  - Request destinations (circle) -- always visible
+  - Controls: geometry type selector, color-by selector (default: base_mode)
+- Data Table (width 1, height 10): sortable, filterable
+
+**Row 2: Key Distributions (story: what does demand look like?)**
+- Departure Time histogram (binSize: 3600 = 1h, range 6:00-20:00 → 14 bins)
+- Distance histogram (binSize: 5000 = 5km, range 0.5-45km → 9 bins)
+- Mode Share pie chart (5 values: car 34%, pt 31%, bike 17%, walk 12%, drt 7%)
+
+**Row 3: Flexibility & Demographics (story: who are these travelers?)**
+- Budget histogram (binSize: 1.0, range 1-15 → 14 bins)
+- Max Detour histogram (binSize: 0.2, range 1.0-3.0 → 10 bins)
+- Car Availability pie chart (3 values: always, sometimes, never)
+
+**Row 4: Correlation Explorer**
+- Correlation matrix: travel_time, distance, budget, max_cost, person_income, person_age
+- Scatter plot: budget vs travel_time, colored by base_mode (linked to matrix)
+
+**Color scheme (consistent everywhere):**
+  base_mode: car=#e74c3c, pt=#3498db, bike=#2ecc71, walk=#f39c12, drt=#9b59b6
+
+**Column formats:**
+  treq → time (from seconds), travel_time → duration (min), distance → distance (km), ...
 ```
 
 Then ask: "Ready to generate, or want to adjust anything?"
 
-### Step 5: Generate Dashboard YAML
+### Step 6: Generate Dashboard YAML
 
-Using all gathered decisions + the reference guide schema, generate complete YAML.
+Using the approved design + the reference guide schema, generate complete YAML.
 
-**Checklist before writing:**
-- [ ] `header` has `tab` and `title`
-- [ ] `table` has `dataset`, `idColumn` -- both verified against actual CSV
-- [ ] `table.columns.formats` set for all time/duration/distance columns
-- [ ] `table.columns.hide` set for coordinate columns and internal IDs
-- [ ] All card `type` values are valid (from `_allPanels.ts` registry)
+**Pre-write validation checklist:**
+- [ ] `header.title` and `header.description` tell the story
+- [ ] `table.dataset` and `table.idColumn` verified against actual CSV
+- [ ] `table.columns.formats` set for ALL time/duration/distance/decimal columns found
+- [ ] `table.columns.hide` removes coordinate columns and internal IDs
+- [ ] All card `type` values are valid (`histogram`, `pie-chart`, `scatter-plot`, `correlation-matrix`, `map`, `data-table`, `timeline`, `text`)
 - [ ] All `linkage.column` values match actual CSV column names
-- [ ] All `linkage.tableColumn` and `linkage.geoProperty` values match actual data
-- [ ] Map `center` is [longitude, latitude] (NOT [lat, lon])
+- [ ] All `linkage.tableColumn` and `linkage.geoProperty` values match actual GeoJSON properties
+- [ ] Map `center` is [longitude, latitude] computed from coordinate columns
+- [ ] Map `zoom` is appropriate for the coordinate spread
 - [ ] GeoJSON `file` paths are correct relative to YAML output location
 - [ ] All `colorBy.attribute` values exist in the data
-- [ ] `width` values within each row create a sensible proportion
-- [ ] `height` values are reasonable (5-8 for charts, 8-12 for maps)
+- [ ] Categorical colorBy attributes have <= 8 unique values
+- [ ] `colorSchemes` block defines colors for EVERY categorical attribute used anywhere
+- [ ] Same attribute uses the same colors everywhere (pie, map colorBy, legend)
+- [ ] Histogram bin sizes produce 6-20 readable bins based on actual data range
+- [ ] Time histograms use round bin sizes (900, 1800, 3600)
+- [ ] Distance histograms use round bin sizes (1000, 2000, 5000, 10000)
+- [ ] `width` values within each row create sensible proportions
+- [ ] `height` values are reasonable (5 for charts, 8 for correlation/scatter, 10 for maps)
+- [ ] Charts selected serve the declared story -- no gratuitous charts
 
-Write the YAML file to the working directory using the Write tool.
+Write the YAML file using the Write tool.
 
-### Step 6: Validate & Present
+### Step 7: Validate & Present
 
 After writing the YAML file:
 
-1. **Verify file references**: Use Glob/Bash to confirm all referenced CSV and GeoJSON files exist at the expected paths
-2. **Verify column references**: Re-read the CSV header and confirm all column names used in the YAML actually exist
-3. **Present summary**: Show what was generated, which file was written, and what the dashboard will look like
-4. **Offer refinements**: "Want to add more charts, adjust colors, change the layout, or add another tab?"
+1. **Verify file references**: Glob/Bash to confirm all referenced CSV and GeoJSON files exist
+2. **Verify column references**: Re-read CSV header and confirm all column names in YAML exist
+3. **Verify bin sizes make sense**: For each histogram, print `(max - min) / binSize` to show the number of bins
+4. **Verify color consistency**: Check that every categorical attribute in colorBy/pie-chart has a matching colorSchemes entry
+5. **Present summary**: What was generated, what story it tells, which file was written
+6. **Offer refinements**: "Want to add more charts, adjust bin sizes, change colors, restructure the layout, or add another tab?"
 
 ---
 
 ## Key Rules
 
-1. **Never guess column names.** Always read actual CSV headers before referencing columns.
-2. **Never guess coordinates.** If no center is obvious, omit `center` and `zoom` (auto-detection).
-3. **Every histogram and pie-chart should have linkage** for interactive filtering.
-4. **Every map layer with linkage needs both `tableColumn` and `geoProperty`** that match actual data.
-5. **Use `data-table` (not `table`)** for the interactive table card connected to the central DataTableManager.
-6. **`center` is always [lon, lat]**. If you see coordinates like [48.14, 11.57], that's [lat, lon] and must be reversed to [11.57, 48.14].
-7. **Keep it focused.** Don't add 20 charts when 6 will do. More charts = slower dashboard and harder to navigate.
-8. **Match the user's scope.** If they asked for geographic analysis, don't also add demographics unless asked.
+1. **Analyze the actual data, not just headers.** Read rows, compute stats, count unique values. Your bin sizes, chart choices, and color palettes depend on real values.
+2. **Tell the user's story.** Every chart should earn its place by supporting the narrative. If a histogram doesn't help the story, don't include it.
+3. **Consistent colors everywhere.** Define `colorSchemes` once, use everywhere. Same attribute = same colors in pie charts, map layers, legends.
+4. **Pie charts for 2-8 values only.** More values → use histogram with categorical binning, or skip.
+5. **Smart bin sizes from data.** Never use arbitrary defaults. Compute from min/max/range to get 8-15 human-readable bins.
+6. **Never guess column names or coordinates.** Always verify against actual data.
+7. **`center` is [lon, lat].** Compute from coordinate column averages. Never guess.
+8. **Use `data-table` (not `table`)** for the interactive table card.
+9. **Every histogram and pie-chart gets linkage** for interactive filtering.
+10. **Keep it focused.** 6-12 charts that tell the story > 20 charts that overwhelm. Match the user's declared scope.
+11. **Format all numeric columns** that appear in the data table: time→HH:MM:SS, duration→min, distance→km, decimals for floats.
+12. **Hide internal columns** (coordinate pairs, geometry WKT, raw IDs) from the data table.
