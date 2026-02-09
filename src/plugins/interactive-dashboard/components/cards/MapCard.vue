@@ -195,6 +195,9 @@ interface Props {
   }
   geometryTypeOptions?: Array<{ value: string; label: string }>
   colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+
+  // If true, hover/select all layers under the cursor (multi-level picking)
+  multiLevelSelection?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -211,6 +214,7 @@ const props = withDefaults(defineProps<Props>(), {
   layerStrategy: 'auto',
   geometryTypeOptions: () => [],
   colorByOptions: () => [],
+  multiLevelSelection: false,
 })
 
 // Emits
@@ -2206,18 +2210,68 @@ function pickMultipleFeatures(info: any, layerConfig: LayerConfig): any[] {
   }
 
   try {
+    const pickRadius = 1
+    if (!props.multiLevelSelection) {
+      const picked = (deckOverlay.value as any).pickObject({
+        x: info.x,
+        y: info.y,
+        radius: pickRadius,
+        layerIds: [layerId],
+      })
+
+      return picked ? [picked] : []
+    }
+
+    const layerIds = getPickableLayerIds()
+    const pickIds = layerIds.length > 0 ? layerIds : [layerId]
+
     const picked = (deckOverlay.value as any).pickMultipleObjects({
       x: info.x,
       y: info.y,
-      radius: 2,
-      layerIds: [layerId],
+      radius: pickRadius,
+      layerIds: pickIds,
     })
 
     return picked || []
   } catch (error) {
-    console.warn('[MapCard] pickMultipleObjects failed:', error)
+    console.warn('[MapCard] picking failed:', error)
     return info.object ? [info] : []
   }
+}
+
+function getPickableLayerIds(): string[] {
+  if (!props.layers) return []
+
+  const ids: string[] = []
+  props.layers.forEach((layerConfig) => {
+    if (!isLayerVisible(layerConfig)) return
+    if (!layerConfig.linkage) return
+
+    switch (layerConfig.type) {
+      case 'polygon':
+      case 'fill':
+        ids.push(`polygon-${layerConfig.name}`)
+        break
+      case 'line':
+        ids.push(`line-${layerConfig.name}`)
+        ids.push(`line-destinations-${layerConfig.name}`)
+        break
+      case 'arc':
+        ids.push(`arc-${layerConfig.name}`)
+        ids.push(`self-loops-${layerConfig.name}`)
+        ids.push(`arc-tips-${layerConfig.name}`)
+        break
+      case 'scatterplot':
+      case 'circle':
+      case 'point':
+        ids.push(`scatterplot-${layerConfig.name}`)
+        break
+      default:
+        break
+    }
+  })
+
+  return ids
 }
 
 function findLayerConfigById(layerId: string | undefined): LayerConfig | null {

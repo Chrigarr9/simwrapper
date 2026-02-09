@@ -93,6 +93,7 @@ export interface MapCardConfig extends CardConfig {
   center?: [number, number]  // Map center [lon, lat]
   zoom?: number  // Initial zoom level
   layers?: MapLayerConfig[]  // Map layers
+  multiLevelSelection?: boolean  // If true, hover/select all layers under cursor
 }
 
 /**

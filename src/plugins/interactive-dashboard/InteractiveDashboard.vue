@@ -110,6 +110,7 @@
               :map-style="card.mapStyle"
               :legend="card.legend"
               :tooltip="card.tooltip"
+              :multi-level-selection="card.multiLevelSelection"
               :geometry-type="geometryType"
               :color-by-attribute="colorByAttribute"
               :map-controls-config="yaml.map?.controls"
