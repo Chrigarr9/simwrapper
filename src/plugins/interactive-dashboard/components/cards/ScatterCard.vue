@@ -660,7 +660,7 @@ const buildChartData = () => {
     zerolinecolor: gridColor,
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
-    tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+    tickformat: '.5~g', // Smart formatting: up to 5 significant digits, scientific at/above 100,000
     range: [xMin - xPadding, xMax + xPadding],  // Fixed range from baseline prevents zooming
   }
 
@@ -674,7 +674,7 @@ const buildChartData = () => {
     zerolinecolor: gridColor,
     automargin: true,  // Allow Plotly to expand margins for long labels
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
-    tickformat: '.3~g', // Smart formatting: up to 3 significant digits, no trailing zeros
+    tickformat: '.5~g', // Smart formatting: up to 5 significant digits, scientific at/above 100,000
     range: [yMin - yPadding, yMax + yPadding],  // Fixed range from baseline prevents zooming
   }
 

@@ -119,6 +119,7 @@ interface NumberFormatConfig {
   useGrouping: boolean            // Use thousand separators (true)
   compactThreshold: number        // Value above which to use compact notation (1000000)
   scientificThreshold: number     // Value below which to use scientific notation (0.01)
+  scientificThresholdUpper: number // Value above which to use scientific notation (10000)
 }
 
 /**
@@ -357,7 +358,8 @@ export class StyleManager {
       maxDecimals: 4,               // For very precise values
       useGrouping: true,            // Use thousand separators (1,234.56)
       compactThreshold: 1000000,    // Use compact notation above 1M (1.2M)
-      scientificThreshold: 0.01,    // Use scientific notation below 0.01 (1.2e-3)
+      scientificThreshold: 0.001,   // Use scientific notation at/below 0.001 (1.0e-3)
+      scientificThresholdUpper: 100000, // Use scientific notation at/above 100,000 (1.0e+5)
     },
 
     // Scientific mode configuration (for publication-ready output)
@@ -711,6 +713,9 @@ export class StyleManager {
       return '#808080'
     }
 
+    // Handle NaN (e.g. from division by zero when min === max)
+    if (isNaN(t)) t = 0
+
     // Clamp t to [0, 1]
     t = Math.max(0, Math.min(1, t))
 
@@ -852,13 +857,18 @@ export class StyleManager {
     const decimals = options?.decimals ?? config.defaultDecimals
     const useGrouping = !options?.noGrouping && config.useGrouping
 
-    // Handle very small numbers with scientific notation
-    if (Math.abs(value) > 0 && Math.abs(value) < config.scientificThreshold) {
+    // Handle very small numbers with scientific notation (inclusive of threshold)
+    if (Math.abs(value) > 0 && Math.abs(value) <= config.scientificThreshold) {
       return value.toExponential(decimals)
     }
 
-    // Handle very large numbers with compact notation
-    if (options?.compact || Math.abs(value) >= config.compactThreshold) {
+    // Handle large numbers with scientific notation (above upper threshold)
+    if (Math.abs(value) >= config.scientificThresholdUpper) {
+      return value.toExponential(decimals)
+    }
+
+    // Handle very large numbers with compact notation (only when explicitly requested)
+    if (options?.compact) {
       return this.formatCompact(value, decimals)
     }
 
