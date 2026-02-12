@@ -71,7 +71,7 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 | Metric | Value |
 |--------|-------|
 | Plans completed | 38 |
-| Quick tasks completed | 5 |
+| Quick tasks completed | 6 |
 | Plans requiring revision | 0 |
 | Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
 | Research phases triggered | 1 (Phase 3 research) |
@@ -333,6 +333,7 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 | 003 | Dashboard visualization polish - axis labels, multi-select, density mode | 2026-01-28 | Scientific publication readiness |
 | 006 | Scientific mode markers and patterns for print accessibility | 2026-01-30 | Grayscale-ready charts |
 | 007 | Scientific mode polish - comparison styling and labels | 2026-01-30 | Publication-ready comparison mode |
+| 008 | X-axis limits and auto-percentile trim | 2026-02-12 | Outlier-free axis ranges via YAML config |
 
 ---
 
@@ -350,7 +351,17 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 **Phase progress:** Phase 4.3 complete (4/4 plans complete)
 
-**Branch:** `feature/scientific-mode` (ready for merge or continue with Phase 5)
+**Branch:** `feature/scientific-mode`
+
+**Quick Task 008 Completed (2026-02-12):**
+
+X-axis limits and auto-percentile trim:
+- Created axisLimits.ts utility with computePercentileBounds() and computeAxisRange()
+- HistogramCard accepts xMin/xMax/autoTrim YAML config for x-axis range control
+- ScatterCard accepts xMin/xMax/yMin/yMax/xAutoTrim/yAutoTrim for both axes
+- Explicit min/max overrides autoTrim; undefined returned for Plotly auto-range
+- 20 unit tests for axis range computation
+- InteractiveDashboard passes axis limit props from YAML card config
 
 **Plan 04.3-04 Completed (2026-02-16):**
 
