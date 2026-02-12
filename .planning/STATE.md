@@ -71,7 +71,7 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 | Metric | Value |
 |--------|-------|
 | Plans completed | 38 |
-| Quick tasks completed | 6 |
+| Quick tasks completed | 7 |
 | Plans requiring revision | 0 |
 | Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
 | Research phases triggered | 1 (Phase 3 research) |
@@ -196,6 +196,12 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 | YAML colorBy type override | Explicit type: 'numeric' or 'categorical' in YAML config overrides auto-detection for edge cases | 2026-02-16 |
 | Plotly title object form for legends/colorbars | title: { text, font, side } provides consistent font styling and positioning control | 2026-02-16 |
 | ColorBySelector kebab-case event names | Vue 2.7 requires exact event name match - use kebab-case for template binding compatibility | 2026-02-16 |
+| Shallow watchers sufficient for reactive data arrays/Sets | LinkableCardWrapper creates new references on change; deep walking 10k rows per watcher is wasteful | 2026-02-12 |
+| MapCard.layers retains deep:true | Config array contents change without reference change; only one that needs deep watching | 2026-02-12 |
+| Column index normalizes to lowercase strings | Case-insensitive matching consistent with existing valuesMatch behavior | 2026-02-12 |
+| Centralized getFilteredData cache in FilterManager | Eliminates N-times multiplier; filter computed once, all wrappers share same cached array | 2026-02-12 |
+| ROW_HEIGHT=32px constant for virtual scrolling | Shared between JS computed properties and CSS for reliable scroll position calculation | 2026-02-12 |
+| Set watchers use [ref, size] tuple pattern | Vue 2.7 doesn't reliably track Set mutations; watching size ensures change detection | 2026-02-12 |
 
 ### Roadmap Evolution
 
@@ -321,6 +327,11 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 21. **Optional interface methods for extensibility**: Adding optional methods to existing interfaces (onAttributePairSelected?) maintains backwards compatibility while enabling new features.
 22. **import type for type-only imports**: When a type is used only in type positions (extends, type annotations), use `import type` to satisfy isolatedModules and enable tree-shaking.
 23. **Plotly event binding via plotEl.on()**: After Plotly.newPlot(), cast element to `any` and use `.on('plotly_*', handler)` for event binding.
+24. **Shallow watchers for reactive data**: When the source creates new array/Set references on change (like LinkableCardWrapper does), deep watchers are O(n) overhead with zero benefit. Remove `{ deep: true }` from filteredData/hoveredIds/selectedIds watchers.
+25. **Column indexing for filter performance**: Map<column, Map<normalizedValue, Set<rowIndex>>> enables O(k) categorical filtering where k = filter values, vs O(n) linear scan where n = dataset size.
+26. **Centralized filter cache eliminates N-times multiplier**: Instead of N cards each calling applyFilters(data), use getFilteredData() which caches the result. Cache invalidated on notifyObservers().
+27. **Virtual scrolling with spacer rows**: Render only visible rows + buffer. Use `<tr>` spacers with computed height (startIndex * ROW_HEIGHT) to maintain scroll position. ROW_HEIGHT must match CSS.
+28. **Plotly.newPlot vs Plotly.react for event handler lifecycle**: newPlot() destroys all event handlers. react() preserves them. Pattern: newPlot once in initializeChart + register handlers, then react() for all updates.
 
 ---
 
@@ -334,6 +345,7 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 | 006 | Scientific mode markers and patterns for print accessibility | 2026-01-30 | Grayscale-ready charts |
 | 007 | Scientific mode polish - comparison styling and labels | 2026-01-30 | Publication-ready comparison mode |
 | 008 | X-axis limits and auto-percentile trim | 2026-02-12 | Outlier-free axis ranges via YAML config |
+| 009 | Dashboard performance optimizations | 2026-02-12 | Column indexes, centralized cache, debounce, virtual scroll |
 
 ---
 
@@ -353,15 +365,16 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 **Branch:** `feature/scientific-mode`
 
-**Quick Task 008 Completed (2026-02-12):**
+**Quick Task 009 Completed (2026-02-12):**
 
-X-axis limits and auto-percentile trim:
-- Created axisLimits.ts utility with computePercentileBounds() and computeAxisRange()
-- HistogramCard accepts xMin/xMax/autoTrim YAML config for x-axis range control
-- ScatterCard accepts xMin/xMax/yMin/yMax/xAutoTrim/yAutoTrim for both axes
-- Explicit min/max overrides autoTrim; undefined returned for Plotly auto-range
-- 20 unit tests for axis range computation
-- InteractiveDashboard passes axis limit props from YAML card config
+Dashboard performance optimizations for 10k+ row datasets:
+- FilterManager: Column indexes with buildIndex() for O(1) categorical lookups
+- FilterManager: Centralized getFilteredData()/getFilteredIds() cache (filter computed once, not N times)
+- HistogramCard: initializeChart/updateChart pattern with 50ms debounce (event handlers registered once)
+- All 7 card files: Removed { deep: true } from data array/Set watchers (shallow comparison sufficient)
+- DataTableCard: Virtual scrolling with offset-based windowed rendering (~80 DOM rows vs 10k)
+- 15 new FilterManager tests (22 total, all passing)
+- InteractiveDashboard calls filterManager.buildIndex() after data loading
 
 **Plan 04.3-04 Completed (2026-02-16):**
 
