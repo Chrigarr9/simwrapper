@@ -37,8 +37,8 @@
       <!-- Note: Fullscreen is handled by dashboard-level card header, not here -->
     </div>
 
-    <!-- Table contents -->
-    <div class="table-wrapper" ref="tableWrapper">
+    <!-- Table contents with virtual scrolling -->
+    <div class="table-wrapper" ref="tableWrapper" @scroll="handleScroll">
       <table class="data-table">
         <thead>
           <tr>
@@ -58,11 +58,16 @@
           </tr>
         </thead>
         <tbody>
+          <!-- Top spacer for virtual scroll -->
+          <tr v-if="topPadding > 0" :style="{ height: topPadding + 'px' }">
+            <td :colspan="visibleColumns.length"></td>
+          </tr>
           <tr
-            v-for="(row, rowIndex) in sortedDisplayData"
-            :key="getUniqueRowKey(row, rowIndex)"
+            v-for="(row, idx) in visibleRows"
+            :key="getUniqueRowKey(row, startIndex + idx)"
             :data-row-id="getRowId(row)"
             :class="getRowClasses(row)"
+            :style="{ height: ROW_HEIGHT + 'px' }"
             @mouseenter="handleRowHover(row)"
             @mouseleave="handleRowLeave"
             @click="handleRowClick(row)"
@@ -73,6 +78,10 @@
             >
               {{ formatCellValue(row[col], col) }}
             </td>
+          </tr>
+          <!-- Bottom spacer for virtual scroll -->
+          <tr v-if="bottomPadding > 0" :style="{ height: bottomPadding + 'px' }">
+            <td :colspan="visibleColumns.length"></td>
           </tr>
         </tbody>
       </table>
@@ -134,6 +143,15 @@ const sortColumn = ref('')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 const enableScrollOnHover = ref(true)
 const isHoverFromTable = ref(false)
+
+// Virtual scrolling constants and state
+const ROW_HEIGHT = 32 // Fixed row height in pixels (matches CSS td padding)
+const BUFFER_ROWS = 10 // Extra rows above/below viewport for smooth scrolling
+
+const scrollTop = ref(0)
+const containerHeight = ref(400) // Will be measured from DOM
+
+let tableResizeObserver: ResizeObserver | null = null
 
 // Reactive counter to trigger recomputation when filters change
 const filterVersion = ref(0)
@@ -266,6 +284,33 @@ const sortedDisplayData = computed(() => {
   // Filtered on top, then unfiltered
   return [...filtered, ...unfiltered]
 })
+
+// Virtual scrolling computed properties
+const totalRows = computed(() => sortedDisplayData.value.length)
+
+const startIndex = computed(() => {
+  const start = Math.floor(scrollTop.value / ROW_HEIGHT) - BUFFER_ROWS
+  return Math.max(0, start)
+})
+
+const endIndex = computed(() => {
+  const visibleCount = Math.ceil(containerHeight.value / ROW_HEIGHT)
+  const end = Math.floor(scrollTop.value / ROW_HEIGHT) + visibleCount + BUFFER_ROWS
+  return Math.min(totalRows.value, end)
+})
+
+const visibleRows = computed(() => {
+  return sortedDisplayData.value.slice(startIndex.value, endIndex.value)
+})
+
+const topPadding = computed(() => startIndex.value * ROW_HEIGHT)
+const bottomPadding = computed(() => (totalRows.value - endIndex.value) * ROW_HEIGHT)
+
+// Scroll handler for virtual scrolling
+function handleScroll(event: Event) {
+  const target = event.target as HTMLElement
+  scrollTop.value = target.scrollTop
+}
 
 // Get row ID
 function getRowId(row: any): any {
@@ -412,25 +457,20 @@ watch(() => props.showComparison, (newVal, oldVal) => {
 })
 
 // Scroll to hovered row when hover comes from map
-// Uses manual scrollTop calculation to avoid scrolling the whole page
+// Uses index-based calculation for virtual scrolling (no DOM query needed)
 watch(
   [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
-  async () => {
+  () => {
     if (props.hoveredIds.size === 0) return
     if (!enableScrollOnHover.value) return
     if (isHoverFromTable.value) return
 
-    await nextTick()
-
     const firstId = Array.from(props.hoveredIds)[0]
-    const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`) as HTMLElement | null
-    if (rowElement && tableWrapper.value) {
-      // Calculate scroll position to center the row within the table wrapper
-      const wrapperHeight = tableWrapper.value.clientHeight
-      const rowTop = rowElement.offsetTop
-      const rowHeight = rowElement.offsetHeight
-      const targetScrollTop = rowTop - (wrapperHeight / 2) + (rowHeight / 2)
-
+    const idColumn = props.tableConfig?.idColumn || 'id'
+    // Find row index in sorted data (works with virtual scrolling)
+    const rowIndex = sortedDisplayData.value.findIndex(row => row[idColumn] === firstId)
+    if (rowIndex >= 0 && tableWrapper.value) {
+      const targetScrollTop = rowIndex * ROW_HEIGHT - (containerHeight.value / 2) + (ROW_HEIGHT / 2)
       tableWrapper.value.scrollTo({
         top: Math.max(0, targetScrollTop),
         behavior: 'smooth'
@@ -445,6 +485,16 @@ onMounted(() => {
     debugLog('[DataTableCard] Registering filter observer')
     props.filterManager.addObserver(filterObserver)
   }
+
+  // Measure container height for virtual scrolling
+  if (tableWrapper.value) {
+    containerHeight.value = tableWrapper.value.clientHeight
+    tableResizeObserver = new ResizeObserver((entries) => {
+      containerHeight.value = entries[0].contentRect.height
+    })
+    tableResizeObserver.observe(tableWrapper.value)
+  }
+
   // Emit isLoaded to hide the spinner in the dashboard card frame
   emit('isLoaded')
 })
@@ -454,6 +504,10 @@ onUnmounted(() => {
   if (props.filterManager) {
     debugLog('[DataTableCard] Unregistering filter observer')
     props.filterManager.removeObserver(filterObserver)
+  }
+  if (tableResizeObserver) {
+    tableResizeObserver.disconnect()
+    tableResizeObserver = null
   }
 })
 </script>
@@ -611,9 +665,14 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
   white-space: nowrap;
   color: var(--dashboard-text-primary, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;  /* Prevent extremely wide columns from breaking virtual scroll */
 }
 
 .data-table tbody tr {
+  height: 32px;  /* Must match ROW_HEIGHT constant for virtual scrolling */
+  box-sizing: border-box;
   transition: background-color 0.15s ease;
 }
 
