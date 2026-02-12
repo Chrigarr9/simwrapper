@@ -113,7 +113,11 @@ const updateFilteredData = () => {
     return
   }
   const allData = props.dataTableManager.getData()
-  const filtered = props.filterManager.applyFilters(allData)
+  const idColumn = props.dataTableManager.getIdColumn()
+  // Use centralized cached filtering instead of per-card applyFilters.
+  // All N wrappers now share the SAME cached array reference from getFilteredData(),
+  // so filter computation happens exactly once per filter change.
+  const filtered = props.filterManager.getFilteredData(allData, idColumn)
   debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
     '- all:', allData.length, 'filtered:', filtered.length)
   filteredData.value = filtered

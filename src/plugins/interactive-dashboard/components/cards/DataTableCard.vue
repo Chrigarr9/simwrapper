@@ -163,11 +163,12 @@ const displayData = computed(() => {
 const filteredRowIds = computed(() => {
   // Access filterVersion to create reactive dependency
   const _ = filterVersion.value
-  if (!props.filterManager || displayData.value.length === 0) return new Set()
-  const filtered = props.filterManager.applyFilters(displayData.value)
+  if (!props.filterManager || !props.dataTableManager || displayData.value.length === 0) return new Set()
   const idColumn = props.tableConfig?.idColumn || 'id'
-  debugLog('[DataTableCard] filteredRowIds recomputed - filtered count:', filtered.length, 'version:', filterVersion.value)
-  return new Set(filtered.map((row: any) => row[idColumn]))
+  // Use centralized cached filtered IDs instead of per-card applyFilters
+  const ids = props.filterManager.getFilteredIds(displayData.value, idColumn)
+  debugLog('[DataTableCard] filteredRowIds recomputed - filtered count:', ids.size, 'version:', filterVersion.value)
+  return ids
 })
 
 // Visible columns (respect show list, exclude hidden ones, limit by maxColumns)

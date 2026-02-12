@@ -1294,6 +1294,15 @@ export default defineComponent({
         }
       }
 
+      // Build column index for O(1) filter lookups on loaded data
+      if (this.filterManager && this.dataTableManager) {
+        const data = this.dataTableManager.getData()
+        if (data.length > 0) {
+          this.filterManager.buildIndex(data)
+          debugLog('[InteractiveDashboard] Built filter index for', data.length, 'rows')
+        }
+      }
+
       // Initialize sub-dashboards if configured
       await this.initializeSubDashboards()
     },
