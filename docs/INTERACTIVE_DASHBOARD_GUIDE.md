@@ -132,18 +132,42 @@ Distribution chart with interactive bin filtering.
 |----------|------|----------|---------|-------------|
 | `column` | string | yes | -- | CSV column to histogram |
 | `binSize` | number | no | auto | Width of each bin |
+| `xMin` | number | no | -- | Explicit x-axis minimum |
+| `xMax` | number | no | -- | Explicit x-axis maximum |
+| `autoTrim` | number | no | -- | Percentile for auto-trimming outliers (e.g., 95 = show central 95% of data) |
 | `linkage` | LinkageConfig | no | -- | Filter linkage config |
+
+**Axis range options:**
+- `xMin`/`xMax`: Hard-limit the x-axis to specific values. Useful when you know the meaningful data range.
+- `autoTrim`: Auto-calculate axis bounds from data percentiles. `autoTrim: 95` shows the 2.5th to 97.5th percentile, trimming extreme outliers. Range is computed from baseline (unfiltered) data so it stays stable during filtering.
+- If both `xMin`/`xMax` and `autoTrim` are set, explicit values override the auto-trimmed bounds.
+- If nothing is set, Plotly auto-ranges as before (backward compatible).
 
 ```yaml
 - type: histogram
   title: "Travel Time Distribution"
   column: travel_time
   binSize: 5
+  autoTrim: 95
   width: 1
   height: 5
   linkage:
     type: filter
     column: travel_time
+    behavior: toggle
+
+# Or with explicit bounds:
+- type: histogram
+  title: "Distance Distribution"
+  column: distance
+  binSize: 5000
+  xMin: 0
+  xMax: 50000
+  width: 1
+  height: 5
+  linkage:
+    type: filter
+    column: distance
     behavior: toggle
 ```
 
@@ -181,6 +205,18 @@ Two-axis point plot with optional color/size encoding. Supports dynamic axis upd
 | `markerSize` | number | no | 8 | Default marker size in pixels |
 | `idColumn` | string | no | -- | Column for linkage ID matching |
 | `listenToAttributePairSelection` | boolean | no | false | Update axes when correlation matrix cell is clicked |
+| `xMin` | number | no | -- | Explicit x-axis minimum |
+| `xMax` | number | no | -- | Explicit x-axis maximum |
+| `yMin` | number | no | -- | Explicit y-axis minimum |
+| `yMax` | number | no | -- | Explicit y-axis maximum |
+| `xAutoTrim` | number | no | -- | X-axis percentile auto-trim (e.g., 95 = central 95%) |
+| `yAutoTrim` | number | no | -- | Y-axis percentile auto-trim (e.g., 99 = central 99%) |
+
+**Axis range options:**
+- `xMin`/`xMax`/`yMin`/`yMax`: Hard-limit axes to specific values.
+- `xAutoTrim`/`yAutoTrim`: Auto-trim outliers per axis. `xAutoTrim: 95` shows the 2.5th to 97.5th percentile on the x-axis. Computed from baseline (unfiltered) data.
+- Explicit bounds override auto-trim when both are specified for the same axis.
+- If nothing is set, the existing baseline-range behavior is preserved (backward compatible).
 
 ```yaml
 - type: scatter-plot
@@ -190,9 +226,23 @@ Two-axis point plot with optional color/size encoding. Supports dynamic axis upd
   colorColumn: base_mode
   idColumn: request_id
   markerSize: 6
+  xAutoTrim: 95
+  yAutoTrim: 95
   width: 1
   height: 8
   listenToAttributePairSelection: true
+
+# Or mix explicit and auto-trim:
+- type: scatter-plot
+  title: "Distance vs Duration"
+  xColumn: distance
+  yColumn: travel_time
+  xMin: 0
+  xMax: 50000
+  yAutoTrim: 99
+  markerSize: 6
+  width: 1
+  height: 8
 ```
 
 ### `correlation-matrix`
@@ -829,6 +879,7 @@ layout:
       title: "Value Distribution"
       column: value
       binSize: 10
+      autoTrim: 95
       width: 1
       height: 5
       linkage:
@@ -953,6 +1004,7 @@ layout:
       title: "Travel Time"
       column: travel_time
       binSize: 300
+      autoTrim: 95
       width: 1
       height: 5
       linkage:
@@ -964,6 +1016,7 @@ layout:
       title: "Distance"
       column: distance
       binSize: 1000
+      autoTrim: 95
       width: 1
       height: 5
       linkage:
@@ -1174,6 +1227,7 @@ layout:
       title: "Origin Time"
       column: treq
       binSize: 3600
+      autoTrim: 95
       width: 1
       height: 5
       linkage:
@@ -1185,6 +1239,7 @@ layout:
       title: "Distance"
       column: distance
       binSize: 10000
+      autoTrim: 95
       width: 1
       height: 5
       linkage:
@@ -1226,6 +1281,8 @@ layout:
       colorColumn: base_mode
       idColumn: request_id
       markerSize: 6
+      xAutoTrim: 95
+      yAutoTrim: 95
       listenToAttributePairSelection: true
 ```
 

@@ -199,6 +199,45 @@ Your questions should be specific to the data, not generic. Instead of "Which co
 
 After gathering requirements, design the full dashboard. This is where your data knowledge pays off.
 
+#### Axis Range & Outlier Trimming
+
+Most real-world datasets contain outliers that distort axis ranges. Apply `autoTrim` to keep charts focused on the meaningful data range.
+
+**Rules:**
+1. **Always add `autoTrim: 95` to histograms** unless the column is naturally bounded (e.g., percentages 0-1, boolean). This trims the 2.5% most extreme values from each tail.
+2. **Always add `xAutoTrim: 95` and `yAutoTrim: 95` to scatter plots** for the same reason.
+3. **Use `99` instead of `95`** when the data has few outliers but you still want protection (e.g., counts, aggregated means).
+4. **Use explicit `xMin`/`xMax`** when you know the meaningful range (e.g., `xMin: 0` for distances, `xMax: 86400` for seconds in a day).
+5. **Explicit bounds override autoTrim** -- you can mix them (e.g., `xMin: 0` with `autoTrim: 95` uses 0 as min and the 97.5th percentile as max).
+6. **Skip autoTrim for naturally bounded columns:** percentages (0-1), rates (0-1), boolean-like columns, or columns where the full range is always meaningful.
+
+**Detection during data profiling:**
+- If `std > 0.5 * mean` or `max > 3 * (75th percentile)`, the column likely has outliers → use `autoTrim: 95`
+- If the column represents a proportion or percentage (all values 0-1), skip autoTrim
+- If the column is a time-of-day in seconds (0-86400), use `xMin: 0` and `xMax: 86400` instead
+
+```yaml
+# Histogram with auto-trim (recommended default)
+- type: histogram
+  column: distance
+  binSize: 5000
+  autoTrim: 95
+
+# Scatter with per-axis auto-trim
+- type: scatter-plot
+  xColumn: distance
+  yColumn: travel_time
+  xAutoTrim: 95
+  yAutoTrim: 95
+
+# Mix: explicit min + auto-trim max
+- type: histogram
+  column: income
+  binSize: 500
+  xMin: 0
+  autoTrim: 95
+```
+
 #### Bin Size Logic
 
 Calculate bin sizes from actual data statistics. The goal: **8-15 bins** across the data range, with human-readable boundaries.
@@ -394,6 +433,9 @@ Using the approved design + the reference guide schema, generate complete YAML.
 - [ ] Histogram bin sizes produce 6-20 readable bins based on actual data range
 - [ ] Time histograms use round bin sizes (900, 1800, 3600)
 - [ ] Distance histograms use round bin sizes (1000, 2000, 5000, 10000)
+- [ ] All histograms have `autoTrim: 95` (unless column is naturally bounded like percentages/rates)
+- [ ] All scatter plots have `xAutoTrim: 95` and `yAutoTrim: 95` (unless axes are naturally bounded)
+- [ ] Columns with known bounds use explicit `xMin`/`xMax` instead of or in addition to autoTrim
 - [ ] `width` values within each row create sensible proportions
 - [ ] `height` values are reasonable (5 for charts, 8 for correlation/scatter, 10 for maps)
 - [ ] Charts selected serve the declared story -- no gratuitous charts
@@ -424,6 +466,7 @@ After writing the YAML file:
 7. **`center` is [lon, lat].** Compute from coordinate column averages. Never guess.
 8. **Use `data-table` (not `table`)** for the interactive table card.
 9. **Every histogram and pie-chart gets linkage** for interactive filtering.
-10. **Keep it focused.** 6-12 charts that tell the story > 20 charts that overwhelm. Match the user's declared scope.
-11. **Format all numeric columns** that appear in the data table: time→HH:MM:SS, duration→min, distance→km, decimals for floats.
-12. **Hide internal columns** (coordinate pairs, geometry WKT, raw IDs) from the data table.
+10. **Every histogram gets `autoTrim: 95` and every scatter plot gets `xAutoTrim: 95` + `yAutoTrim: 95`** unless the column is naturally bounded (percentages, rates 0-1). This prevents outliers from distorting axis ranges.
+11. **Keep it focused.** 6-12 charts that tell the story > 20 charts that overwhelm. Match the user's declared scope.
+12. **Format all numeric columns** that appear in the data table: time→HH:MM:SS, duration→min, distance→km, decimals for floats.
+13. **Hide internal columns** (coordinate pairs, geometry WKT, raw IDs) from the data table.
