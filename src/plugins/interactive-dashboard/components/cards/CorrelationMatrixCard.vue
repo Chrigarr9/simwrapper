@@ -366,7 +366,7 @@ function handleResize() {
 }
 
 // Watch handlers
-watch(() => props.filteredData, debouncedCalculate, { deep: true })
+watch(() => props.filteredData, debouncedCalculate)
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, renderChart)
 

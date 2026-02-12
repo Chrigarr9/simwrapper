@@ -287,19 +287,26 @@ onUnmounted(() => {
 watch(() => props.filteredData, () => {
   debugLog('[MapCard] filteredData changed, updating layers')
   updateLayers()
-}, { deep: true })
+})
 
-watch(() => props.hoveredIds, () => {
-  debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
-  updateLayers()
-}, { deep: true })
+watch(
+  [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
+  () => {
+    debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
+    updateLayers()
+  }
+)
 
-watch(() => props.selectedIds, () => {
-  debugLog('[MapCard] selectedIds changed:', props.selectedIds)
-  updateLayers()
-}, { deep: true })
+watch(
+  [() => props.selectedIds, () => props.selectedIds?.size ?? 0],
+  () => {
+    debugLog('[MapCard] selectedIds changed:', props.selectedIds)
+    updateLayers()
+  }
+)
 
 // Watch for layers prop changes (triggered by geometry type changes in parent)
+// KEEP deep: true - layers is a config array whose contents change but reference may not
 watch(() => props.layers, () => {
   debugLog('[MapCard] layers prop changed, reloading layer data')
   loadLayerData().then(() => updateLayers())
@@ -2528,12 +2535,12 @@ function rgbToHex(rgb: [number, number, number]): string {
 }
 
 // Watch for data changes to trigger layer updates
+// Shallow watching is sufficient - LinkableCardWrapper creates new array/Set references on change
 watch(
-  [() => props.filteredData, () => props.hoveredIds, () => props.selectedIds],
+  [() => props.filteredData, () => props.hoveredIds, () => props.hoveredIds?.size ?? 0, () => props.selectedIds, () => props.selectedIds?.size ?? 0],
   () => {
     updateLayers()
-  },
-  { deep: true }
+  }
 )
 
 // Watch for comparison mode changes

@@ -293,9 +293,24 @@ const xAxisRange = computed(() => {
   })
 })
 
-const renderChart = () => {
-  if (!plotContainer.value || histogramData.value.length === 0) return
+// Debounce timer for chart rendering (matches ScatterCard pattern)
+let renderTimeout: ReturnType<typeof setTimeout> | null = null
+// Track whether chart has been initialized (to know if we can use Plotly.react)
+let chartInitialized = false
 
+// Debounced render to prevent excessive re-renders during rapid filter changes
+const debouncedRenderChart = () => {
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+  }
+  renderTimeout = setTimeout(() => {
+    updateChart()
+    renderTimeout = null
+  }, 50)  // 50ms debounce
+}
+
+// Build chart data (traces, layout, config) - extracted for reuse by initializeChart/updateChart
+const buildChartData = () => {
   // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
   const isScientific = styleManager.isScientificMode()
@@ -334,7 +349,7 @@ const renderChart = () => {
   // Baseline trace (if comparison mode) - styled from StyleManager
   // NO patterns - just opacity difference distinguishes baseline from filtered
   const comparisonConfig = styleManager.getComparisonConfig()
-  debugLog('[HistogramCard] renderChart - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
+  debugLog('[HistogramCard] buildChartData - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
   if (props.showComparison && baselineDisplayData.length > 0) {
     debugLog('[HistogramCard] Adding baseline trace (density mode)')
     traces.push({
@@ -606,34 +621,70 @@ const renderChart = () => {
     layout.margin.r = 80  // Space for colorbar
   }
 
-  Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: !isScientific ? false : false,  // Always hide modebar (scientific mode too)
+  const config = {
+    displayModeBar: false,  // Always hide modebar
     responsive: true,
-  })
+  }
 
-  // Click handler - respond to both baseline and filtered trace clicks
-  // This enables OR filter functionality: clicking additional bars extends the filter
-  plotContainer.value.on('plotly_click', (data: any) => {
-    const bin = data.points[0].x
+  return { traces, layout, config }
+}
 
-    // Toggle bin in selection
-    if (selectedBins.value.has(bin)) {
-      selectedBins.value.delete(bin)
-    } else {
-      selectedBins.value.add(bin)
-    }
+// Click handler extracted as named function - registered ONCE during initialization
+const handleClick = (data: any) => {
+  const bin = data.points[0].x
 
-    // Emit filter with all selected bins (using 'binned' filter type)
-    if (props.linkage?.type === 'filter') {
-      const filterId = `histogram-${props.column}`
-      const binSize = props.binSize || 1
-      // Set flag so the filteredData watcher knows this change is from our own filter
-      justEmittedFilter.value = true
-      emit('filter', filterId, props.column, new Set(selectedBins.value), 'binned', binSize)
-    }
+  // Toggle bin in selection
+  if (selectedBins.value.has(bin)) {
+    selectedBins.value.delete(bin)
+  } else {
+    selectedBins.value.add(bin)
+  }
 
-    renderChart()
-  })
+  // Emit filter with all selected bins (using 'binned' filter type)
+  if (props.linkage?.type === 'filter') {
+    const filterId = `histogram-${props.column}`
+    const binSize = props.binSize || 1
+    // Set flag so the filteredData watcher knows this change is from our own filter
+    justEmittedFilter.value = true
+    emit('filter', filterId, props.column, new Set(selectedBins.value), 'binned', binSize)
+  }
+
+  debouncedRenderChart()
+}
+
+// Initial chart creation - registers event handlers ONCE (matches ScatterCard pattern)
+const initializeChart = () => {
+  if (!plotContainer.value || histogramData.value.length === 0) return
+
+  const { traces, layout, config } = buildChartData()
+
+  Plotly.newPlot(plotContainer.value, traces, layout, config)
+  chartInitialized = true
+
+  debugLog('[HistogramCard] Chart INITIALIZED, registering click handler for:', props.title || props.column)
+
+  // Register click handler ONCE during initialization
+  // Plotly.react() preserves event handlers, so this only needs to happen once
+  ;(plotContainer.value as any).on('plotly_click', handleClick)
+}
+
+// Update chart data - uses Plotly.react to preserve event handlers
+const updateChart = () => {
+  if (!plotContainer.value) return
+
+  // If no data, nothing to render
+  if (histogramData.value.length === 0) return
+
+  const { traces, layout, config } = buildChartData()
+
+  if (chartInitialized) {
+    // Use Plotly.react to update data/layout (preserves event handlers)
+    Plotly.react(plotContainer.value, traces, layout, config)
+    debugLog('[HistogramCard] Chart updated for:', props.title || props.column)
+  } else {
+    // First render - initialize
+    initializeChart()
+  }
 }
 
 // Track if we just emitted a filter (to distinguish our own filter changes from external)
@@ -651,32 +702,32 @@ watch(() => props.filteredData, (newData, oldData) => {
   }
   previousFilteredDataLength.value = newData.length
   justEmittedFilter.value = false  // Reset flag after processing
-  renderChart()
-}, { deep: true })
+  debouncedRenderChart()
+})
 
 // Re-render on dark mode change or color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, () => {
-  renderChart()
+  debouncedRenderChart()
 })
 
 // Re-render when comparison mode changes
 watch(() => props.showComparison, (newVal) => {
-  console.log('[HistogramCard] showComparison changed to:', newVal, '- re-rendering')
-  renderChart()
+  debugLog('[HistogramCard] showComparison changed to:', newVal, '- re-rendering')
+  debouncedRenderChart()
 })
 
 // Re-render when baseline data changes
 watch(() => props.baselineData, () => {
   if (props.showComparison) {
-    console.log('[HistogramCard] baselineData changed in comparison mode - re-rendering')
-    renderChart()
+    debugLog('[HistogramCard] baselineData changed in comparison mode - re-rendering')
+    debouncedRenderChart()
   }
-}, { deep: true })
+})
 
 // Re-render when color-by attribute changes
 watch(() => props.colorByAttribute, () => {
   debugLog('[HistogramCard] colorByAttribute changed to:', props.colorByAttribute)
-  renderChart()
+  debouncedRenderChart()
 })
 
 // Resize observer for responsive chart sizing (matches ScatterCard pattern)
@@ -699,7 +750,7 @@ function handleResize() {
 
 onMounted(() => {
   previousFilteredDataLength.value = props.filteredData.length
-  renderChart()
+  initializeChart()
 
   // Set up resize observer to handle container size changes
   if (plotContainer.value) {
@@ -718,6 +769,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Reset chart state
+  chartInitialized = false
+
   // Clean up resize observer and timeout
   if (resizeObserver) {
     resizeObserver.disconnect()
@@ -726,6 +780,10 @@ onUnmounted(() => {
   if (resizeTimeout) {
     clearTimeout(resizeTimeout)
     resizeTimeout = null
+  }
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+    renderTimeout = null
   }
   window.removeEventListener('resize', handleResize)
 })

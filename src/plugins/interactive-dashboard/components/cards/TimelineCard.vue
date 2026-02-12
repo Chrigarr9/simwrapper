@@ -1093,23 +1093,29 @@ function handleResize() {
 watch(() => props.filteredData, () => {
   debugLog('[TimelineCard] filteredData changed, re-rendering')
   renderChart()
-}, { deep: true })
+})
 
 // Watch for external hover changes from linkage
-watch(() => props.hoveredIds, (newIds) => {
-  debugLog('[TimelineCard] hoveredIds changed:', newIds?.size ?? 0, 'items')
-  updateHoverVisuals()
-}, { deep: true })
+watch(
+  [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
+  () => {
+    debugLog('[TimelineCard] hoveredIds changed:', props.hoveredIds?.size ?? 0, 'items')
+    updateHoverVisuals()
+  }
+)
 
 // Watch for external selection changes from linkage
-watch(() => props.selectedIds, (newIds) => {
-  debugLog('[TimelineCard] selectedIds changed:', newIds?.size ?? 0, 'items')
-  // Sync internal state with external selection and update visuals
-  if (newIds) {
-    selectedRides.value = new Set([...newIds].map(id => String(id)))
-    updateSelectionVisuals()
+watch(
+  [() => props.selectedIds, () => props.selectedIds?.size ?? 0],
+  () => {
+    debugLog('[TimelineCard] selectedIds changed:', props.selectedIds?.size ?? 0, 'items')
+    // Sync internal state with external selection and update visuals
+    if (props.selectedIds) {
+      selectedRides.value = new Set([...props.selectedIds].map(id => String(id)))
+      updateSelectionVisuals()
+    }
   }
-}, { deep: true })
+)
 
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, () => {
@@ -1135,7 +1141,7 @@ watch(() => props.baselineData, () => {
     debugLog('[TimelineCard] baselineData changed in comparison mode - re-rendering')
     renderChart()
   }
-}, { deep: true })
+})
 
 onMounted(() => {
   renderChart()

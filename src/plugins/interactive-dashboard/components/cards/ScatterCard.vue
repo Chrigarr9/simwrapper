@@ -994,7 +994,7 @@ watch([currentXColumn, currentYColumn], () => {
 watch(() => props.filteredData, () => {
   debugLog('[ScatterCard] filteredData changed, re-rendering')
   debouncedRenderChart()
-}, { deep: true })
+})
 
 // Watch for hover/selection changes from linkage
 // Watch both the Set reference AND size to ensure changes are detected

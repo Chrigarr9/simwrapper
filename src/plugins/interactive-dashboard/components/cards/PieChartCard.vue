@@ -436,7 +436,7 @@ watch(() => props.filteredData, (newData, oldData) => {
   previousFilteredDataLength.value = newData.length
   justEmittedFilter.value = false  // Reset flag after processing
   renderChart()
-}, { deep: true })
+})
 
 // Re-render when color-by attribute changes
 watch(() => props.colorByAttribute, () => {
@@ -460,10 +460,10 @@ watch(() => props.showComparison, (newVal) => {
 // Re-render when baseline data changes
 watch(() => props.baselineData, () => {
   if (props.showComparison) {
-    console.log('[PieChartCard] baselineData changed in comparison mode - re-rendering')
+    debugLog('[PieChartCard] baselineData changed in comparison mode - re-rendering')
     renderChart()
   }
-}, { deep: true })
+})
 
 onMounted(() => {
   previousFilteredDataLength.value = props.filteredData.length

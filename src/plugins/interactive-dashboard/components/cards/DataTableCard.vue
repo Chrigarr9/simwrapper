@@ -412,28 +412,31 @@ watch(() => props.showComparison, (newVal, oldVal) => {
 
 // Scroll to hovered row when hover comes from map
 // Uses manual scrollTop calculation to avoid scrolling the whole page
-watch(() => props.hoveredIds, async (newVal) => {
-  if (newVal.size === 0) return
-  if (!enableScrollOnHover.value) return
-  if (isHoverFromTable.value) return
+watch(
+  [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
+  async () => {
+    if (props.hoveredIds.size === 0) return
+    if (!enableScrollOnHover.value) return
+    if (isHoverFromTable.value) return
 
-  await nextTick()
+    await nextTick()
 
-  const firstId = Array.from(newVal)[0]
-  const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`) as HTMLElement | null
-  if (rowElement && tableWrapper.value) {
-    // Calculate scroll position to center the row within the table wrapper
-    const wrapperHeight = tableWrapper.value.clientHeight
-    const rowTop = rowElement.offsetTop
-    const rowHeight = rowElement.offsetHeight
-    const targetScrollTop = rowTop - (wrapperHeight / 2) + (rowHeight / 2)
+    const firstId = Array.from(props.hoveredIds)[0]
+    const rowElement = tableWrapper.value?.querySelector(`tr[data-row-id="${firstId}"]`) as HTMLElement | null
+    if (rowElement && tableWrapper.value) {
+      // Calculate scroll position to center the row within the table wrapper
+      const wrapperHeight = tableWrapper.value.clientHeight
+      const rowTop = rowElement.offsetTop
+      const rowHeight = rowElement.offsetHeight
+      const targetScrollTop = rowTop - (wrapperHeight / 2) + (rowHeight / 2)
 
-    tableWrapper.value.scrollTo({
-      top: Math.max(0, targetScrollTop),
-      behavior: 'smooth'
-    })
+      tableWrapper.value.scrollTo({
+        top: Math.max(0, targetScrollTop),
+        behavior: 'smooth'
+      })
+    }
   }
-}, { deep: true })
+)
 
 // Register filter observer on mount and emit loaded
 onMounted(() => {
