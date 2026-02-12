@@ -11,6 +11,7 @@ import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 import { toTitleCase } from '../../utils/labelFormatter'
+import { computeAxisRange } from '../../utils/axisLimits'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal'
@@ -40,6 +41,9 @@ interface Props {
   showComparison?: boolean    // Whether comparison mode is active
   colorByAttribute?: string   // Dashboard-level color-by attribute
   colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+  xMin?: number               // Explicit x-axis minimum (from YAML)
+  xMax?: number               // Explicit x-axis maximum (from YAML)
+  autoTrim?: number           // Percentile for auto-trimming x-axis (e.g. 95 keeps central 95%)
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -270,6 +274,25 @@ const baselineHistogramDataDensity = computed(() => {
   }))
 })
 
+// Compute x-axis range from explicit min/max or autoTrim config
+// Uses baseline data (if available) so the range stays stable when filtering
+const xAxisRange = computed(() => {
+  const dataSource = props.baselineData?.length > 0 ? props.baselineData : props.filteredData
+  if (!dataSource || dataSource.length === 0) return undefined
+
+  const values = dataSource
+    .map(row => row[props.column])
+    .filter((v: any) => v !== null && v !== undefined && typeof v === 'number' && !isNaN(v))
+
+  return computeAxisRange({
+    values,
+    min: props.xMin,
+    max: props.xMax,
+    autoTrim: props.autoTrim,
+    padding: 0.02,
+  })
+})
+
 const renderChart = () => {
   if (!plotContainer.value || histogramData.value.length === 0) return
 
@@ -497,6 +520,13 @@ const renderChart = () => {
     zerolinecolor: gridColor,
     automargin: true,  // Let Plotly expand margins for long labels
     tickangle: shouldRotate ? -45 : 0,
+  }
+
+  // Apply configured axis range (from xMin/xMax or autoTrim YAML config)
+  const axisRange = xAxisRange.value
+  if (axisRange) {
+    xaxisConfig.range = axisRange
+    xaxisConfig.autorange = false
   }
 
   // Apply intelligent tick thinning when we have many bins

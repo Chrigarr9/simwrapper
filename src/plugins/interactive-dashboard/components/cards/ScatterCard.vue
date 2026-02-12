@@ -12,6 +12,7 @@ import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 import { toTitleCase } from '../../utils/labelFormatter'
+import { computeAxisRange } from '../../utils/axisLimits'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal' | 'percent'
@@ -49,6 +50,12 @@ interface Props {
   showComparison?: boolean  // Whether comparison mode is active
   colorByAttribute?: string  // Dashboard-level color-by attribute
   colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+  xMin?: number             // Explicit x-axis minimum (from YAML)
+  xMax?: number             // Explicit x-axis maximum (from YAML)
+  yMin?: number             // Explicit y-axis minimum (from YAML)
+  yMax?: number             // Explicit y-axis maximum (from YAML)
+  xAutoTrim?: number        // X-axis percentile auto-trim (e.g. 95)
+  yAutoTrim?: number        // Y-axis percentile auto-trim (e.g. 99)
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -883,6 +890,32 @@ const buildChartData = () => {
     nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
     tickformat: '.5~g', // Smart formatting: up to 5 significant digits, scientific at/above 100,000
     range: [yMin - yPadding, yMax + yPadding],  // Fixed range from baseline prevents zooming
+  }
+
+  // Apply configured axis range overrides (from YAML xMin/xMax/xAutoTrim/yAutoTrim)
+  // These override the default baseline-derived range when specified
+  const configuredXRange = computeAxisRange({
+    values: xDataForRange,
+    min: props.xMin,
+    max: props.xMax,
+    autoTrim: props.xAutoTrim,
+    padding: 0.02,
+  })
+  if (configuredXRange) {
+    xAxisConfig.range = configuredXRange
+    xAxisConfig.autorange = false
+  }
+
+  const configuredYRange = computeAxisRange({
+    values: yDataForRange,
+    min: props.yMin,
+    max: props.yMax,
+    autoTrim: props.yAutoTrim,
+    padding: 0.02,
+  })
+  if (configuredYRange) {
+    yAxisConfig.range = configuredYRange
+    yAxisConfig.autorange = false
   }
 
   const showLegend = hasCategories || props.showComparison || (colorByActive && colorByType === 'categorical')
