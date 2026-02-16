@@ -189,6 +189,11 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
   - Branch: feature/scientific-mode (based on feature/dashboard-unification)
   - Requirements: SCI-01 to SCI-05 (5 new requirements)
 
+- Phase 4.3 inserted after Phase 4: Scatter Plot Color-By Selector and Cross-Card Sync (URGENT) - 2026-02-16
+  - Reason: Scatter plots lack the color-by dropdown that MapCard already has; need per-scatter color-by selector with optional cross-card synchronization
+  - Approach: Per-scatter dropdown (consistent with MapCard pattern) + linkage sync so changing color-by on one scatter updates all linked scatters
+  - Features: Color-by attribute selector per ScatterCard, configurable via YAML, cross-card sync via LinkageManager
+
 ### TODOs
 
 - [x] Plan Phase 1: Theming Foundation
