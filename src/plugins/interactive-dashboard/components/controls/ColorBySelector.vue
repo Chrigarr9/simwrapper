@@ -21,11 +21,11 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:model-value'])
 
 const onChange = (event: Event) => {
   const target = event.target as HTMLSelectElement
-  emit('update:modelValue', target.value)
+  emit('update:model-value', target.value)
 }
 </script>
 

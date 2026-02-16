@@ -19,6 +19,7 @@ interface Props {
   baselineData?: any[]  // All data (unfiltered) - from LinkableCardWrapper
   showComparison?: boolean  // Whether comparison mode is active
   colorByAttribute?: string  // Dashboard-level color-by attribute
+  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
   linkage?: {
     type: 'filter'
     column: string
@@ -46,8 +47,15 @@ const previousFilteredDataLength = ref(0)
 // Track if we just emitted a filter (to distinguish our own filter changes from external)
 const justEmittedFilter = ref(false)
 
-// Detect if colorByAttribute is numeric or categorical
+// Type detection: YAML config overrides auto-detection
 const detectColorByType = (attribute: string): 'numeric' | 'categorical' | null => {
+  // Priority 1: Use YAML-configured type if available
+  const yamlConfig = props.colorByOptions?.find(opt => opt.attribute === attribute)
+  if (yamlConfig?.type === 'numeric' || yamlConfig?.type === 'categorical') {
+    return yamlConfig.type
+  }
+
+  // Priority 2: Auto-detect from data
   if (!props.filteredData || props.filteredData.length === 0) return null
 
   const values = props.filteredData
@@ -344,6 +352,7 @@ const renderChart = () => {
       uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
       showlegend: true,
       legend: {
+        title: { text: props.colorByOptions?.find(opt => opt.attribute === effectiveColumn.value)?.label || effectiveColumn.value, font: { color: textColor, size: 11, family: fontFamily } },
         font: { color: textColor, size: 10, family: fontFamily },
         bgcolor: 'transparent',
         orientation: 'v',  // Vertical legend on the right

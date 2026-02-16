@@ -80,15 +80,21 @@ const currentYColumn = ref(props.yColumn)
 watch(() => props.xColumn, (newVal) => { currentXColumn.value = newVal })
 watch(() => props.yColumn, (newVal) => { currentYColumn.value = newVal })
 
-// Type detection utility - auto-detect from data values (not YAML config)
+// Type detection: YAML config overrides auto-detection
 const detectColorByType = (attribute: string): 'categorical' | 'numeric' => {
+  // Priority 1: Use YAML-configured type if available
+  const yamlConfig = props.colorByOptions?.find(opt => opt.attribute === attribute)
+  if (yamlConfig?.type === 'numeric' || yamlConfig?.type === 'categorical') {
+    return yamlConfig.type
+  }
+
+  // Priority 2: Auto-detect from data
   if (!props.filteredData?.length || !attribute) return 'categorical'
   const values = props.filteredData
     .map(row => row[attribute])
     .filter(v => v !== null && v !== undefined)
   if (values.length === 0) return 'categorical'
 
-  // Check if all values are numbers
   const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
   if (!allNumeric) return 'categorical'
 
@@ -673,6 +679,8 @@ const buildChartData = () => {
       y: scatterData.value.y,
       mode: 'markers',
       type: 'scatter',
+      name: attributeLabel,
+      showlegend: false,
       text: enhancedText,
       hoverinfo: 'text',
       marker: {
@@ -680,8 +688,7 @@ const buildChartData = () => {
         colorscale: 'Viridis',
         showscale: true,
         colorbar: {
-          title: attributeLabel,
-          titlefont: { color: textColor, size: 10, family: fontFamily },
+          title: { text: attributeLabel, font: { color: textColor, size: 11, family: fontFamily }, side: 'right' },
           tickfont: { color: textColor, size: 9, family: fontFamily },
         },
         size: markerSizes,
@@ -879,6 +886,12 @@ const buildChartData = () => {
   }
 
   const showLegend = hasCategories || props.showComparison || (colorByActive && colorByType === 'categorical')
+
+  // Legend title: use colorBy attribute label when active, or colorColumn name
+  const legendTitle = colorByActive && colorByType === 'categorical'
+    ? (props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute)
+    : hasCategories ? props.colorColumn : undefined
+
   const layout = {
     font: {
       family: fontFamily,
@@ -893,6 +906,7 @@ const buildChartData = () => {
     hovermode: 'closest',
     showlegend: showLegend,
     legend: showLegend ? {
+      title: legendTitle ? { text: legendTitle, font: { color: textColor, size: 11, family: fontFamily } } : undefined,
       x: 1.02,
       y: 1,
       xanchor: 'left',

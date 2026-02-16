@@ -63,15 +63,21 @@ const columnFormat = computed((): ColumnFormat | undefined => {
   return format
 })
 
-// Type detection utility - auto-detect from data values (not YAML config)
+// Type detection: YAML config overrides auto-detection
 const detectColorByType = (attribute: string): 'categorical' | 'numeric' => {
+  // Priority 1: Use YAML-configured type if available
+  const yamlConfig = props.colorByOptions?.find(opt => opt.attribute === attribute)
+  if (yamlConfig?.type === 'numeric' || yamlConfig?.type === 'categorical') {
+    return yamlConfig.type
+  }
+
+  // Priority 2: Auto-detect from data
   if (!props.filteredData?.length || !attribute) return 'categorical'
   const values = props.filteredData
     .map(row => row[attribute])
     .filter(v => v !== null && v !== undefined)
   if (values.length === 0) return 'categorical'
 
-  // Check if all values are numbers
   const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
   if (!allNumeric) return 'categorical'
 
@@ -428,8 +434,7 @@ const renderChart = () => {
         colorscale: 'Viridis',
         showscale: true,
         colorbar: {
-          title: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute,
-          titlefont: { color: textColor, size: 10, family: fontFamily },
+          title: { text: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute, font: { color: textColor, size: 11, family: fontFamily }, side: 'right' },
           tickfont: { color: textColor, size: 9, family: fontFamily },
         },
         line: {
@@ -553,9 +558,11 @@ const renderChart = () => {
 
   // Override layout for color-by modes
   if (colorByActive && colorByType === 'categorical') {
+    const legendTitle = props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute
     layout.barmode = 'stack'  // Stack bars when categorical color-by is active
     layout.showlegend = true
     layout.legend = {
+      title: { text: legendTitle, font: { color: textColor, size: 11, family: fontFamily } },
       x: 1.02,
       xanchor: 'left',
       y: 1,

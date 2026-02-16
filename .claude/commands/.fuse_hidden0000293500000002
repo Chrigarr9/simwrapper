@@ -246,54 +246,11 @@ Rules:
 
 3. **Binary columns** (yes/no, true/false, male/female): use two clearly distinct colors.
 
-4. **Always specify `type: numeric` or `type: categorical`** on each colorBy attribute. The auto-detection heuristic (threshold of 15 unique values) misclassifies numeric columns with few distinct values (e.g., "demand" with values 1-10 gets detected as categorical). The YAML `type` field overrides auto-detection and ensures correct rendering. **Never rely on auto-detection for columns where the type is known.**
+4. **If a column has >8 unique values**, do NOT put it in colorSchemes. Use it only with numeric colorBy (sequential scheme like YlOrRd, Blues, etc.).
 
-5. **If a column has >8 unique values**, do NOT put it in colorSchemes. Use it only with numeric colorBy (sequential scheme like YlOrRd, Blues, etc.).
+5. **Reuse the same colorScheme** everywhere a column appears: if `base_mode` uses red for car in a pie chart, the map layers colored by base_mode must use the same red.
 
-6. **Reuse the same colorScheme** everywhere a column appears: if `base_mode` uses red for car in a pie chart, the map layers colored by base_mode must use the same red.
-
-7. **Check existing dashboards** for established color conventions and reuse them.
-
-#### ColorBy Configuration
-
-Every colorBy attribute in the YAML **must** include a `type` field. The auto-detection threshold (15 unique values) is a fallback only.
-
-```yaml
-colorBy:
-  default: pricing_scheme
-  attributes:
-    - attribute: demand
-      label: Demand
-      type: numeric          # REQUIRED: overrides auto-detection
-      colorScheme: Blues
-    - attribute: pricing_scheme
-      label: Pricing Scheme
-      type: categorical      # REQUIRED: overrides auto-detection
-    - attribute: travel_time
-      label: Travel Time
-      type: numeric
-      colorScheme: YlOrRd
-```
-
-**Cards that support colorBy** must opt in with `colorBy: true` in their YAML config:
-
-```yaml
-- type: scatter-plot
-  title: "Budget vs Distance"
-  colorBy: true              # Enables the dashboard-level color-by selector for this card
-  xColumn: distance
-  yColumn: budget
-```
-
-Without `colorBy: true`, the card won't respond to the color-by dropdown selector.
-
-**Labels are mandatory for self-explanatory plots:**
-- **Numeric colorBy** renders a Plotly colorbar with the attribute's `label` as its title (displayed vertically beside the color scale)
-- **Categorical colorBy** renders a Plotly legend with the attribute's `label` as the legend title
-- Both numeric and categorical labels come from the `label` field in the `colorBy.attributes` YAML config
-- Pie charts always show a legend title from the effective column (either the colorBy attribute label or the card's own column name)
-
-**Always provide descriptive `label` values** — these appear directly on the plots. "Demand" is better than "demand"; "Travel Time" is better than "travel_time".
+6. **Check existing dashboards** for established color conventions and reuse them.
 
 #### Chart Selection Logic
 
@@ -385,9 +342,6 @@ Using the approved design + the reference guide schema, generate complete YAML.
 - [ ] Map `zoom` is appropriate for the coordinate spread
 - [ ] GeoJSON `file` paths are correct relative to YAML output location
 - [ ] All `colorBy.attribute` values exist in the data
-- [ ] Every colorBy attribute has an explicit `type: numeric` or `type: categorical` (never rely on auto-detection)
-- [ ] Every colorBy attribute has a descriptive `label` (used as colorbar/legend title on plots)
-- [ ] Cards that should respond to color-by selector have `colorBy: true`
 - [ ] Categorical colorBy attributes have <= 8 unique values
 - [ ] `colorSchemes` block defines colors for EVERY categorical attribute used anywhere
 - [ ] Same attribute uses the same colors everywhere (pie, map colorBy, legend)
