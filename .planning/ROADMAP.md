@@ -275,6 +275,35 @@ Plans:
 
 ---
 
+### Phase 04.3: Scatter Plot Color-By Selector and Cross-Card Sync (INSERTED)
+
+**Goal:** Add a dashboard-level color-by attribute selector that controls how data points are colored across ALL card types (scatter, map, histogram, pie) simultaneously via a single central control
+
+**Depends on:** Phase 4
+
+**Requirements:**
+- CLRBY-01: Central color-by dropdown in dashboard table header area with "None" option
+- CLRBY-02: Categorical and numeric coloring support with auto-detection from data values
+- CLRBY-03: All card types (scatter, map, histogram, pie) react to central selector
+- CLRBY-04: Dashboard-level ColorLegend with click-to-filter
+- CLRBY-05: Top-level colorBy YAML section with explicitly listed attributes
+- CLRBY-06: MapCard per-card dropdown removed (reads from shared state)
+
+**Success Criteria:**
+1. User selects a color-by attribute and ALL cards update simultaneously with consistent colors
+2. User selects "None" and all cards return to default single-color rendering
+3. User clicks a legend category and data filters across all cards
+4. Comparison mode preserves gray baseline with colored filtered data
+5. No Plotly event handler memory leaks
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 04.3-01-PLAN.md — Extract ColorBySelector component, add to dashboard header, wire YAML and state
+- [ ] 04.3-02-PLAN.md — Add color-by support to ScatterCard and HistogramCard
+- [ ] 04.3-03-PLAN.md — Add color-by to PieChartCard, migrate MapCard, add dashboard ColorLegend
+- [ ] 04.3-04-PLAN.md — Integration fixes, consistency validation, and visual verification
+
 ## Phase 4.1: Timeline Refinement (INSERTED)
 
 **Goal:** Simplify timeline UX with mouse wheel zoom, inline request detail view, and single-select behavior
@@ -417,9 +446,10 @@ This is implemented as a **separate plugin** alongside interactive-dashboard bec
 | 4 | Timeline | TIME-01, TIME-02 | Complete | 100% |
 | 4.1 | Timeline Refinement (INSERTED) | TIME-03, TIME-05, TIME-06 | Complete | 100% |
 | 4.2 | Scientific Mode (INSERTED) | SCI-01 to SCI-05 | Complete | 100% |
+| 4.3 | Color-By Selector & Cross-Card Sync (INSERTED) | CLRBY-01 to CLRBY-06 | Not Started | 0% |
 | 5 | Graph Visualization | GRPH-01 | Not Started | 0% |
 
-**Overall Progress:** 8/10 phases complete (80%)
+**Overall Progress:** 8/11 phases complete (73%)
 
 ---
 
