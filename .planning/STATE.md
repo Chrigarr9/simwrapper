@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 4.3 of 10 (Scatter Plot Color-By Selector and Cross-Card Sync) - IN PROGRESS
-**Plan:** 2/3 complete
-**Status:** In Progress - ScatterCard and HistogramCard color-by complete
-**Last activity:** 2026-02-16 - Completed plan 04.3-02 (ScatterCard and HistogramCard color-by attribute support)
+**Phase:** 4.3 of 10 (Scatter Plot Color-By Selector and Cross-Card Sync) - COMPLETE
+**Plan:** 3/3 complete
+**Status:** Complete - All card types synchronized with dashboard-level color-by selector
+**Last activity:** 2026-02-16 - Completed plan 04.3-03 (PieChartCard color-by, MapCard migration, dashboard legend)
 
 **Progress:**
 ```
@@ -37,8 +37,8 @@ Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
 Phase 4.2: Scientific Mode          [#######] 100% (7/7 plans) COMPLETE
-Phase 4.3: Scatter Color-By Sync    [## ] 67% (2/3 plans) <- CURRENT
-Phase 5:   Graph Visualization      [    ] 0%
+Phase 4.3: Scatter Color-By Sync    [###] 100% (3/3 plans) COMPLETE
+Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 ```
 
 **Phase 4.3 Progress:**
@@ -53,7 +53,9 @@ Phase 5:   Graph Visualization      [    ] 0%
   - HistogramCard categorical color-by with stacked bars
   - HistogramCard numeric color-by with average-colored bars
   - Auto-detection of attribute type from data values
-- Plan 03 TODO: MapCard migration to shared selector (or already complete - check files)
+- Plan 03 COMPLETE: PieChartCard color-by, MapCard migration, dashboard legend
+  - PieChartCard uses colorByAttribute for categorical grouping
+  - MapCard per-card dropdown removed (reads from shared state)
   - Dashboard-level ColorLegend with click-to-filter
   - Consistent cross-card colors via StyleManager
 
@@ -63,7 +65,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 36 |
+| Plans completed | 37 |
 | Quick tasks completed | 5 |
 | Plans requiring revision | 0 |
 | Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
@@ -180,6 +182,12 @@ Phase 5:   Graph Visualization      [    ] 0%
 | HistogramCard numeric color-by uses average-colored bars | Each bar colored by average value of color-by attribute within that bin | 2026-02-16 |
 | Comparison mode baseline stays gray (not split by category) | Baseline trace is single gray trace regardless of color-by for visual clarity | 2026-02-16 |
 | Click-to-filter in histogram filters by bin, not color-by category | Color-by is purely visual - histogram interaction still filters by column bins | 2026-02-16 |
+| PieChartCard ignores numeric color-by | Pie charts inherently categorical - numeric color-by doesn't make sense for grouping slices | 2026-02-16 |
+| PieChartCard uses effectiveColumn pattern | Dynamic column switching between configured column and colorByAttribute based on type | 2026-02-16 |
+| MapCard dropdown removed | Per-card controls migrated to dashboard header for cross-card consistency | 2026-02-16 |
+| Dashboard-level ColorLegend with sticky positioning | Legend visible at all times, positioned right-aligned to match MapCard pattern | 2026-02-16 |
+| Legend click-to-filter uses toggle behavior | Clicking category adds/removes from filter for intuitive multi-select | 2026-02-16 |
+| Legend filter cleared on colorByAttribute change | Prevents stale filters when switching color-by attribute | 2026-02-16 |
 
 ### Roadmap Evolution
 
@@ -324,14 +332,15 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4.3 Plan 02 COMPLETE (ScatterCard and HistogramCard color-by support)
+**Where we left off:** Phase 4.3 COMPLETE (Cross-card color synchronization)
 
-**Next action:** Execute Phase 4.3 Plan 03 (MapCard migration and dashboard legend) OR continue with Phase 5
-- Use `/gsd:execute-phase 4.3` to continue with Plan 03 (if not already complete)
-- Plan 03 may already be complete based on existing 04.3-03-SUMMARY.md file
-- If Phase 4.3 complete, proceed to Phase 5 (Graph Visualization)
+**Next action:** Proceed to Phase 5 (Graph Visualization) OR merge feature branch
+- Phase 4.3 complete: All card types synchronized with dashboard-level color-by selector
+- ColorBySelector, ScatterCard, HistogramCard, PieChartCard, MapCard migration, dashboard legend all complete
+- Feature branch `feature/scientific-mode` ready for merge to master
+- Alternative: Continue with Phase 5 planning and execution
 
-**Phase progress:** Phase 4.3 in progress (2/3 plans complete)
+**Phase progress:** Phase 4.3 complete (3/3 plans complete)
 
 **Branch:** `feature/scientific-mode` (ready for merge or continue with Phase 5)
 
@@ -728,3 +737,26 @@ ScatterCard and HistogramCard color-by attribute support:
 - Duration: 1352 seconds (22 minutes)
 
 *State updated: 2026-02-16 (Plan 04.3-02 complete - ScatterCard and HistogramCard color-by)*
+
+**Plan 04.3-03 Completed (2026-02-16):**
+
+PieChartCard color-by, MapCard migration, dashboard legend:
+- PieChartCard accepts colorByAttribute prop
+- Detects categorical vs numeric color-by type (same logic as ScatterCard)
+- effectiveColumn computed switches between configured column and colorByAttribute
+- Categorical color-by: replaces pie grouping with color-by attribute
+- Numeric color-by: ignored with debug warning (pie charts inherently categorical)
+- Uses StyleManager.buildCategoricalColorMap for consistent cross-card colors
+- MapCard per-card color-by dropdown removed from template
+- MapCard continues to read colorByAttribute from prop for layer coloring
+- Dashboard-level ColorLegend component added to InteractiveDashboard
+- Legend appears after tabs, before rows with sticky positioning
+- dashboardLegendData computed builds legend from colorByAttribute and displayData
+- Auto-detects categorical vs numeric type, gets label from colorByOptions
+- handleDashboardLegendClick toggles filter on colorByAttribute column
+- Legend filter cleared when colorByAttribute changes (watcher)
+- Files: PieChartCard.vue (modified), MapCard.vue (modified), InteractiveDashboard.vue (modified)
+- Commits: 65b96d4e (PieChartCard + MapCard), dbd70ecd (dashboard legend)
+- Duration: 1287 seconds (21 minutes)
+
+*State updated: 2026-02-16 (Phase 4.3 COMPLETE - Cross-card color synchronization)*
