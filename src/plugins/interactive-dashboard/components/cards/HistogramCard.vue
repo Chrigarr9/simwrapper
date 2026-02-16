@@ -38,6 +38,8 @@ interface Props {
   tableConfig?: TableConfig   // From InteractiveDashboard - contains column formats
   baselineData?: any[]        // All data (unfiltered) - from LinkableCardWrapper
   showComparison?: boolean    // Whether comparison mode is active
+  colorByAttribute?: string   // Dashboard-level color-by attribute
+  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -60,6 +62,26 @@ const columnFormat = computed((): ColumnFormat | undefined => {
   debugLog('[HistogramCard] Column:', props.column, 'Format:', format, 'TableConfig:', props.tableConfig)
   return format
 })
+
+// Type detection utility - auto-detect from data values (not YAML config)
+const detectColorByType = (attribute: string): 'categorical' | 'numeric' => {
+  if (!props.filteredData?.length || !attribute) return 'categorical'
+  const values = props.filteredData
+    .map(row => row[attribute])
+    .filter(v => v !== null && v !== undefined)
+  if (values.length === 0) return 'categorical'
+
+  // Check if all values are numbers
+  const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
+  if (!allNumeric) return 'categorical'
+
+  // If numeric but few unique values (< 15), treat as categorical
+  // This handles cases like mode IDs (1=car, 2=bike)
+  const uniqueValues = new Set(values)
+  if (uniqueValues.size < 15) return 'categorical'
+
+  return 'numeric'
+}
 
 // Format axis label with unit suffix based on column format
 // Returns "Column Name [unit]" format, e.g., "Distance [km]", "Duration [min]"
@@ -271,6 +293,10 @@ const renderChart = () => {
   const displayData = usePercentage ? histogramDataDensity.value : histogramData.value
   const baselineDisplayData = usePercentage ? baselineHistogramDataDensity.value : baselineHistogramData.value
 
+  // Determine if color-by is active and what type
+  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
+  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : 'categorical'
+
   // Bar width based on bin size - use natural width without forcing minimum
   // This avoids overlap when data has outliers stretching the x-axis
   const binSize = props.binSize || 1
@@ -301,27 +327,143 @@ const renderChart = () => {
     })
   }
 
-  // Filtered trace - on top with full colors (solid, no patterns)
-  traces.push({
-    x: displayData.map(d => d.bin),
-    y: displayData.map(d => d.count),
-    type: 'bar',
-    name: props.showComparison ? 'Filtered' : 'Count',
-    width: barWidth,  // Explicit bar width for consistent sizing
-    marker: {
-      color: displayData.map(d =>
-        selectedBins.value.has(d.bin) ? selectedColor : barColor
-      ),
-      // Solid color - no patterns. In comparison mode, add outline from StyleManager
-      line: {
-        color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
-        width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
+  // Color-by rendering for filtered data
+  if (colorByActive && colorByType === 'categorical') {
+    // Categorical color-by: stacked bar traces per category
+    const colorByValues = Array.from(
+      new Set(
+        props.filteredData
+          ?.map(row => row[props.colorByAttribute!])
+          .filter(v => v !== null && v !== undefined)
+      )
+    ).sort()
+
+    const colorMap = styleManager.buildCategoricalColorMap(colorByValues.map(String))
+
+    // For each category, compute histogram bins
+    colorByValues.forEach((categoryValue) => {
+      const categoryStr = String(categoryValue)
+      const categoryRows = props.filteredData?.filter(
+        row => String(row[props.colorByAttribute!]) === categoryStr
+      ) || []
+
+      // Count category rows into bins (using same bin boundaries as displayData)
+      const categoryBins = new Map<number, number>()
+      displayData.forEach(d => categoryBins.set(d.bin, 0))  // Initialize all bins to 0
+
+      categoryRows.forEach(row => {
+        const val = row[props.column]
+        if (val !== null && val !== undefined) {
+          const bin = Math.floor(val / binSize) * binSize
+          if (categoryBins.has(bin)) {
+            categoryBins.set(bin, categoryBins.get(bin)! + 1)
+          }
+        }
+      })
+
+      const categoryBinArray = Array.from(categoryBins.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([bin, count]) => ({ bin, count }))
+
+      // Convert to percentage if comparison mode
+      let categoryDisplayData = categoryBinArray
+      if (usePercentage) {
+        const total = categoryRows.length
+        if (total > 0) {
+          categoryDisplayData = categoryBinArray.map(d => ({
+            bin: d.bin,
+            count: (d.count / total) * 100
+          }))
+        }
+      }
+
+      traces.push({
+        x: categoryDisplayData.map(d => d.bin),
+        y: categoryDisplayData.map(d => d.count),
+        type: 'bar',
+        name: toTitleCase(categoryStr),
+        width: barWidth,
+        marker: {
+          color: colorMap.get(categoryStr) || barColor,
+          line: {
+            color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
+            width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
+          },
+        },
+        hovertemplate: usePercentage
+          ? `<b>%{x}</b><br>${categoryStr}: %{y:.1f}%<extra></extra>`
+          : `<b>%{x}</b><br>${categoryStr}: %{y}<extra></extra>`,
+      })
+    })
+  } else if (colorByActive && colorByType === 'numeric') {
+    // Numeric color-by: color each bar by average value of color-by attribute within that bin
+    const binAverages = displayData.map(d => {
+      const binRows = props.filteredData?.filter(row => {
+        const val = row[props.column]
+        if (val === null || val === undefined) return false
+        const bin = Math.floor(val / binSize) * binSize
+        return bin === d.bin
+      }) || []
+
+      if (binRows.length === 0) return null
+
+      const colorValues = binRows
+        .map(row => row[props.colorByAttribute!])
+        .filter(v => v !== null && v !== undefined && typeof v === 'number')
+
+      if (colorValues.length === 0) return null
+
+      const sum = colorValues.reduce((acc, v) => acc + v, 0)
+      return sum / colorValues.length
+    })
+
+    traces.push({
+      x: displayData.map(d => d.bin),
+      y: displayData.map(d => d.count),
+      type: 'bar',
+      name: props.showComparison ? 'Filtered' : 'Count',
+      width: barWidth,
+      marker: {
+        color: binAverages,
+        colorscale: 'Viridis',
+        showscale: true,
+        colorbar: {
+          title: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute,
+          titlefont: { color: textColor, size: 10, family: fontFamily },
+          tickfont: { color: textColor, size: 9, family: fontFamily },
+        },
+        line: {
+          color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
+          width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
+        },
       },
-    },
-    hovertemplate: usePercentage
-      ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
-      : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
-  })
+      hovertemplate: usePercentage
+        ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
+        : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
+    })
+  } else {
+    // No color-by: standard single-trace histogram
+    traces.push({
+      x: displayData.map(d => d.bin),
+      y: displayData.map(d => d.count),
+      type: 'bar',
+      name: props.showComparison ? 'Filtered' : 'Count',
+      width: barWidth,  // Explicit bar width for consistent sizing
+      marker: {
+        color: displayData.map(d =>
+          selectedBins.value.has(d.bin) ? selectedColor : barColor
+        ),
+        // Solid color - no patterns. In comparison mode, add outline from StyleManager
+        line: {
+          color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
+          width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
+        },
+      },
+      hovertemplate: usePercentage
+        ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
+        : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
+    })
+  }
 
   // Build xaxis config with intelligent tick thinning
   // When there are many bins, we need to auto-skip tick labels to prevent overlap
@@ -409,6 +551,24 @@ const renderChart = () => {
     },
   }
 
+  // Override layout for color-by modes
+  if (colorByActive && colorByType === 'categorical') {
+    layout.barmode = 'stack'  // Stack bars when categorical color-by is active
+    layout.showlegend = true
+    layout.legend = {
+      x: 1.02,
+      xanchor: 'left',
+      y: 1,
+      yanchor: 'top',
+      font: { color: textColor, size: 10, family: fontFamily },
+      bgcolor: 'rgba(0,0,0,0)',
+      borderwidth: 0,
+    }
+    layout.margin.r = 100  // More space for legend
+  } else if (colorByActive && colorByType === 'numeric') {
+    layout.margin.r = 80  // Space for colorbar
+  }
+
   Plotly.newPlot(plotContainer.value, traces, layout, {
     displayModeBar: !isScientific ? false : false,  // Always hide modebar (scientific mode too)
     responsive: true,
@@ -475,6 +635,12 @@ watch(() => props.baselineData, () => {
     renderChart()
   }
 }, { deep: true })
+
+// Re-render when color-by attribute changes
+watch(() => props.colorByAttribute, () => {
+  debugLog('[HistogramCard] colorByAttribute changed to:', props.colorByAttribute)
+  renderChart()
+})
 
 // Resize observer for responsive chart sizing (matches ScatterCard pattern)
 let resizeObserver: ResizeObserver | null = null
