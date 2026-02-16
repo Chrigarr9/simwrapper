@@ -18,6 +18,7 @@ interface Props {
   filteredData?: any[]  // From LinkableCardWrapper (optional for safety)
   baselineData?: any[]  // All data (unfiltered) - from LinkableCardWrapper
   showComparison?: boolean  // Whether comparison mode is active
+  colorByAttribute?: string  // Dashboard-level color-by attribute
   linkage?: {
     type: 'filter'
     column: string
@@ -45,6 +46,48 @@ const previousFilteredDataLength = ref(0)
 // Track if we just emitted a filter (to distinguish our own filter changes from external)
 const justEmittedFilter = ref(false)
 
+// Detect if colorByAttribute is numeric or categorical
+const detectColorByType = (attribute: string): 'numeric' | 'categorical' | null => {
+  if (!props.filteredData || props.filteredData.length === 0) return null
+
+  const values = props.filteredData
+    .map(row => row[attribute])
+    .filter(v => v !== null && v !== undefined)
+
+  if (values.length === 0) return null
+
+  const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
+  const uniqueCount = new Set(values.map(String)).size
+
+  // Numeric if all numbers and at least 15 unique values
+  return (allNumeric && uniqueCount >= 15) ? 'numeric' : 'categorical'
+}
+
+// Determine which column to use for pie slices
+const effectiveColumn = computed(() => {
+  if (!props.colorByAttribute) {
+    // No color-by active, use configured column
+    return props.column
+  }
+
+  const colorByType = detectColorByType(props.colorByAttribute)
+
+  if (colorByType === 'numeric') {
+    // Numeric color-by doesn't make sense for pie charts
+    debugLog('[PieChartCard] Ignoring numeric color-by attribute — pie charts only support categorical color-by')
+    return props.column
+  }
+
+  if (colorByType === 'categorical') {
+    // Categorical color-by: replace pie grouping with color-by attribute
+    debugLog('[PieChartCard] Using colorByAttribute for pie grouping:', props.colorByAttribute)
+    return props.colorByAttribute
+  }
+
+  // Fallback to configured column
+  return props.column
+})
+
 const pieData = computed(() => {
   // Defensive check - filteredData might be undefined if not wrapped properly
   if (!props.filteredData || props.filteredData.length === 0) {
@@ -52,11 +95,12 @@ const pieData = computed(() => {
     return []
   }
 
-  debugLog('[PieChartCard] Computing pie chart from', props.filteredData.length, 'rows')
+  const column = effectiveColumn.value
+  debugLog('[PieChartCard] Computing pie chart from', props.filteredData.length, 'rows using column:', column)
 
   const counts = new Map<string, number>()
   props.filteredData.forEach(row => {
-    const val = row[props.column]
+    const val = row[column]
     if (val !== null && val !== undefined) {
       counts.set(String(val), (counts.get(String(val)) || 0) + 1)
     }
@@ -67,6 +111,8 @@ const pieData = computed(() => {
 
   // Build color map using ALL categories (from baseline if available, else filtered)
   // This ensures consistent colors in comparison mode when filtered has fewer categories
+  // IMPORTANT: When color-by is active (categorical), use StyleManager to ensure
+  // colors match scatter/histogram/map for the same categories
   const styleManager = StyleManager.getInstance()
   const dataSourceForColors = (props.showComparison && props.baselineData?.length > 0)
     ? props.baselineData
@@ -75,7 +121,7 @@ const pieData = computed(() => {
   // Collect all unique categories from the data source
   const allCategories = new Set<string>()
   dataSourceForColors.forEach(row => {
-    const val = row[props.column]
+    const val = row[column]
     if (val !== null && val !== undefined) {
       allCategories.add(String(val))
     }
@@ -85,6 +131,7 @@ const pieData = computed(() => {
   const alphabeticallySorted = Array.from(allCategories).sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' })
   )
+  // Use StyleManager.buildCategoricalColorMap for consistent cross-card colors
   colorMap.value = styleManager.buildCategoricalColorMap(alphabeticallySorted)
 
   return sorted.map(([label, value]) => ({ label, value }))
@@ -97,11 +144,12 @@ const baselinePieData = computed(() => {
     return []
   }
 
-  debugLog('[PieChartCard] Computing baseline pie from', props.baselineData.length, 'rows')
+  const column = effectiveColumn.value
+  debugLog('[PieChartCard] Computing baseline pie from', props.baselineData.length, 'rows using column:', column)
 
   const counts = new Map<string, number>()
   props.baselineData.forEach(row => {
-    const val = row[props.column]
+    const val = row[column]
     if (val !== null && val !== undefined) {
       counts.set(String(val), (counts.get(String(val)) || 0) + 1)
     }
@@ -356,10 +404,10 @@ const renderChart = () => {
 
     // Emit filter
     if (props.linkage?.type === 'filter') {
-      const filterId = `pie-${props.column}`
+      const filterId = `pie-${effectiveColumn.value}`
       // Set flag so the filteredData watcher knows this change is from our own filter
       justEmittedFilter.value = true
-      emit('filter', filterId, props.column, new Set(selectedCategories.value))
+      emit('filter', filterId, effectiveColumn.value, new Set(selectedCategories.value))
     }
 
     renderChart()
@@ -380,6 +428,14 @@ watch(() => props.filteredData, (newData, oldData) => {
   justEmittedFilter.value = false  // Reset flag after processing
   renderChart()
 }, { deep: true })
+
+// Re-render when color-by attribute changes
+watch(() => props.colorByAttribute, () => {
+  debugLog('[PieChartCard] colorByAttribute changed, re-rendering')
+  // Clear selection when grouping changes
+  selectedCategories.value.clear()
+  renderChart()
+})
 
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, () => {

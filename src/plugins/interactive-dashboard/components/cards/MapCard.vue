@@ -1,19 +1,11 @@
 <template>
   <div class="map-card">
-    <!-- Map Controls (geometry type and color-by selectors) -->
+    <!-- Map Controls (geometry type selector only - color-by moved to dashboard header) -->
     <div v-if="hasMapControls" class="map-controls">
       <div v-if="mapControlsConfig?.geometryType" class="control-item">
         <label class="control-label">Geometry</label>
         <select class="control-select" :value="geometryType" @change="onGeometryTypeChange">
           <option v-for="opt in geometryTypeOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
-      <div v-if="mapControlsConfig?.colorBy && colorByOptions.length > 0" class="control-item">
-        <label class="control-label">Color by</label>
-        <select class="control-select" :value="colorByAttribute" @change="onColorByChange">
-          <option v-for="opt in colorByOptions" :key="opt.attribute" :value="opt.attribute">
             {{ opt.label }}
           </option>
         </select>
@@ -217,13 +209,12 @@ const props = withDefaults(defineProps<Props>(), {
   multiLevelSelection: false,
 })
 
-// Emits
+// Emits (color-by moved to dashboard level)
 const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>]
   hover: [ids: Set<any>]
   select: [ids: Set<any>]
   'update:geometry-type': [value: string]
-  'update:color-by-attribute': [value: string]
   isLoaded: []
 }>()
 
@@ -249,9 +240,9 @@ const isDarkMode = computed(() => globalStore.state.isDarkMode)
 // Scientific mode for publication-ready exports
 const isScientificMode = computed(() => StyleManager.getInstance().isScientificMode())
 
-// Map controls computed
+// Map controls computed (color-by moved to dashboard header)
 const hasMapControls = computed(() => {
-  return !!props.mapControlsConfig?.geometryType || !!props.mapControlsConfig?.colorBy
+  return !!props.mapControlsConfig?.geometryType
 })
 
 // Event handlers for map controls
@@ -259,12 +250,6 @@ function onGeometryTypeChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
   debugLog('[MapCard] Geometry type changed to:', value)
   emit('update:geometry-type', value)
-}
-
-function onColorByChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value
-  debugLog('[MapCard] Color by changed to:', value)
-  emit('update:color-by-attribute', value)
 }
 
 // File API access
