@@ -1922,27 +1922,17 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
     // If not found in feature, look up from central data table via linkage
     // This handles the case where GeoJSON has limited properties and full data is in CSV
     if (attributeValue === undefined && layerConfig.linkage && props.filteredData) {
-      const featureId = getFeatureId(feature, layerConfig)
+      // Use raw geoProperty value for data join (NOT getFeatureId which constructs
+      // compound IDs like 'origin_5'). The CSV tableColumn has simple values like 5,
+      // so we need raw matching: row['origin_cluster'] == feature.cluster_id
+      const rawFeatureId = feature.properties?.[layerConfig.linkage.geoProperty]
       const tableColumn = layerConfig.linkage.tableColumn
 
-      // Log the first lookup for debugging (controlled via debug flag)
-      if (!window._colorByDebugLogged) {
-        debugLog('[MapCard] colorBy data join lookup:')
-        debugLog('  raw cluster_id:', feature.properties?.[layerConfig.linkage.geoProperty])
-        debugLog('  cluster_type:', feature.properties?.cluster_type)
-        debugLog('  constructed featureId:', featureId)
-        debugLog('  tableColumn:', tableColumn)
-        debugLog('  colorByAttribute:', props.colorByAttribute)
-        debugLog('  filteredData rows:', props.filteredData?.length)
-        debugLog('  First row sample:', props.filteredData?.[0])
-        window._colorByDebugLogged = true
-      }
-
-      // Find matching row in central table
+      // Find matching row in central table using raw feature ID
       const matchingRow = props.filteredData.find((row: any) => {
         const rowId = row[tableColumn]
         // Loose comparison for type mismatches (string "45" vs number 45)
-        return rowId == featureId || String(rowId) === String(featureId)
+        return rowId == rawFeatureId || String(rowId) === String(rawFeatureId)
       })
 
       if (matchingRow) {
