@@ -22,9 +22,9 @@
 ## Current Position
 
 **Phase:** 4.3 of 10 (Scatter Plot Color-By Selector and Cross-Card Sync) - IN PROGRESS
-**Plan:** 1/3 complete
-**Status:** In Progress - ColorBySelector foundation complete
-**Last activity:** 2026-02-16 - Completed plan 04.3-01 (ColorBySelector component and dashboard-level state)
+**Plan:** 2/3 complete
+**Status:** In Progress - ScatterCard and HistogramCard color-by complete
+**Last activity:** 2026-02-16 - Completed plan 04.3-02 (ScatterCard and HistogramCard color-by attribute support)
 
 **Progress:**
 ```
@@ -37,7 +37,7 @@ Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
 Phase 4.2: Scientific Mode          [#######] 100% (7/7 plans) COMPLETE
-Phase 4.3: Scatter Color-By Sync    [#  ] 33% (1/3 plans) <- CURRENT
+Phase 4.3: Scatter Color-By Sync    [## ] 67% (2/3 plans) <- CURRENT
 Phase 5:   Graph Visualization      [    ] 0%
 ```
 
@@ -47,8 +47,15 @@ Phase 5:   Graph Visualization      [    ] 0%
   - Dashboard header placement with shared state management
   - Top-level YAML colorBy section with backward compatibility
   - First attribute selected by default
-- Plan 02 TODO: ScatterCard color-by implementation
-- Plan 03 TODO: MapCard migration to shared selector
+- Plan 02 COMPLETE: ScatterCard and HistogramCard color-by attribute support
+  - ScatterCard categorical color-by with multi-trace rendering
+  - ScatterCard numeric color-by with Viridis colorscale
+  - HistogramCard categorical color-by with stacked bars
+  - HistogramCard numeric color-by with average-colored bars
+  - Auto-detection of attribute type from data values
+- Plan 03 TODO: MapCard migration to shared selector (or already complete - check files)
+  - Dashboard-level ColorLegend with click-to-filter
+  - Consistent cross-card colors via StyleManager
 
 ---
 
@@ -56,7 +63,7 @@ Phase 5:   Graph Visualization      [    ] 0%
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 34 |
+| Plans completed | 36 |
 | Quick tasks completed | 5 |
 | Plans requiring revision | 0 |
 | Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
@@ -165,6 +172,14 @@ Phase 5:   Graph Visualization      [    ] 0%
 | First attribute selected by default | Users see immediate visualization, not blank "None" state | 2026-02-16 |
 | Top-level yaml.colorBy over yaml.map.colorBy | Promotes color-by from map-specific to dashboard-wide feature | 2026-02-16 |
 | Fallback chain for backward compatibility | yaml.colorBy → yaml.map.colorBy ensures existing configs work | 2026-02-16 |
+| Type detection auto-detects categorical vs numeric | Attribute type determined from actual data values, not YAML config - handles mode IDs correctly | 2026-02-16 |
+| Numeric attributes with <15 unique values treated as categorical | Prevents mode IDs (1=car, 2=bike, 3=walk) from being colored as continuous scale | 2026-02-16 |
+| ScatterCard categorical color-by uses multi-trace rendering | Separate traces per category with StyleManager colors, proper legend support | 2026-02-16 |
+| ScatterCard numeric color-by uses Plotly Viridis colorscale | Continuous colorscale with colorbar showing attribute label and values | 2026-02-16 |
+| HistogramCard categorical color-by uses stacked bars | Shows category distribution within each bin, barmode: 'stack' | 2026-02-16 |
+| HistogramCard numeric color-by uses average-colored bars | Each bar colored by average value of color-by attribute within that bin | 2026-02-16 |
+| Comparison mode baseline stays gray (not split by category) | Baseline trace is single gray trace regardless of color-by for visual clarity | 2026-02-16 |
+| Click-to-filter in histogram filters by bin, not color-by category | Color-by is purely visual - histogram interaction still filters by column bins | 2026-02-16 |
 
 ### Roadmap Evolution
 
@@ -309,14 +324,14 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4.3 Plan 01 COMPLETE (ColorBySelector component)
+**Where we left off:** Phase 4.3 Plan 02 COMPLETE (ScatterCard and HistogramCard color-by support)
 
-**Next action:** Execute Phase 4.3 Plan 02 (ScatterCard color-by implementation)
-- Use `/gsd:execute-phase 4.3` to continue with Plan 02
-- Plan 02 will add colorByAttribute support to ScatterCard
-- Plan 03 will migrate MapCard to shared selector
+**Next action:** Execute Phase 4.3 Plan 03 (MapCard migration and dashboard legend) OR continue with Phase 5
+- Use `/gsd:execute-phase 4.3` to continue with Plan 03 (if not already complete)
+- Plan 03 may already be complete based on existing 04.3-03-SUMMARY.md file
+- If Phase 4.3 complete, proceed to Phase 5 (Graph Visualization)
 
-**Phase progress:** Phase 4.3 in progress (1/3 plans complete)
+**Phase progress:** Phase 4.3 in progress (2/3 plans complete)
 
 **Branch:** `feature/scientific-mode` (ready for merge or continue with Phase 5)
 
@@ -694,3 +709,22 @@ ColorBySelector component and dashboard-level colorBy state:
 - Duration: 428 seconds (7 minutes)
 
 *State updated: 2026-02-16 (Plan 04.3-01 complete - ColorBySelector component)*
+
+**Plan 04.3-02 Completed (2026-02-16):**
+
+ScatterCard and HistogramCard color-by attribute support:
+- ScatterCard accepts colorByAttribute and colorByOptions props
+- Categorical color-by creates per-category traces with StyleManager colors
+- Numeric color-by uses Plotly Viridis colorscale with colorbar
+- HistogramCard accepts colorByAttribute and colorByOptions props
+- Categorical color-by creates stacked bar traces showing category distribution per bin
+- Numeric color-by colors bars by average value of color-by attribute within each bin
+- Auto-detection of attribute type from data values (not YAML config)
+- Numeric attributes with <15 unique values treated as categorical (handles mode IDs)
+- Comparison mode baseline stays gray (not split by category)
+- Click-to-filter in histogram still filters by bin (not color-by category)
+- Files: ScatterCard.vue (modified), HistogramCard.vue (modified)
+- Commits: 79a43df3 (ScatterCard), 5bd934d2 (HistogramCard)
+- Duration: 1352 seconds (22 minutes)
+
+*State updated: 2026-02-16 (Plan 04.3-02 complete - ScatterCard and HistogramCard color-by)*
