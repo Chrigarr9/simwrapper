@@ -10,6 +10,14 @@
         p {{ description }}
 
       .header-controls
+        //- Color by selector (only shown if colorBy attributes are configured)
+        color-by-selector(
+          v-if="colorByOptions.length > 0"
+          :model-value="colorByAttribute"
+          :options="colorByOptions"
+          @update:model-value="colorByAttribute = $event"
+        )
+
         //- Theme toggle showing current mode
         button.theme-toggle(
           @click="toggleTheme"
@@ -184,6 +192,7 @@ import DataTableCard from './components/cards/DataTableCard.vue'
 import DashboardCard from './components/DashboardCard.vue'
 import ComparisonToggle from './components/controls/ComparisonToggle.vue'
 import ExportAllButton from './components/controls/ExportAllButton.vue'
+import ColorBySelector from './components/controls/ColorBySelector.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -198,7 +207,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ColorBySelector }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -392,7 +401,8 @@ export default defineComponent({
     },
 
     colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
-      return this.yaml.map?.colorBy?.attributes || []
+      // Prioritize top-level colorBy, fall back to map.colorBy for backward compatibility
+      return this.yaml.colorBy?.attributes || this.yaml.map?.colorBy?.attributes || []
     },
 
     // Check if any filters are active
@@ -845,9 +855,15 @@ export default defineComponent({
       await this.initializeCoordinationLayer()
 
       // Initialize map control defaults from YAML
-      if (this.yaml.map?.colorBy?.default) {
+      // Prioritize top-level colorBy, fall back to map.colorBy for backward compatibility
+      if (this.yaml.colorBy?.attributes?.length > 0) {
+        // Top-level colorBy takes priority - default to first attribute
+        this.colorByAttribute = this.yaml.colorBy.attributes[0].attribute
+      } else if (this.yaml.map?.colorBy?.default) {
+        // Fall back to map.colorBy.default
         this.colorByAttribute = this.yaml.map.colorBy.default
       } else if (this.yaml.map?.colorBy?.attributes?.length > 0) {
+        // Fall back to first map.colorBy attribute
         this.colorByAttribute = this.yaml.map.colorBy.attributes[0].attribute
       }
       if (this.yaml.map?.geometryTypes?.length > 0) {
