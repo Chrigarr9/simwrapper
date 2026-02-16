@@ -47,6 +47,8 @@ interface Props {
   linkageManager?: LinkageManager           // Manager instance for observing events
   baselineData?: any[]      // All data (unfiltered) for comparison mode
   showComparison?: boolean  // Whether comparison mode is active
+  colorByAttribute?: string  // Dashboard-level color-by attribute
+  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -77,6 +79,26 @@ const currentYColumn = ref(props.yColumn)
 // Watch for prop changes to reset defaults
 watch(() => props.xColumn, (newVal) => { currentXColumn.value = newVal })
 watch(() => props.yColumn, (newVal) => { currentYColumn.value = newVal })
+
+// Type detection utility - auto-detect from data values (not YAML config)
+const detectColorByType = (attribute: string): 'categorical' | 'numeric' => {
+  if (!props.filteredData?.length || !attribute) return 'categorical'
+  const values = props.filteredData
+    .map(row => row[attribute])
+    .filter(v => v !== null && v !== undefined)
+  if (values.length === 0) return 'categorical'
+
+  // Check if all values are numbers
+  const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
+  if (!allNumeric) return 'categorical'
+
+  // If numeric but few unique values (< 15), treat as categorical
+  // This handles cases like mode IDs (1=car, 2=bike)
+  const uniqueValues = new Set(values)
+  if (uniqueValues.size < 15) return 'categorical'
+
+  return 'numeric'
+}
 
 // Get format config for a column
 function getColumnFormat(column: string): ColumnFormat | undefined {
@@ -464,12 +486,16 @@ const buildChartData = () => {
     ? styleManager.getScientificConfig().fontFamily
     : undefined
 
+  // Determine if color-by is active and what type
+  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
+  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : 'categorical'
+
   // Build traces - one per category for proper legend, or single trace if no categories
   const traces: any[] = []
   const categories = scatterData.value.categories
   const hasCategories = props.colorColumn && categories.length > 0
 
-  // Baseline trace (if comparison mode) - gray points behind
+  // Baseline trace (if comparison mode) - gray points behind, NEVER split by color-by category
   if (props.showComparison && baselineScatterData.value.x.length > 0) {
     traces.unshift({  // unshift to add at beginning
       x: baselineScatterData.value.x,
@@ -492,7 +518,181 @@ const buildChartData = () => {
     })
   }
 
-  if (hasCategories) {
+  // Color-by rendering: categorical (multi-trace) or numeric (colorscale)
+  if (colorByActive && colorByType === 'categorical') {
+    // Categorical color-by: create separate traces per category value
+    const colorByValues = Array.from(
+      new Set(
+        props.filteredData
+          ?.map(row => row[props.colorByAttribute!])
+          .filter(v => v !== null && v !== undefined)
+      )
+    ).sort()
+
+    const colorMap = styleManager.buildCategoricalColorMap(colorByValues.map(String))
+
+    colorByValues.forEach((categoryValue, categoryIndex) => {
+      const categoryStr = String(categoryValue)
+      const categoryX: number[] = []
+      const categoryY: number[] = []
+      const categoryText: string[] = []
+      const categorySizes: number[] = []
+      const categoryMarkerColors: string[] = []
+      const categoryLineWidths: number[] = []
+      const categoryLineColors: string[] = []
+      const categoryOpacities: number[] = []
+      const categoryIds: any[] = []
+
+      props.filteredData?.forEach((row) => {
+        if (String(row[props.colorByAttribute!]) === categoryStr) {
+          const xVal = row[currentXColumn.value]
+          const yVal = row[currentYColumn.value]
+          if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+            const id = props.idColumn ? row[props.idColumn] : null
+            categoryX.push(xVal)
+            categoryY.push(yVal)
+            categoryIds.push(id)
+
+            // Hover text
+            const xFormatted = formatValue(xVal, currentXColumn.value)
+            const yFormatted = formatValue(yVal, currentYColumn.value)
+            let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`
+            hoverText += `<br>${props.colorByAttribute}: ${categoryValue}`
+            if (id) hoverText += `<br>ID: ${id}`
+            categoryText.push(hoverText)
+
+            const baseSize = props.sizeColumn && row[props.sizeColumn] !== undefined
+              ? Math.max(5, Math.min(25, row[props.sizeColumn]))
+              : props.markerSize
+            const isHovered = id && props.hoveredIds?.has(id)
+            const isSelected = id && props.selectedIds?.has(id)
+
+            // Size: 1.5x larger for highlighted/selected points
+            categorySizes.push((isSelected || isHovered) ? baseSize * 1.5 : baseSize)
+
+            // Color based on selection state
+            if (isSelected) {
+              categoryMarkerColors.push(selectedColor)
+              categoryLineColors.push('#ffffff')
+              categoryLineWidths.push(3)
+              categoryOpacities.push(1.0)
+            } else if (isHovered) {
+              categoryMarkerColors.push(highlightColor)
+              categoryLineColors.push('#ffffff')
+              categoryLineWidths.push(2.5)
+              categoryOpacities.push(1.0)
+            } else {
+              categoryMarkerColors.push(colorMap.get(categoryStr) || defaultColor)
+              categoryLineColors.push(textColor)
+              categoryLineWidths.push(0.5)
+              categoryOpacities.push(0.7)
+            }
+          }
+        }
+      })
+
+      if (categoryX.length > 0) {
+        traces.push({
+          x: categoryX,
+          y: categoryY,
+          mode: 'markers',
+          type: 'scatter',
+          name: toTitleCase(categoryStr),
+          text: categoryText,
+          hoverinfo: 'text',
+          marker: {
+            color: categoryMarkerColors,
+            size: categorySizes,
+            symbol: isScientific ? styleManager.getScientificMarkerSymbol(categoryIndex) : undefined,
+            line: {
+              color: categoryLineColors,
+              width: categoryLineWidths,
+            },
+            opacity: categoryOpacities,
+          },
+          legendgroup: categoryStr,
+          customdata: categoryIds.map(id => ({ id })),
+        })
+      }
+    })
+  } else if (colorByActive && colorByType === 'numeric') {
+    // Numeric color-by: single trace with Plotly colorscale
+    const colorByValues = scatterData.value.ids.map((id, i) => {
+      const rowIndex = props.filteredData?.findIndex(row =>
+        (props.idColumn ? row[props.idColumn] : null) === id
+      )
+      if (rowIndex !== undefined && rowIndex >= 0) {
+        return props.filteredData![rowIndex][props.colorByAttribute!]
+      }
+      return null
+    })
+
+    const markerSizes = scatterData.value.ids.map((id, i) => {
+      const baseSize = scatterData.value.sizes[i]
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      return (isSelected || isHovered) ? baseSize * 1.5 : baseSize
+    })
+
+    const lineWidths = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      if (isSelected) return 3
+      if (isHovered) return 2.5
+      return 0.5
+    })
+
+    const lineColors = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      return (isSelected || isHovered) ? '#ffffff' : textColor
+    })
+
+    const opacities = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      return (isSelected || isHovered) ? 1.0 : 0.7
+    })
+
+    // Enhanced hover text with color-by attribute
+    const enhancedText = scatterData.value.text.map((txt, i) => {
+      const colorVal = colorByValues[i]
+      if (colorVal !== null && colorVal !== undefined) {
+        return `${txt}<br>${props.colorByAttribute}: ${colorVal}`
+      }
+      return txt
+    })
+
+    // Find attribute label for colorbar title
+    const attributeLabel = props.colorByOptions?.find(
+      opt => opt.attribute === props.colorByAttribute
+    )?.label || props.colorByAttribute
+
+    traces.push({
+      x: scatterData.value.x,
+      y: scatterData.value.y,
+      mode: 'markers',
+      type: 'scatter',
+      text: enhancedText,
+      hoverinfo: 'text',
+      marker: {
+        color: colorByValues,
+        colorscale: 'Viridis',
+        showscale: true,
+        colorbar: {
+          title: attributeLabel,
+          titlefont: { color: textColor, size: 10, family: fontFamily },
+          tickfont: { color: textColor, size: 9, family: fontFamily },
+        },
+        size: markerSizes,
+        line: {
+          color: lineColors,
+          width: lineWidths,
+        },
+        opacity: opacities,
+      },
+    })
+  } else if (hasCategories) {
     // Create separate traces for each category (enables proper legend)
     const categoryColors = generateCategoryColors(categories)
 
@@ -678,6 +878,7 @@ const buildChartData = () => {
     range: [yMin - yPadding, yMax + yPadding],  // Fixed range from baseline prevents zooming
   }
 
+  const showLegend = hasCategories || props.showComparison || (colorByActive && colorByType === 'categorical')
   const layout = {
     font: {
       family: fontFamily,
@@ -685,13 +886,13 @@ const buildChartData = () => {
     },
     xaxis: xAxisConfig,
     yaxis: yAxisConfig,
-    margin: { l: 60, r: hasCategories ? 100 : 15, t: 10, b: 45 },
+    margin: { l: 60, r: showLegend ? 100 : (colorByActive && colorByType === 'numeric' ? 80 : 15), t: 10, b: 45 },
     autosize: true,
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
     hovermode: 'closest',
-    showlegend: hasCategories || props.showComparison,
-    legend: hasCategories || props.showComparison ? {
+    showlegend: showLegend,
+    legend: showLegend ? {
       x: 1.02,
       y: 1,
       xanchor: 'left',
@@ -766,6 +967,12 @@ watch(
 
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, () => {
+  debouncedRenderChart()
+})
+
+// Re-render when color-by attribute changes
+watch(() => props.colorByAttribute, () => {
+  debugLog('[ScatterCard] colorByAttribute changed to:', props.colorByAttribute)
   debouncedRenderChart()
 })
 
