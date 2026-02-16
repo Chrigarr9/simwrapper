@@ -108,7 +108,7 @@
               :color-column="card.colorColumn"
               :size-column="card.sizeColumn"
               :marker-size="card.markerSize"
-              :id-column="yaml.table?.idColumn"
+              :id-column="card.idColumn || yaml.table?.idColumn"
               :attributes="card.attributes"
               :show-values="card.showValues"
               :p-value-threshold="card.pValueThreshold"
