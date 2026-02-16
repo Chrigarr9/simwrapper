@@ -21,10 +21,10 @@
 
 ## Current Position
 
-**Phase:** 4.2 of 10 (Scientific Mode) - COMPLETE
-**Plan:** 7/7 complete
-**Status:** Complete - Ready for Phase 5
-**Last activity:** 2026-01-30 - Completed quick task 007 (Scientific mode polish)
+**Phase:** 4.3 of 10 (Scatter Plot Color-By Selector and Cross-Card Sync) - IN PROGRESS
+**Plan:** 1/3 complete
+**Status:** In Progress - ColorBySelector foundation complete
+**Last activity:** 2026-02-16 - Completed plan 04.3-01 (ColorBySelector component and dashboard-level state)
 
 **Progress:**
 ```
@@ -37,15 +37,18 @@ Phase 3.1: Comparison Mode          [####] 100% (4/4 plans) COMPLETE
 Phase 4:   Timeline                 [####] 100% (4/4 plans) COMPLETE
 Phase 4.1: Timeline Refinement      [##] 100% (2/2 plans) COMPLETE
 Phase 4.2: Scientific Mode          [#######] 100% (7/7 plans) COMPLETE
-Phase 5:   Graph Visualization      [    ] 0% <- NEXT
+Phase 4.3: Scatter Color-By Sync    [#  ] 33% (1/3 plans) <- CURRENT
+Phase 5:   Graph Visualization      [    ] 0%
 ```
 
-**Phase 4.2 Delivered:**
-- Scientific styling profile (white bg, black axes, Arial font)
-- Theme toggle button in dashboard header (cycles Dark → Light → Scientific)
-- Per-card PNG export button for all exportable card types
-- Bulk "Download All" as ZIP with charts and maps
-- Maps hide interactive controls in scientific mode
+**Phase 4.3 Progress:**
+- Plan 01 COMPLETE: ColorBySelector component and dashboard-level colorBy state
+  - Reusable color-by dropdown extracted from MapCard
+  - Dashboard header placement with shared state management
+  - Top-level YAML colorBy section with backward compatibility
+  - First attribute selected by default
+- Plan 02 TODO: ScatterCard color-by implementation
+- Plan 03 TODO: MapCard migration to shared selector
 
 ---
 
@@ -53,7 +56,7 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 
 | Metric | Value |
 |--------|-------|
-| Plans completed | 33 |
+| Plans completed | 34 |
 | Quick tasks completed | 5 |
 | Plans requiring revision | 0 |
 | Requirements completed | 28/30 (THEME-01-03, ALYR-01-04, SUBD-01, CARD-01-05, CORR-01-02, COMP-01-06, TIME-01-03, TIME-05-06, SCI-01-05) |
@@ -157,6 +160,11 @@ Phase 5:   Graph Visualization      [    ] 0% <- NEXT
 | Export All button in header between title and favorite | Natural placement for dashboard-level action without cluttering individual cards | 2026-01-30 |
 | Hide MapLibre controls in scientific mode | Zoom buttons, compass, attribution not suitable for publication figures | 2026-01-30 |
 | data-exportable-map attribute for map export detection | DashboardCard detects maps via attribute, not fragile DOM queries | 2026-01-30 |
+| ColorBySelector placed before theme toggle | Visual hierarchy - data control before UI control | 2026-02-16 |
+| None option first in color-by dropdown | Research recommendation for better UX - explicit "no coloring" state | 2026-02-16 |
+| First attribute selected by default | Users see immediate visualization, not blank "None" state | 2026-02-16 |
+| Top-level yaml.colorBy over yaml.map.colorBy | Promotes color-by from map-specific to dashboard-wide feature | 2026-02-16 |
+| Fallback chain for backward compatibility | yaml.colorBy → yaml.map.colorBy ensures existing configs work | 2026-02-16 |
 
 ### Roadmap Evolution
 
@@ -301,14 +309,14 @@ Requirements: UNIF-01 to UNIF-04 (v2)
 
 ### For Next Session
 
-**Where we left off:** Phase 4.2 (Scientific Mode) COMPLETE
+**Where we left off:** Phase 4.3 Plan 01 COMPLETE (ColorBySelector component)
 
-**Next action:** Plan or execute Phase 5 (Graph Visualization)
-- Use `/gsd:discuss-phase 5` to discuss requirements
-- Use `/gsd:plan-phase 5` to create implementation plans
-- Use `/gsd:execute-phase 5` to execute after planning
+**Next action:** Execute Phase 4.3 Plan 02 (ScatterCard color-by implementation)
+- Use `/gsd:execute-phase 4.3` to continue with Plan 02
+- Plan 02 will add colorByAttribute support to ScatterCard
+- Plan 03 will migrate MapCard to shared selector
 
-**Phase progress:** Phase 4.2 complete (7/7 plans), Phase 5 not started (0/? plans)
+**Phase progress:** Phase 4.3 in progress (1/3 plans complete)
 
 **Branch:** `feature/scientific-mode` (ready for merge or continue with Phase 5)
 
@@ -662,3 +670,27 @@ End-to-end verification and fixes for Scientific Mode:
 - Commits: 13640312, 06b4cd69, 54030cae, 7187cb73, fafcf7f7, 7bc6e8bf, 5c5a3327
 
 *State updated: 2026-01-30 (Phase 4.2 COMPLETE - Scientific Mode)*
+
+**Plan 04.3-01 Completed (2026-02-16):**
+
+ColorBySelector component and dashboard-level colorBy state:
+- Created ColorBySelector.vue component in components/controls/
+- Extracted color-by dropdown from MapCard pattern
+- Props interface: modelValue (string) and options array
+- Template: Pug with "None" option first, followed by configured attributes
+- Styling: Reused MapCard control styles (control-item, control-label, control-select)
+- Updated InteractiveDashboard.vue:
+  - Imported and registered ColorBySelector component
+  - Updated colorByOptions computed to prioritize yaml.colorBy over yaml.map.colorBy
+  - Modified mounted() to initialize colorByAttribute from top-level yaml.colorBy
+  - Added ColorBySelector to dashboard header before theme toggle button
+  - Bound selector to colorByAttribute state with v-model pattern
+  - Only shows selector when colorByOptions.length > 0
+- colorByAttribute and colorByOptions already passed to all cards via existing template bindings
+- Backward compatible: falls back to yaml.map.colorBy if yaml.colorBy not present
+- First configured attribute selected by default (not "None")
+- Files: ColorBySelector.vue (created), InteractiveDashboard.vue (modified)
+- Commit: f6196beb
+- Duration: 428 seconds (7 minutes)
+
+*State updated: 2026-02-16 (Plan 04.3-01 complete - ColorBySelector component)*
