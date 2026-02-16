@@ -47,6 +47,19 @@
         )
           b: a(@click="switchTab(index)") {{ subtab.title }}
 
+    //- Dashboard-level color legend (shown when color-by is active)
+    .dashboard-legend-wrapper(v-if="dashboardLegendData")
+      color-legend(
+        :title="dashboardLegendData.title"
+        :legend-items="dashboardLegendData.type === 'categorical' ? dashboardLegendData.items : []"
+        :is-numeric="dashboardLegendData.type === 'numeric'"
+        :min-value="dashboardLegendData.type === 'numeric' ? dashboardLegendData.minValue : undefined"
+        :max-value="dashboardLegendData.type === 'numeric' ? dashboardLegendData.maxValue : undefined"
+        :clickable="true"
+        :is-dark-mode="isDarkMode"
+        @item-clicked="handleDashboardLegendClick"
+      )
+
     //- start row here
     .dash-row(v-for="row,i in rows" :key="i"
       :class="getRowClass(row)"
@@ -186,6 +199,7 @@ import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
 import { StyleManager, initializeTheme } from './managers/StyleManager'
 import { debugLog } from './utils/debug'
+import { toTitleCase } from './utils/labelFormatter'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
@@ -193,6 +207,7 @@ import DashboardCard from './components/DashboardCard.vue'
 import ComparisonToggle from './components/controls/ComparisonToggle.vue'
 import ExportAllButton from './components/controls/ExportAllButton.vue'
 import ColorBySelector from './components/controls/ColorBySelector.vue'
+import ColorLegend from './components/cards/ColorLegend.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -207,7 +222,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ColorBySelector }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ColorBySelector, ColorLegend }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -275,6 +290,8 @@ export default defineComponent({
       cardRenderKey: 0,
       // Comparison mode state
       showComparison: true,
+      // Legend filtering state
+      legendFilteredCategories: new Set<string>() as Set<string>,
     }
   },
 
@@ -424,6 +441,53 @@ export default defineComponent({
       return this.showComparison && (this.hasActiveFilters || this.hasActiveSelections)
     },
 
+    // Dashboard-level legend data for ColorLegend component
+    dashboardLegendData(): { title: string; type: 'categorical' | 'numeric'; items?: Array<{ label: string; color: string }>; minValue?: number; maxValue?: number } | null {
+      if (!this.colorByAttribute || !this.displayData?.length) return null
+
+      const attribute = this.colorByAttribute
+      const values = this.displayData
+        .map(row => row[attribute])
+        .filter(v => v !== null && v !== undefined)
+
+      if (values.length === 0) return null
+
+      // Auto-detect type
+      const allNumeric = values.every(v => typeof v === 'number' && !isNaN(v))
+      const uniqueValues = [...new Set(values.map(String))].sort()
+      const isCategorical = !allNumeric || uniqueValues.length < 15
+
+      // Get label from colorByOptions
+      const attrConfig = this.colorByOptions.find(opt => opt.attribute === attribute)
+      const title = attrConfig?.label || toTitleCase(attribute)
+
+      if (isCategorical) {
+        const styleManager = StyleManager.getInstance()
+        const colorMap = styleManager.buildCategoricalColorMap(uniqueValues)
+        return {
+          title,
+          type: 'categorical',
+          items: uniqueValues.map(value => ({
+            label: String(value),
+            color: colorMap.get(value)!
+          }))
+        }
+      } else {
+        const numValues = values as number[]
+        return {
+          title,
+          type: 'numeric',
+          minValue: Math.min(...numValues),
+          maxValue: Math.max(...numValues)
+        }
+      }
+    },
+
+    // isDarkMode for legend styling
+    isDarkMode(): boolean {
+      return this.$store.state.colorScheme === ColorScheme.DarkMode
+    },
+
   },
 
   watch: {
@@ -452,6 +516,14 @@ export default defineComponent({
         }
       })
     },
+    // Clear legend filter when color-by attribute changes
+    colorByAttribute() {
+      if (this.filterManager) {
+        this.filterManager.clearFilter('dashboard-colorby-legend')
+        this.legendFilteredCategories.clear()
+        this.filterVersion++
+      }
+    },
   },
 
   methods: {
@@ -466,6 +538,36 @@ export default defineComponent({
       debugLog('[InteractiveDashboard] handleShowComparisonUpdate - hasActiveFilters:', this.hasActiveFilters)
       this.showComparison = value
       debugLog('[InteractiveDashboard] handleShowComparisonUpdate - after update:', this.showComparison, 'effectiveShowComparison:', this.effectiveShowComparison)
+    },
+
+    // Handle dashboard-level legend item click (click-to-filter)
+    handleDashboardLegendClick(label: string) {
+      if (!this.filterManager || !this.colorByAttribute) return
+
+      // Toggle category in legend filter set
+      if (this.legendFilteredCategories.has(label)) {
+        this.legendFilteredCategories.delete(label)
+      } else {
+        this.legendFilteredCategories.add(label)
+      }
+
+      // Update filter
+      const filterId = 'dashboard-colorby-legend'
+      if (this.legendFilteredCategories.size === 0) {
+        // Clear filter if no categories selected
+        this.filterManager.clearFilter(filterId)
+      } else {
+        // Set filter for selected categories
+        this.filterManager.setFilter(
+          filterId,
+          this.colorByAttribute,
+          new Set(this.legendFilteredCategories)
+        )
+      }
+
+      // Increment filter version to trigger reactivity
+      this.filterVersion++
+      debugLog('[InteractiveDashboard] Legend filter updated:', Array.from(this.legendFilteredCategories))
     },
 
     // NEW: Format table cell values based on column config
@@ -1551,6 +1653,22 @@ export default defineComponent({
 
   p {
     line-height: 1.4rem;
+  }
+}
+
+// Dashboard-level color legend wrapper
+.dashboard-legend-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin: 0 2rem 1rem 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;  // Allow clicks to pass through wrapper
+
+  // The legend itself has pointer-events: auto
+  & > * {
+    pointer-events: auto;
   }
 }
 
