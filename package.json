@@ -27,6 +27,7 @@
     "test": "playwright test",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "export": "tsx scripts/export.ts",
     "lint": "broken//vue-cli-service lint",
     "bumpversion": "standard-version",
     "postinstall": "patch-package"
@@ -196,6 +197,7 @@
     "sass": "1.55.0",
     "standard-version": "^9.5.0",
     "threads-plugin": "^1.4.0",
+    "tsx": "^4.21.0",
     "typescript": "^4.2.0",
     "unplugin-vue-markdown": "^0.26.2",
     "vite": "^6.4.1",
