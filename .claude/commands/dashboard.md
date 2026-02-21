@@ -443,6 +443,56 @@ Using the approved design + the reference guide schema, generate complete YAML.
 
 Write the YAML file using the Write tool.
 
+### Step 6b: Export Config Offer
+
+After writing the dashboard YAML, offer to create a companion export config for batch figure generation.
+
+**Ask with `AskUserQuestion`:**
+- header: "Export config"
+- question: "Would you like to create an export config for batch figure generation? This enables exporting publication-ready figures via the Export button or the CLI."
+- options:
+  - "Yes — create export config" (description: "I'll propose states and generate an export YAML alongside the dashboard")
+  - "No — skip for now" (description: "You can always create one later with the /export skill")
+
+**If yes:**
+
+1. **Ask target format** with `AskUserQuestion`:
+   - header: "Export target"
+   - question: "What's the primary target for exported figures?"
+   - options:
+     - "Dissertation / thesis (LaTeX)" → png, 1200x800, scale 2, scientific true
+     - "Presentation (PowerPoint/Keynote)" → png, 1600x900, scale 1.5, scientific false
+
+2. **Auto-extract plots** from the dashboard YAML just written:
+   - Walk through all `layout` rows and collect cards with exportable types (histogram, pie-chart, scatter-plot, correlation-matrix)
+   - Map each card to an export plot definition, preserving column, binSize, xColumn, yColumn, colorBy, title, autoTrim, etc.
+   - Assign a descriptive plot ID from the card type + column (e.g., `mode-pie`, `distance-hist`, `time-vs-distance-scatter`)
+
+3. **Propose filter-based states** using data from Step 1:
+   - For each categorical column with 2-8 unique values used in the dashboard: propose per-value states
+   - For key numeric columns: propose threshold states (e.g., short/medium/long trips)
+   - Present as multiSelect `AskUserQuestion`: "Which filter states should be included?"
+   - Always include `all` (unfiltered baseline)
+
+4. **Propose comparison states** for the 1-2 most central categorical columns:
+   - Present as multiSelect: "Which comparison states? (renders filtered data overlaid on baseline)"
+
+5. **Generate the export YAML**:
+   - Write to `export-<dashboard-filename>.yaml` in the same directory as the dashboard
+   - Use the dashboard's `table.dataset` as `table.file` and `table.idColumn`
+   - Apply format defaults from step 1 above
+
+6. **Link to dashboard**: Read back the dashboard YAML and append:
+   ```yaml
+   export:
+     - file: export-<name>.yaml
+       label: "Export Figures"
+   ```
+
+7. **Present summary**: "Created export config with X plots x Y states = Z total exports. Run via the Export button or `npm run export -- path/to/config.yaml`."
+
+**If no:** Proceed to Step 7.
+
 ### Step 7: Validate & Present
 
 After writing the YAML file:
@@ -452,7 +502,7 @@ After writing the YAML file:
 3. **Verify bin sizes make sense**: For each histogram, print `(max - min) / binSize` to show the number of bins
 4. **Verify color consistency**: Check that every categorical attribute in colorBy/pie-chart has a matching colorSchemes entry
 5. **Present summary**: What was generated, what story it tells, which file was written
-6. **Offer refinements**: "Want to add more charts, adjust bin sizes, change colors, restructure the layout, or add another tab?"
+6. **Offer refinements**: "Want to add more charts, adjust bin sizes, change colors, restructure the layout, add another tab, or create/modify an export config?"
 
 ---
 

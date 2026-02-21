@@ -1,0 +1,27 @@
+table:
+  file: test-data.csv
+  idColumn: id
+
+defaults:
+  format: png
+  width: 600
+  height: 400
+  scale: 1
+  scientific: true
+
+plots:
+  test-histogram:
+    type: histogram
+    title: "Distance Distribution"
+    column: distance
+    bins: 5
+
+states:
+  all:
+    export:
+      - test-histogram
+  filtered:
+    filters:
+      mode: [car, pt]
+    export:
+      - test-histogram

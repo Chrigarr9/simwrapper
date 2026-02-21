@@ -1,0 +1,6 @@
+id,mode,distance,duration
+1,car,5000,30
+2,pt,3000,45
+3,bike,1000,15
+4,car,8000,50
+5,walk,500,10
