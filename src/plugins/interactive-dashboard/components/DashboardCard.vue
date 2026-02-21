@@ -436,7 +436,7 @@ export default defineComponent({
     font-size: 1.1rem;
     line-height: 1.5rem;
     margin-bottom: 0.5rem;
-    color: var(--dashboard-interaction-selected, var(--link));
+    color: var(--dashboard-card-header-color, var(--link));
   }
 
   p {
@@ -460,7 +460,7 @@ export default defineComponent({
   .btn-icon {
     background-color: transparent;
     border: none;
-    color: var(--dashboard-interaction-selected, var(--link));
+    color: var(--dashboard-card-header-color, var(--link));
     opacity: 0.5;
     padding: 4px 8px;
     cursor: pointer;

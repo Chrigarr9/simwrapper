@@ -36,6 +36,7 @@ table:
         unit: string      # Display unit (e.g., "km", "min", "s")
         decimals: number  # Decimal places for numeric types
         convertFrom: string  # Source unit: "seconds" | "meters"
+        titleCase: boolean   # (optional, default: true) Set false to disable Title Case formatting on string values
 
 # ============================================================================
 # LAYOUT (required) -- Row-based card arrangement
@@ -597,6 +598,12 @@ Applied via `table.columns.formats.<columnName>`.
 | `string` | -- | -- | raw value |
 | `boolean` | -- | -- | raw value |
 
+**Additional format options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `titleCase` | `boolean` | `true` | Whether to apply title-case formatting to string values. Set to `false` for identifier columns (e.g., `trial_id`, `scenario_id`). |
+
 ### Common Patterns
 
 ```yaml
@@ -630,6 +637,12 @@ columns:
     latitude:
       type: number
       decimals: 5
+
+    # Preserve original values (no title-casing)
+    trial_id:
+      titleCase: false
+    scenario_id:
+      titleCase: false
 ```
 
 ---

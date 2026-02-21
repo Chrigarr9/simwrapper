@@ -105,9 +105,11 @@
               :title="card.title"
               :x-column="card.xColumn"
               :y-column="card.yColumn"
+              :y-column-right="card.yColumnRight"
               :color-column="card.colorColumn"
               :size-column="card.sizeColumn"
               :marker-size="card.markerSize"
+              :connect-lines="card.connectLines"
               :id-column="card.idColumn || yaml.table?.idColumn"
               :attributes="card.attributes"
               :show-values="card.showValues"
@@ -1028,7 +1030,7 @@ export default defineComponent({
 
         cards.forEach(card => {
           card.id = `card-id-${numCard}`
-          card.isLoaded = false
+          Vue.set(card, 'isLoaded', false)
           card.number = numCard
 
           // hoist flex weight if card has "height" and we are full-screen

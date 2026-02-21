@@ -96,7 +96,7 @@ import type { LinkageManager } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
 import { StyleManager } from '../../managers/StyleManager'
 import { debugLog } from '../../utils/debug'
-import { toTitleCase } from '../../utils/labelFormatter'
+import { toTitleCase, formatLabel } from '../../utils/labelFormatter'
 import ComparisonToggle from '../controls/ComparisonToggle.vue'
 
 interface Props {
@@ -350,6 +350,10 @@ function formatCellValue(value: any, column: string): string {
     if (typeof value === 'number') {
       return styleManager.formatNumber(value)
     }
+    // Title-case string values (categorical columns without explicit format)
+    if (typeof value === 'string') {
+      return formatLabel(value, formats, column)
+    }
     return String(value)
   }
 
@@ -386,6 +390,19 @@ function formatCellValue(value: any, column: string): string {
       }
       return String(value)
     }
+    case 'percent': {
+      if (typeof value === 'number') {
+        const decimals = format.decimals ?? defaultDecimals
+        return (value * 100).toFixed(decimals) + '%'
+      }
+      return String(value)
+    }
+    case 'integer': {
+      if (typeof value === 'number') {
+        return Math.round(value).toLocaleString()
+      }
+      return String(value)
+    }
     case 'decimal': {
       if (typeof value === 'number') {
         const decimals = format.decimals ?? defaultDecimals
@@ -394,6 +411,10 @@ function formatCellValue(value: any, column: string): string {
       return String(value)
     }
     default:
+      // Title-case unformatted string values (unless titleCase: false)
+      if (typeof value === 'string') {
+        return formatLabel(value, formats, column)
+      }
       return String(value)
   }
 }

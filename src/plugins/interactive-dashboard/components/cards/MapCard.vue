@@ -49,7 +49,8 @@ import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
-import { toTitleCase, stripEmptyUnitBrackets } from '../../utils/labelFormatter'
+import { toTitleCase } from '../../utils/labelFormatter'
+import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
 import { StyleManager } from '../../managers/StyleManager'
 import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
 import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
@@ -1538,7 +1539,8 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   // This creates visual hierarchy: selected features pop, everything else fades
   if (hasActiveSelection && !isSelected && !isHovered) {
     const baseColor = getBaseColor(feature, layerConfig)
-    return [baseColor[0], baseColor[1], baseColor[2], 80] // 30% opacity
+    const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255)
+    return [baseColor[0], baseColor[1], baseColor[2], dimAlpha]
   }
 
   // Use getBaseColor for colorBy support (dashboard-level or per-layer)
@@ -1773,7 +1775,8 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   // Dim non-selected features when there's an active selection
   if (hasActiveSelection && !isSelected && !isHovered) {
     const baseColor = getBaseColor(feature, layerConfig)
-    return [baseColor[0], baseColor[1], baseColor[2], 60] // Lower opacity for better contrast
+    const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255)
+    return [baseColor[0], baseColor[1], baseColor[2], dimAlpha]
   }
 
   const baseColor = getBaseColor(feature, layerConfig)
@@ -1842,9 +1845,7 @@ function getCategoricalColor(
           uniqueValues.add(String(val))
         }
       })
-      const sortedValues = Array.from(uniqueValues).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: 'base' })
-      )
+      const sortedValues = sortLegendCategories(Array.from(uniqueValues))
       categoricalColorMapCache.value = styleManager.buildCategoricalColorMap(sortedValues)
       lastColorByAttribute.value = attribute
     }
@@ -2304,7 +2305,7 @@ const legendData = computed(() => {
           const max = allValues.length > 0 ? Math.max(...allValues) : 1
           return {
             type: 'numeric' as const,
-            title: attrConfig.label || toTitleCase(props.colorByAttribute),
+            title: formatChartTitle(props.colorByAttribute, undefined, { labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute) }),
             minValue: min,
             maxValue: max,
           }
@@ -2313,7 +2314,10 @@ const legendData = computed(() => {
           // Strip "[-]" from label for categorical data (no meaningful unit)
           return {
             type: 'categorical' as const,
-            title: stripEmptyUnitBrackets(attrConfig.label || toTitleCase(props.colorByAttribute)),
+            title: formatChartTitle(props.colorByAttribute, undefined, {
+              labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
+              stripEmptyUnits: true,
+            }),
             items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
           }
         }
@@ -2330,7 +2334,7 @@ const legendData = computed(() => {
         const [min, max] = calculateNumericRange(features, props.colorByAttribute)
         return {
           type: 'numeric' as const,
-          title: attrConfig.label || toTitleCase(props.colorByAttribute),
+          title: formatChartTitle(props.colorByAttribute, undefined, { labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute) }),
           minValue: min,
           maxValue: max,
         }
@@ -2339,7 +2343,10 @@ const legendData = computed(() => {
         // Strip "[-]" from label for categorical data (no meaningful unit)
         return {
           type: 'categorical' as const,
-          title: stripEmptyUnitBrackets(attrConfig.label || toTitleCase(props.colorByAttribute)),
+          title: formatChartTitle(props.colorByAttribute, undefined, {
+            labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
+            stripEmptyUnits: true,
+          }),
           items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
         }
       }
@@ -2361,7 +2368,10 @@ const legendData = computed(() => {
   if (colorBy.type === 'categorical') {
     return {
       type: 'categorical' as const,
-      title: stripEmptyUnitBrackets(toTitleCase(colorBy.attribute)),
+      title: formatChartTitle(colorBy.attribute, undefined, {
+        labelOverride: toTitleCase(colorBy.attribute),
+        stripEmptyUnits: true,
+      }),
       items: buildCategoricalLegendItems(colorByLayer, colorBy),
     }
   } else if (colorBy.type === 'numeric') {
@@ -2370,7 +2380,7 @@ const legendData = computed(() => {
 
     return {
       type: 'numeric' as const,
-      title: toTitleCase(colorBy.attribute),
+      title: formatChartTitle(colorBy.attribute, undefined, { labelOverride: toTitleCase(colorBy.attribute) }),
       minValue: min,
       maxValue: max,
     }
@@ -2388,9 +2398,7 @@ function buildCategoricalLegendItems(
 
   // If custom colors provided, use those (sorted alphabetically)
   if (colorBy.colors) {
-    const sortedKeys = Object.keys(colorBy.colors).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: 'base' })
-    )
+    const sortedKeys = sortLegendCategories(Object.keys(colorBy.colors))
     sortedKeys.forEach((value) => {
       items.push({
         label: toTitleCase(String(value)),
@@ -2412,9 +2420,7 @@ function buildCategoricalLegendItems(
   })
 
   // Sort values alphabetically for consistent color assignment
-  const sortedValues = Array.from(uniqueValues)
-    .map(v => String(v))
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
 
   sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, colorBy.colors, colorBy.attribute)
@@ -2447,9 +2453,7 @@ function buildCategoricalLegendItemsFromAttribute(
   })
 
   // Sort values alphabetically for consistent color assignment
-  const sortedValues = Array.from(uniqueValues)
-    .map(v => String(v))
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
 
   sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, undefined, attribute)
@@ -2484,9 +2488,7 @@ function buildCategoricalLegendItemsFromTable(
   })
 
   // Sort values alphabetically for consistent color assignment
-  const sortedValues = Array.from(uniqueValues)
-    .map(v => String(v))
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
 
   sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, undefined, attribute)

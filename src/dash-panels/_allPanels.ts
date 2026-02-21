@@ -24,6 +24,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   sankey: defineAsyncComponent(() => import('./sankey.vue')),
   scatter: defineAsyncComponent(() => import('./scatter.vue')),
   'scatter-plot': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/ScatterCard.vue')),
+  'stat-card': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/StatCard.vue')),
   slideshow: defineAsyncComponent(() => import('./slideshow.vue')),
   text: defineAsyncComponent(() => import('./text.vue')),
   timeline: defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/TimelineCard.vue')),

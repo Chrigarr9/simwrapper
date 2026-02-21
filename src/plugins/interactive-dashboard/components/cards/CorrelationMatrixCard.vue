@@ -14,7 +14,7 @@ import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { computeCorrelationMatrix } from '../../utils/statistics'
 import type { CorrelationMatrixResult } from '../../utils/statistics'
-import { toTitleCase } from '../../utils/labelFormatter'
+import { formatChartTitle } from '../../utils/chartFormatting'
 
 interface Props {
   title?: string
@@ -178,8 +178,8 @@ function renderChart() {
         const textColorAnnotation = Math.abs(r) > 0.5 ? '#ffffff' : '#000000'
 
         annotations.push({
-          x: toTitleCase(props.attributes[j]),
-          y: toTitleCase(props.attributes[i]),
+          x: formatChartTitle(props.attributes[j], undefined, { stripEmptyUnits: true }),
+          y: formatChartTitle(props.attributes[i], undefined, { stripEmptyUnits: true }),
           text: text,
           showarrow: false,
           font: {
@@ -195,8 +195,8 @@ function renderChart() {
   // Plotly heatmap trace
   const trace = {
     z: matrix,
-    x: props.attributes.map(toTitleCase),
-    y: props.attributes.map(toTitleCase),
+    x: props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
+    y: props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
     type: 'heatmap',
     colorscale: [
       [0.0, '#3b4cc0'],  // Blue for -1 (negative)
@@ -216,7 +216,7 @@ function renderChart() {
   }
 
   // Layout with adaptive margins based on label lengths
-  const maxLabelLength = Math.max(...props.attributes.map(a => toTitleCase(a).length))
+  const maxLabelLength = Math.max(...props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true }).length))
   // Scale margins based on longest label: base 80px + 5px per char over 10
   const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLabelLength - 10) * 5)
 

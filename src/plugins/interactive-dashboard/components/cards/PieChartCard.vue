@@ -10,7 +10,14 @@ import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
-import { toTitleCase } from '../../utils/labelFormatter'
+import { formatLabel } from '../../utils/labelFormatter'
+import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
+
+interface TableConfig {
+  columns?: {
+    formats?: Record<string, { titleCase?: boolean }>
+  }
+}
 
 interface Props {
   title?: string
@@ -20,6 +27,7 @@ interface Props {
   showComparison?: boolean  // Whether comparison mode is active
   colorByAttribute?: string  // Dashboard-level color-by attribute
   colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+  tableConfig?: TableConfig  // From InteractiveDashboard - contains column formats
   linkage?: {
     type: 'filter'
     column: string
@@ -114,8 +122,9 @@ const pieData = computed(() => {
     }
   })
 
-  // Sort by count descending for display
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  // Sort categories consistently for legend: numeric asc or alphabetical
+  const sortedCategoryLabels = sortLegendCategories(Array.from(counts.keys()))
+  const sorted = sortedCategoryLabels.map((label) => [label, counts.get(label) || 0] as [string, number])
 
   // Build color map using ALL categories (from baseline if available, else filtered)
   // This ensures consistent colors in comparison mode when filtered has fewer categories
@@ -135,10 +144,8 @@ const pieData = computed(() => {
     }
   })
 
-  // Sort alphabetically for consistent color assignment
-  const alphabeticallySorted = Array.from(allCategories).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' })
-  )
+  // Sort consistently for color assignment: numeric asc or alphabetical
+  const alphabeticallySorted = sortLegendCategories(Array.from(allCategories))
   // Use StyleManager.buildCategoricalColorMap for consistent cross-card colors
   colorMap.value = styleManager.buildCategoricalColorMap(alphabeticallySorted)
 
@@ -163,8 +170,9 @@ const baselinePieData = computed(() => {
     }
   })
 
-  // Sort by count descending (same as pieData)
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  // Sort categories consistently for legend: numeric asc or alphabetical
+  const sortedCategoryLabels = sortLegendCategories(Array.from(counts.keys()))
+  const sorted = sortedCategoryLabels.map((label) => [label, counts.get(label) || 0] as [string, number])
 
   return sorted.map(([label, value]) => ({ label, value }))
 })
@@ -189,8 +197,9 @@ const renderChart = () => {
     // Use colorMap (always populated by pieData computed), fallback to categorical palette
     const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
     if (selectedCategories.value.size > 0 && !selectedCategories.value.has(d.label)) {
-      // Dim unselected slices
-      return baseColor + '66' // Add alpha for dimming
+      // Dim unselected slices — use alpha from StyleManager
+      const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255).toString(16).padStart(2, '0')
+      return baseColor + dimAlpha
     }
     return baseColor
   })
@@ -251,7 +260,7 @@ const renderChart = () => {
     : undefined
 
   const mainTrace: any = {
-    labels: pieData.value.map(d => toTitleCase(d.label)),
+    labels: pieData.value.map(d => formatLabel(d.label, props.tableConfig?.columns?.formats, effectiveColumn.value)),
     values: pieData.value.map(d => d.value),
     type: 'pie',
     name: props.showComparison ? 'Filtered (inner)' : undefined,
@@ -295,10 +304,11 @@ const renderChart = () => {
   // Baseline ring (if comparison mode) - outer ring with transparency
   // Uses same patterns as filtered (matched by category), only opacity differs
   if (props.showComparison && baselinePieData.value.length > 0) {
-    // Use same color map but with transparency (50% opacity)
+    // Use same color map but with transparency
+    const baselineAlpha = Math.round(styleManager.getDimmedOpacity() * 255).toString(16).padStart(2, '0')
     const baselineColors = baselinePieData.value.map(d => {
       const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
-      return baseColor + '80' // Add 50% alpha (hex 80 = 128/255)
+      return baseColor + baselineAlpha
     })
 
     // In scientific mode, use consistent pattern index from colorMap (same as filtered)
@@ -307,7 +317,7 @@ const renderChart = () => {
       : undefined
 
     traces.push({
-      labels: baselinePieData.value.map(d => toTitleCase(d.label)),
+      labels: baselinePieData.value.map(d => formatLabel(d.label, props.tableConfig?.columns?.formats, effectiveColumn.value)),
       values: baselinePieData.value.map(d => d.value),
       type: 'pie',
       name: 'Baseline (outer)',
@@ -352,7 +362,17 @@ const renderChart = () => {
       uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
       showlegend: true,
       legend: {
-        title: { text: props.colorByOptions?.find(opt => opt.attribute === effectiveColumn.value)?.label || effectiveColumn.value, font: { color: textColor, size: 11, family: fontFamily } },
+        title: {
+          text: formatChartTitle(
+            effectiveColumn.value,
+            props.tableConfig?.columns?.formats,
+            {
+              labelOverride: props.colorByOptions?.find(opt => opt.attribute === effectiveColumn.value)?.label || undefined,
+              stripEmptyUnits: true,
+            }
+          ),
+          font: { color: textColor, size: 11, family: fontFamily }
+        },
         font: { color: textColor, size: 10, family: fontFamily },
         bgcolor: 'transparent',
         orientation: 'v',  // Vertical legend on the right

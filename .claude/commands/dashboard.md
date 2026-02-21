@@ -416,6 +416,7 @@ Using the approved design + the reference guide schema, generate complete YAML.
 - [ ] `header.title` and `header.description` tell the story
 - [ ] `table.dataset` and `table.idColumn` verified against actual CSV
 - [ ] `table.columns.formats` set for ALL time/duration/distance/decimal columns found
+- [ ] `table.columns.formats` has `titleCase: false` for identifier columns (trial_id, scenario_id, cluster_id, etc.)
 - [ ] `table.columns.hide` removes coordinate columns and internal IDs
 - [ ] All card `type` values are valid (`histogram`, `pie-chart`, `scatter-plot`, `correlation-matrix`, `map`, `data-table`, `timeline`, `text`)
 - [ ] All `linkage.column` values match actual CSV column names
@@ -470,3 +471,14 @@ After writing the YAML file:
 11. **Keep it focused.** 6-12 charts that tell the story > 20 charts that overwhelm. Match the user's declared scope.
 12. **Format all numeric columns** that appear in the data table: time→HH:MM:SS, duration→min, distance→km, decimals for floats.
 13. **Hide internal columns** (coordinate pairs, geometry WKT, raw IDs) from the data table.
+14. **Use `titleCase: false`** on columns whose values are identifiers or codes that should NOT be prettified (e.g., `trial_id`, `scenario_id`, `cluster_id`). By default, all string values are converted to Title Case (e.g., `gate_policy_base_1` → `Gate Policy Base 1`). Set `titleCase: false` in `table.columns.formats` to preserve the original value:
+    ```yaml
+    table:
+      columns:
+        formats:
+          trial_id:
+            titleCase: false
+          scenario_id:
+            titleCase: false
+    ```
+    This affects the data table cells, pie chart labels, histogram legend names, and scatter plot legend names for that column.

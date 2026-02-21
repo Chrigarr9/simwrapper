@@ -223,6 +223,7 @@ interface ColorDefinitions {
     markerBorderWidth: number
     hideInteractiveChrome: boolean  // Hide zoom buttons, tooltips in scientific mode
     markerSymbols: string[]         // Plotly marker symbols for scatter plots
+    linePatterns: string[]          // Plotly dash patterns for connecting lines
     barPatterns: string[]           // Plotly pattern shapes for bars
     piePatterns: string[]           // Plotly pattern shapes for pie slices
   }
@@ -246,10 +247,10 @@ export class StyleManager {
   private readonly colors: ColorDefinitions = {
     theme: {
       background: {
-        // Scientific colors: Pure white background for maximum print contrast
+        // Scientific colors: White cards on light gray dashboard for clear separation
         primary: { light: '#ffffff', dark: '#1e293b', scientific: '#ffffff' },
-        secondary: { light: '#f8f9fa', dark: '#334155', scientific: '#ffffff' },
-        tertiary: { light: '#f1f5f9', dark: '#475569', scientific: '#f5f5f5' },
+        secondary: { light: '#f8f9fa', dark: '#334155', scientific: '#f0f0f0' },
+        tertiary: { light: '#f1f5f9', dark: '#475569', scientific: '#e5e5e5' },
       },
       text: {
         // Scientific colors: Black text for publication readability
@@ -369,6 +370,7 @@ export class StyleManager {
       markerBorderWidth: 1,
       hideInteractiveChrome: true,  // Hide zoom buttons, tooltips in scientific mode
       markerSymbols: ['circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down', 'star', 'hexagon', 'pentagon'],
+      linePatterns: ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot'],
       barPatterns: ['', '/', '\\', 'x', '-', '|', '+', '.'],  // '' means solid fill
       piePatterns: ['', '/', '\\', 'x', '+', '-', '|', '.'],
     },
@@ -451,7 +453,7 @@ export class StyleManager {
   /**
    * Get scientific mode configuration
    */
-  getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean; markerSymbols: string[]; barPatterns: string[]; piePatterns: string[] } {
+  getScientificConfig(): { fontFamily: string; axisLineWidth: number; markerBorderWidth: number; hideInteractiveChrome: boolean; markerSymbols: string[]; linePatterns: string[]; barPatterns: string[]; piePatterns: string[] } {
     return { ...this.colors.scientific }
   }
 
@@ -488,6 +490,38 @@ export class StyleManager {
   }
 
   /**
+   * Get line dash pattern for scientific mode connecting lines
+   *
+   * @param index - Category index
+   * @returns Plotly dash string (wraps around if index exceeds array length)
+   */
+  getScientificLinePattern(index: number): string {
+    const patterns = this.colors.scientific.linePatterns
+    return patterns[index % patterns.length]
+  }
+
+  /**
+   * Get complete trace style for a category in scientific mode scatter plots.
+   * Returns marker symbol, line dash, and category color — single call for
+   * consistent visual encoding per category.
+   *
+   * @param categoryIndex - Index of the category (0-based)
+   * @param categoryColor - Hex color for this category
+   * @returns Object with markerSymbol, lineDash, and color
+   */
+  getScientificTraceStyle(categoryIndex: number, categoryColor: string): {
+    markerSymbol: string
+    lineDash: string
+    color: string
+  } {
+    return {
+      markerSymbol: this.getScientificMarkerSymbol(categoryIndex),
+      lineDash: this.getScientificLinePattern(categoryIndex),
+      color: categoryColor,
+    }
+  }
+
+  /**
    * Get bar pattern for scientific mode histograms
    *
    * @param index - Trace index
@@ -507,6 +541,31 @@ export class StyleManager {
   getScientificPiePattern(index: number): string {
     const patterns = this.colors.scientific.piePatterns
     return patterns[index % patterns.length]
+  }
+
+  /**
+   * Get default marker/fill opacity for chart elements in their normal
+   * (non-hovered, non-selected) state.
+   *
+   * Scientific mode always returns 1 (fully opaque) for clean publication output.
+   * Normal modes return a reduced opacity so hover/select states stand out.
+   *
+   * @returns Opacity value 0-1
+   */
+  getDefaultOpacity(): number {
+    return this.isScientificMode() ? 1 : 0.7
+  }
+
+  /**
+   * Get opacity for dimmed / de-emphasised elements (e.g. unselected pie slices,
+   * non-selected map features).
+   *
+   * Scientific mode uses a higher floor so elements remain clearly visible in print.
+   *
+   * @returns Opacity value 0-1
+   */
+  getDimmedOpacity(): number {
+    return this.isScientificMode() ? 0.6 : 0.35
   }
 
   /**
@@ -1016,6 +1075,12 @@ export class StyleManager {
     // Interaction colors (constant across modes)
     vars.push(`--dashboard-interaction-hover: ${this.colors.interaction.hover}`)
     vars.push(`--dashboard-interaction-selected: ${this.colors.interaction.selected}`)
+
+    // Card header color: black in scientific mode for print, interaction-selected (blue) otherwise
+    const cardHeaderColor = this.currentMode === 'scientific'
+      ? this.colors.theme.text.primary[this.currentMode]  // #000000
+      : this.colors.interaction.selected                   // #3b82f6
+    vars.push(`--dashboard-card-header-color: ${cardHeaderColor}`)
 
     // Cluster colors (with possible overrides)
     vars.push(`--dashboard-cluster-origin: ${this.getColor('cluster.origin')}`)

@@ -69,6 +69,29 @@ export function toTitleCase(str: string): string {
 }
 
 /**
+ * Conditionally apply toTitleCase based on column format configuration.
+ *
+ * If the column's format has `titleCase: false`, the string is returned as-is.
+ * Otherwise, toTitleCase is applied (default behavior).
+ *
+ * @param str - The string to format
+ * @param formats - Column format map from table config (columns.formats)
+ * @param column - The column name to look up in formats
+ * @returns The formatted string
+ */
+export function formatLabel(
+  str: string,
+  formats?: Record<string, { titleCase?: boolean }>,
+  column?: string,
+): string {
+  if (!str) return ''
+  if (formats && column && formats[column]?.titleCase === false) {
+    return str
+  }
+  return toTitleCase(str)
+}
+
+/**
  * Strip empty or placeholder unit brackets from a label.
  *
  * Useful for categorical attributes where the label may have "[-]"

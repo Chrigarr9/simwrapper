@@ -10,14 +10,16 @@ import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
-import { toTitleCase } from '../../utils/labelFormatter'
+import { formatLabel } from '../../utils/labelFormatter'
 import { computeAxisRange } from '../../utils/axisLimits'
+import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal'
   convertFrom?: string
   unit?: string
   decimals?: number
+  titleCase?: boolean
 }
 
 interface TableConfig {
@@ -91,40 +93,6 @@ const detectColorByType = (attribute: string): 'categorical' | 'numeric' => {
   if (uniqueValues.size < 15) return 'categorical'
 
   return 'numeric'
-}
-
-// Format axis label with unit suffix based on column format
-// Returns "Column Name [unit]" format, e.g., "Distance [km]", "Duration [min]"
-function formatAxisLabel(column: string): string {
-  const format = columnFormat.value
-  if (!format) {
-    // Title case the column name
-    return column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-  }
-
-  // Get the display name (title case)
-  const displayName = column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-
-  switch (format.type) {
-    case 'time':
-      return `${displayName} [hh:mm]`
-    case 'duration':
-      if (format.unit === 'min') return `${displayName} [min]`
-      if (format.unit === 's') return `${displayName} [s]`
-      return displayName
-    case 'distance':
-      if (format.unit === 'km') return `${displayName} [km]`
-      if (format.unit === 'm') return `${displayName} [m]`
-      return displayName
-    case 'percent':
-      return `${displayName} [%]`
-    case 'decimal':
-      // Support custom unit field for decimal type
-      if (format.unit) return `${displayName} [${format.unit}]`
-      return displayName
-    default:
-      return displayName
-  }
 }
 
 // Format a tick value based on column format
@@ -374,13 +342,13 @@ const buildChartData = () => {
   // Color-by rendering for filtered data
   if (colorByActive && colorByType === 'categorical') {
     // Categorical color-by: stacked bar traces per category
-    const colorByValues = Array.from(
+    const colorByValues = sortLegendCategories(Array.from(
       new Set(
         props.filteredData
           ?.map(row => row[props.colorByAttribute!])
           .filter(v => v !== null && v !== undefined)
       )
-    ).sort()
+    ))
 
     const colorMap = styleManager.buildCategoricalColorMap(colorByValues.map(String))
 
@@ -425,7 +393,7 @@ const buildChartData = () => {
         x: categoryDisplayData.map(d => d.bin),
         y: categoryDisplayData.map(d => d.count),
         type: 'bar',
-        name: toTitleCase(categoryStr),
+        name: formatLabel(categoryStr, props.tableConfig?.columns?.formats, props.colorByAttribute),
         width: barWidth,
         marker: {
           color: colorMap.get(categoryStr) || barColor,
@@ -472,7 +440,18 @@ const buildChartData = () => {
         colorscale: 'Viridis',
         showscale: true,
         colorbar: {
-          title: { text: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute, font: { color: textColor, size: 11, family: fontFamily }, side: 'right' },
+          title: {
+            text: formatChartTitle(
+              props.colorByAttribute!,
+              props.tableConfig?.columns?.formats,
+              {
+                labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
+                stripEmptyUnits: true,
+              }
+            ),
+            font: { color: textColor, size: 11, family: fontFamily },
+            side: 'right'
+          },
           tickfont: { color: textColor, size: 9, family: fontFamily },
         },
         line: {
@@ -526,7 +505,7 @@ const buildChartData = () => {
   const shouldRotate = maxLabelLength > 4 && numBins > 3
 
   const xaxisConfig: any = {
-    title: { text: formatAxisLabel(props.column), font: { color: textColor, size: 11, family: fontFamily } },
+    title: { text: formatChartTitle(props.column, props.tableConfig?.columns?.formats), font: { color: textColor, size: 11, family: fontFamily } },
     tickfont: { color: textColor, size: 10, family: fontFamily },
     gridcolor: gridColor,
     linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
@@ -603,7 +582,14 @@ const buildChartData = () => {
 
   // Override layout for color-by modes
   if (colorByActive && colorByType === 'categorical') {
-    const legendTitle = props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || props.colorByAttribute
+    const legendTitle = formatChartTitle(
+      props.colorByAttribute!,
+      props.tableConfig?.columns?.formats,
+      {
+        labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
+        stripEmptyUnits: true,
+      }
+    )
     layout.barmode = 'stack'  // Stack bars when categorical color-by is active
     layout.showlegend = true
     layout.legend = {
