@@ -42,7 +42,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { PolygonLayer, LineLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers'
+import { PolygonLayer, PathLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers'
 import type { Position } from '@deck.gl/core'
 import { FileSystemConfig } from '@/Globals'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
@@ -126,6 +126,7 @@ interface LayerConfig {
     onHover?: 'highlight' | 'none'
     onSelect?: 'filter' | 'highlight' | 'none'
     hideOthersOnSelect?: boolean  // When true, hide non-filtered features completely instead of dimming
+    renderOnlyWhenLinked?: boolean  // When true, render features only if linked IDs are hovered/selected
   }
 
   // Explicit layer coloring role override (from YAML layer config)
@@ -135,6 +136,15 @@ interface LayerConfig {
   // 'neutral': Layer receives theme-neutral styling (skips colorBy)
   // 'auto': Defer to automatic role detection based on layer relationships
   colorByRole?: ColorByRole
+}
+
+type AggregationMethod = 'first' | 'mean' | 'sum' | 'min' | 'max'
+
+interface ColorByOption {
+  attribute: string
+  label: string
+  type: string
+  aggregation?: AggregationMethod
 }
 
 interface Props {
@@ -187,7 +197,7 @@ interface Props {
     colorBy?: boolean
   }
   geometryTypeOptions?: Array<{ value: string; label: string }>
-  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+  colorByOptions?: Array<ColorByOption>
 
   // If true, hover/select all layers under the cursor (multi-level picking)
   multiLevelSelection?: boolean
@@ -543,6 +553,25 @@ function getLayerData(layerName: string): any[] {
   return layerData.value.get(layerName) || []
 }
 
+function getRenderableFeatures(layerConfig: LayerConfig): any[] {
+  const features = getLayerData(layerConfig.name)
+  if (!layerConfig.linkage?.renderOnlyWhenLinked) {
+    return features
+  }
+
+  const hasHovered = !!(props.hoveredIds && props.hoveredIds.size > 0)
+  const hasSelected = !!(props.selectedIds && props.selectedIds.size > 0)
+
+  if (!hasHovered && !hasSelected) {
+    return []
+  }
+
+  return features.filter((feature) => {
+    const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
+    return setHasLoose(props.hoveredIds, featureId) || setHasLoose(props.selectedIds, featureId)
+  })
+}
+
 // Helper to check if layer is visible
 function isLayerVisible(layerConfig: LayerConfig): boolean {
   // Check basic visibility flag
@@ -592,6 +621,58 @@ function initDeckOverlay() {
 // TASK 7: Advanced Tooltip System with Template Substitution
 // ============================================================================
 
+function getColorByOption(attribute: string): ColorByOption | undefined {
+  return props.colorByOptions.find(opt => opt.attribute === attribute)
+}
+
+function getMatchingRowsForFeature(feature: any, layerConfig: LayerConfig): any[] {
+  if (!layerConfig.linkage || !props.filteredData) return []
+
+  const rawFeatureId = feature.properties?.[layerConfig.linkage.geoProperty]
+  const tableColumn = layerConfig.linkage.tableColumn
+
+  return props.filteredData.filter((row: any) => {
+    const rowId = row[tableColumn]
+    return rowId == rawFeatureId || String(rowId) === String(rawFeatureId)
+  })
+}
+
+function aggregateNumericValues(values: number[], method: AggregationMethod): number | undefined {
+  if (values.length === 0) return undefined
+
+  switch (method) {
+    case 'sum':
+      return values.reduce((acc, v) => acc + v, 0)
+    case 'min':
+      return Math.min(...values)
+    case 'max':
+      return Math.max(...values)
+    case 'first':
+      return values[0]
+    case 'mean':
+    default:
+      return values.reduce((acc, v) => acc + v, 0) / values.length
+  }
+}
+
+function getAggregatedAttributeValue(feature: any, layerConfig: LayerConfig, attribute: string): any {
+  const rows = getMatchingRowsForFeature(feature, layerConfig)
+  if (rows.length === 0) return undefined
+
+  const option = getColorByOption(attribute)
+  const rawValues = rows.map((row: any) => row[attribute]).filter((v: any) => v !== undefined && v !== null)
+  if (rawValues.length === 0) return undefined
+
+  const numericValues = rawValues.filter((v: any) => typeof v === 'number') as number[]
+  if (numericValues.length === rawValues.length) {
+    const defaultAggregation: AggregationMethod = attribute.toLowerCase().includes('count') ? 'sum' : 'mean'
+    const method = option?.aggregation || defaultAggregation
+    return aggregateNumericValues(numericValues, method)
+  }
+
+  return rawValues[0]
+}
+
 // Enhanced tooltip content generator
 function getTooltipContent(object: any): any {
   if (!object || !props.tooltip?.enabled) {
@@ -606,22 +687,15 @@ function getTooltipContent(object: any): any {
     // Find the matching layer config to get linkage info
     const layerConfig = props.layers.find(l => l.linkage)
     if (layerConfig?.linkage) {
-      const featureId = getFeatureId(object, layerConfig)
-      const tableColumn = layerConfig.linkage.tableColumn
+      const aggregatedValue = getAggregatedAttributeValue(object, layerConfig, props.colorByAttribute)
 
-      // Find matching row in central table
-      const matchingRow = props.filteredData.find((row: any) => {
-        const rowId = row[tableColumn]
-        return rowId == featureId || String(rowId) === String(featureId)
-      })
-
-      if (matchingRow && matchingRow[props.colorByAttribute] !== undefined) {
+      if (aggregatedValue !== undefined) {
         // Get the label from colorByOptions
         const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
         const label = attrConfig?.label || props.colorByAttribute
         colorByValue = {
           label,
-          value: matchingRow[props.colorByAttribute]
+          value: aggregatedValue
         }
       }
     }
@@ -851,9 +925,9 @@ function updateLayers() {
       return
     }
 
-    const features = getLayerData(layerConfig.name)
+    const features = getRenderableFeatures(layerConfig)
     if (features.length === 0) {
-      console.warn(`[MapCard] No data for layer "${layerConfig.name}"`)
+      debugLog(`[MapCard] No renderable features for layer "${layerConfig.name}"`)
       return
     }
 
@@ -916,7 +990,7 @@ function updateLayers() {
     props.layers.forEach((layerConfig) => {
       if (!isLayerVisible(layerConfig)) return
 
-      const features = getLayerData(layerConfig.name)
+      const features = getRenderableFeatures(layerConfig)
       if (features.length === 0) return
 
       const highlightLayer = createHighlightOverlayLayer(layerConfig, features)
@@ -939,6 +1013,19 @@ function updateLayers() {
 // Comparison baseline - intentionally neutral gray regardless of theme
 function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
   const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // Neutral gray for comparison
+
+  const getPathCoordinates = (feature: any): Position[] => {
+    const coords = feature?.geometry?.coordinates
+    if (!Array.isArray(coords) || coords.length === 0) return []
+
+    // LineString: [[lon,lat], ...]
+    if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+      return coords as Position[]
+    }
+
+    // MultiLineString: [[[lon,lat], ...], ...] -> flatten parts into one path
+    return (coords as Position[][]).flat()
+  }
 
   switch (layerConfig.type) {
     case 'polygon':
@@ -967,16 +1054,14 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
       })
 
     case 'line':
-      return new LineLayer({
+      return new PathLayer({
         id: `baseline-line-${layerConfig.name}`,
         data: features,
         pickable: false,
+        widthUnits: 'pixels',
+        widthMinPixels: 1,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => {
-          const coords = d.geometry.coordinates
-          return coords[coords.length - 1] as Position
-        },
+        getPath: (d: any) => getPathCoordinates(d),
 
         getWidth: 1,
         getColor: baselineColor,
@@ -1074,15 +1159,18 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
       })
 
     case 'line':
-      return new LineLayer({
+      return new PathLayer({
         id: `highlight-line-${layerConfig.name}`,
         data: highlightedFeatures,
         pickable: false,
+        widthUnits: 'pixels',
+        widthMinPixels: 1,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => {
-          const coords = d.geometry.coordinates
-          return coords[coords.length - 1] as Position
+        getPath: (d: any) => {
+          const coords = d?.geometry?.coordinates
+          if (!Array.isArray(coords) || coords.length === 0) return []
+          if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') return coords as Position[]
+          return (coords as Position[][]).flat()
         },
 
         getWidth: (d: any) => getFeatureWidth(d, layerConfig) * 1.5, // Thicker for visibility
@@ -1204,20 +1292,25 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
   }
 }
 
-// LineLayer Factory
-function createLineLayer(layerConfig: LayerConfig, features: any[]): LineLayer | null {
+// PathLayer Factory for line geometries
+function createLineLayer(layerConfig: LayerConfig, features: any[]): PathLayer | null {
   try {
     const sortedFeatures = sortFeaturesByState(features, layerConfig)
 
-    return new LineLayer({
+    return new PathLayer({
       id: `line-${layerConfig.name}`,
       data: sortedFeatures,
       pickable: true,
+      widthUnits: 'pixels',
+      widthMinPixels: 1,
 
-      getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-      getTargetPosition: (d: any) => {
+      getPath: (d: any) => {
         const coords = d.geometry.coordinates
-        return coords[coords.length - 1] as Position
+        if (!Array.isArray(coords) || coords.length === 0) return []
+        if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+          return coords as Position[]
+        }
+        return (coords as Position[][]).flat()
       },
 
       getWidth: (d: any) => getFeatureWidth(d, layerConfig),
@@ -1249,7 +1342,13 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
 
       getPosition: (d: any) => {
         const coords = d.geometry.coordinates
-        return coords[coords.length - 1] as Position
+        // LineString -> last coordinate; MultiLineString -> last coordinate of last part
+        if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+          return coords[coords.length - 1] as Position
+        }
+        const parts = coords as Position[][]
+        const lastPart = parts[parts.length - 1] || []
+        return (lastPart[lastPart.length - 1] || [0, 0]) as Position
       },
 
       // Match parent line width as radius (scaled down to 80%)
@@ -1930,22 +2029,7 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
     // If not found in feature, look up from central data table via linkage
     // This handles the case where GeoJSON has limited properties and full data is in CSV
     if (attributeValue === undefined && layerConfig.linkage && props.filteredData) {
-      // Use raw geoProperty value for data join (NOT getFeatureId which constructs
-      // compound IDs like 'origin_5'). The CSV tableColumn has simple values like 5,
-      // so we need raw matching: row['origin_cluster'] == feature.cluster_id
-      const rawFeatureId = feature.properties?.[layerConfig.linkage.geoProperty]
-      const tableColumn = layerConfig.linkage.tableColumn
-
-      // Find matching row in central table using raw feature ID
-      const matchingRow = props.filteredData.find((row: any) => {
-        const rowId = row[tableColumn]
-        // Loose comparison for type mismatches (string "45" vs number 45)
-        return rowId == rawFeatureId || String(rowId) === String(rawFeatureId)
-      })
-
-      if (matchingRow) {
-        attributeValue = matchingRow[props.colorByAttribute]
-      }
+      attributeValue = getAggregatedAttributeValue(feature, layerConfig, props.colorByAttribute)
     }
 
     // If we found an attribute value, apply coloring
@@ -1959,6 +2043,7 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
         const allValues = props.filteredData
           .map((row: any) => row[props.colorByAttribute])
           .filter((v: any) => typeof v === 'number')
+        if (allValues.length === 0) return [128, 128, 128]
         const min = Math.min(...allValues)
         const max = Math.max(...allValues)
         const scale: [number, number] = [min, max]

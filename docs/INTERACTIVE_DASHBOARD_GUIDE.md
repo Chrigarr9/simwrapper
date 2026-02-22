@@ -563,7 +563,11 @@ Special cross-card linkage using attribute pair selection:
 ```yaml
 # Correlation matrix (emitter)
 - type: correlation-matrix
-  attributes: [travel_time, distance, budget]
+  attributes: [travel_time, distance, budget]  # Legacy: same set on both axes
+  # Optional split axes:
+  # leftAttributes: [service_rate, requests_served, detour_rate]
+  # bottomAttributes: [fleet_size, budget, max_wait_time]
+  # matrixPart: lower   # Optional: show only bottom/lower triangle
 
 # Scatter plot (receiver)
 - type: scatter-plot
@@ -571,6 +575,12 @@ Special cross-card linkage using attribute pair selection:
   yColumn: travel_time       # Initial Y axis (overridden by correlation clicks)
   listenToAttributePairSelection: true
 ```
+
+Correlation matrix axis options:
+- `attributes`: legacy shortcut for same row/column list
+- `leftAttributes`: row labels (left axis)
+- `bottomAttributes`: column labels (bottom axis)
+- `matrixPart: lower`: hides upper half and keeps only bottom/lower cells (`row >= col`)
 
 ### Filter Logic
 

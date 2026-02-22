@@ -36,12 +36,30 @@ const hoveredIds = ref<Set<any>>(new Set())
 const selectedIds = ref<Set<any>>(new Set())
 const filteredData = ref<any[]>([])
 
+const usesVisualSample = computed(() => !!props.card?.useVisualSample)
+
+function toBool(value: any): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'true' || normalized === '1' || normalized === 'yes'
+  }
+  return false
+}
+
+function applyVisualSampleFilter(data: any[]): any[] {
+  if (!usesVisualSample.value) return data
+  return data.filter((row: any) => toBool(row?.is_visual_sampled))
+}
+
 // Baseline data: all data from data table manager (unfiltered)
 const baselineData = computed(() => {
   if (!props.dataTableManager) {
     return []
   }
-  return props.dataTableManager.getData()
+  const allData = props.dataTableManager.getData()
+  return applyVisualSampleFilter(allData)
 })
 
 const filterObserver: FilterObserver = {
@@ -120,7 +138,7 @@ const updateFilteredData = () => {
   const filtered = props.filterManager.getFilteredData(allData, idColumn)
   debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
     '- all:', allData.length, 'filtered:', filtered.length)
-  filteredData.value = filtered
+  filteredData.value = applyVisualSampleFilter(filtered)
 }
 
 // Watch showComparison prop changes (uses debugLog for controlled output)

@@ -24,6 +24,64 @@ export interface CorrelationMatrixResult {
   pValues: number[][]     // P-values for each pair (n×n)
   sampleSizes: number[][] // Sample size for each pair (n×n)
   attributes: string[]    // Attribute names (for reference)
+  rowAttributes?: string[] // Optional row-axis attribute names
+  columnAttributes?: string[] // Optional column-axis attribute names
+}
+
+/**
+ * Compute correlation grid for separate row/column attribute sets.
+ * Supports both square matrices (same attributes) and rectangular matrices (different attributes).
+ */
+export function computeCorrelationGrid(
+  data: any[],
+  rowAttributes: string[],
+  columnAttributes: string[]
+): CorrelationMatrixResult {
+  const rowCount = rowAttributes.length
+  const columnCount = columnAttributes.length
+
+  if (Math.max(rowCount, columnCount) > 50) {
+    console.warn(
+      `Computing correlation grid for ${rowCount}×${columnCount} attributes (${rowCount * columnCount} correlations). ` +
+      `This may take a moment...`
+    )
+  }
+
+  const matrix: number[][] = []
+  const pValues: number[][] = []
+  const sampleSizes: number[][] = []
+
+  for (let i = 0; i < rowCount; i++) {
+    matrix[i] = []
+    pValues[i] = []
+    sampleSizes[i] = []
+
+    for (let j = 0; j < columnCount; j++) {
+      if (rowAttributes[i] === columnAttributes[j]) {
+        matrix[i][j] = 1
+        pValues[i][j] = 0
+        sampleSizes[i][j] = data.length
+      } else {
+        const xValues = data.map(row => row[rowAttributes[i]])
+        const yValues = data.map(row => row[columnAttributes[j]])
+
+        const result = correlationWithPValue(xValues, yValues)
+
+        matrix[i][j] = result.r
+        pValues[i][j] = result.p
+        sampleSizes[i][j] = result.n
+      }
+    }
+  }
+
+  return {
+    matrix,
+    pValues,
+    sampleSizes,
+    attributes: columnAttributes,
+    rowAttributes,
+    columnAttributes
+  }
 }
 
 /**
@@ -199,51 +257,5 @@ export function computeCorrelationMatrix(
   data: any[],
   attributes: string[]
 ): CorrelationMatrixResult {
-  const n = attributes.length
-
-  // Performance warning for very large matrices
-  if (n > 50) {
-    console.warn(
-      `Computing correlation matrix for ${n} attributes (${n * n} correlations). ` +
-      `This may take a moment...`
-    )
-  }
-
-  // Initialize result matrices
-  const matrix: number[][] = []
-  const pValues: number[][] = []
-  const sampleSizes: number[][] = []
-
-  // Compute correlation for each pair of attributes
-  for (let i = 0; i < n; i++) {
-    matrix[i] = []
-    pValues[i] = []
-    sampleSizes[i] = []
-
-    for (let j = 0; j < n; j++) {
-      if (i === j) {
-        // Diagonal: perfect correlation with self
-        matrix[i][j] = 1
-        pValues[i][j] = 0
-        sampleSizes[i][j] = data.length
-      } else {
-        // Off-diagonal: compute correlation
-        const xValues = data.map(row => row[attributes[i]])
-        const yValues = data.map(row => row[attributes[j]])
-
-        const result = correlationWithPValue(xValues, yValues)
-
-        matrix[i][j] = result.r
-        pValues[i][j] = result.p
-        sampleSizes[i][j] = result.n
-      }
-    }
-  }
-
-  return {
-    matrix,
-    pValues,
-    sampleSizes,
-    attributes
-  }
+  return computeCorrelationGrid(data, attributes, attributes)
 }

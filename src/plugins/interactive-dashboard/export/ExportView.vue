@@ -146,7 +146,14 @@ export default defineComponent({
         case 'scatter-plot':
           return { ...base, xColumn: def.xColumn || def.x, yColumn: def.yColumn || def.y, title: def.title }
         case 'correlation-matrix':
-          return { ...base, attributes: def.attributes, title: def.title }
+          return {
+            ...base,
+            attributes: def.attributes,
+            leftAttributes: def.leftAttributes,
+            bottomAttributes: def.bottomAttributes,
+            matrixPart: def.matrixPart,
+            title: def.title,
+          }
         case 'timeline':
           return { ...base, column: def.column, title: def.title }
         case 'map':

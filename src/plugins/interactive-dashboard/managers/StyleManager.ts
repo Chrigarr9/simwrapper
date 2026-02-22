@@ -310,8 +310,8 @@ export class StyleManager {
     // Chart colors (mode-aware)
     chart: {
       bar: {
-        // Scientific uses black for default bars (maximum contrast)
-        default: { light: '#3b82f6', dark: '#60a5fa', scientific: '#000000' },
+        // Scientific uses a colorblind-safe blue for data marks (black reserved for axes/text)
+        default: { light: '#3b82f6', dark: '#60a5fa', scientific: '#0072B2' },
         selected: { light: '#ef4444', dark: '#f87171', scientific: '#666666' },
       },
       // Scientific uses light gray grid for subtlety

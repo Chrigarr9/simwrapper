@@ -105,11 +105,21 @@ Displays a Pearson correlation matrix as an interactive heatmap, showing relatio
 ```yaml
 - type: correlation-matrix
   title: "Attribute Correlations"
-  attributes:              # Required: list of columns to correlate
+  attributes:              # Legacy: same list used on both axes
     - travel_time
     - distance
     - wait_time
     - detour_factor
+  # Optional axis-specific lists (override attributes per axis)
+  leftAttributes:          # Rows (left side)
+    - requests_served
+    - service_rate
+    - detour_rate
+  bottomAttributes:        # Columns (bottom side)
+    - fleet_size
+    - budget
+    - max_wait_time
+  matrixPart: lower        # Optional: 'full' (default) | 'lower'
   width: 2
   height: 4
   showValues: auto         # Optional: 'always', 'never', 'auto' (default: auto)
@@ -122,7 +132,10 @@ Displays a Pearson correlation matrix as an interactive heatmap, showing relatio
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `attributes` | string[] | (required) | Column names to include in correlation matrix |
+| `attributes` | string[] | (legacy) | Same attribute list for both rows and columns |
+| `leftAttributes` | string[] | `attributes` | Row-axis (left side) attribute list |
+| `bottomAttributes` | string[] | `attributes` | Column-axis (bottom side) attribute list |
+| `matrixPart` | string | `'full'` | `'full'` for all cells, `'lower'` to show only bottom/lower triangle (`row >= col`) |
 | `showValues` | string | `'auto'` | When to show r values in cells: `'always'`, `'never'`, or `'auto'` (hide when >20 attributes) |
 | `pValueThreshold` | number | `0.05` | Significance threshold; correlations with p < threshold marked with asterisk |
 | `linkage.type` | string | - | Set to `'attributePair'` to enable clicking cells to update linked ScatterCard |

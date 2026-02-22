@@ -12,13 +12,16 @@ import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
-import { computeCorrelationMatrix } from '../../utils/statistics'
+import { computeCorrelationGrid } from '../../utils/statistics'
 import type { CorrelationMatrixResult } from '../../utils/statistics'
 import { formatChartTitle } from '../../utils/chartFormatting'
 
 interface Props {
   title?: string
-  attributes: string[]       // Columns to include in matrix (from YAML)
+  attributes?: string[]       // Legacy: columns for both axes
+  leftAttributes?: string[]   // Optional row-axis columns (left side)
+  bottomAttributes?: string[] // Optional column-axis columns (bottom side)
+  matrixPart?: 'full' | 'lower' // Optional display mask: full matrix or lower/bottom triangle
   filteredData?: any[]       // From LinkableCardWrapper
   showValues?: 'always' | 'never' | 'auto'  // Cell value display mode (default: 'auto')
   pValueThreshold?: number   // Significance threshold (default: 0.05)
@@ -29,6 +32,10 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  attributes: () => [],
+  leftAttributes: () => [],
+  bottomAttributes: () => [],
+  matrixPart: 'full',
   filteredData: () => [],
   showValues: 'auto',
   pValueThreshold: 0.05
@@ -47,15 +54,45 @@ const correlationData = ref<CorrelationMatrixResult | null>(null)
 const hoveredCell = ref<{ row: number; col: number } | null>(null)
 const selectedCell = ref<{ row: number; col: number } | null>(null)
 
+const resolvedLeftAttributes = computed(() => {
+  if (props.leftAttributes && props.leftAttributes.length > 0) {
+    return props.leftAttributes
+  }
+  return props.attributes || []
+})
+
+const resolvedBottomAttributes = computed(() => {
+  if (props.bottomAttributes && props.bottomAttributes.length > 0) {
+    return props.bottomAttributes
+  }
+  return props.attributes || []
+})
+
+const isLowerOnly = computed(() => props.matrixPart === 'lower')
+
+function isCellVisible(rowIdx: number, colIdx: number): boolean {
+  if (!isLowerOnly.value) return true
+  return rowIdx >= colIdx
+}
+
+function getDisplayMatrix(matrix: number[][]): number[][] {
+  return matrix.map((row, rowIdx) =>
+    row.map((value, colIdx) => (isCellVisible(rowIdx, colIdx) ? value : Number.NaN))
+  )
+}
+
 // Computed properties
 const sampleSize = computed(() => {
   if (!correlationData.value) return 0
-  // Find minimum sample size from matrix (excludes diagonal)
+
+  // Find minimum sample size over visible cells
   let minN = Infinity
-  const n = correlationData.value.sampleSizes.length
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      if (i !== j) {
+  const rowCount = correlationData.value.sampleSizes.length
+  const colCount = rowCount > 0 ? correlationData.value.sampleSizes[0].length : 0
+
+  for (let i = 0; i < rowCount; i++) {
+    for (let j = 0; j < colCount; j++) {
+      if (isCellVisible(i, j)) {
         minN = Math.min(minN, correlationData.value.sampleSizes[i][j])
       }
     }
@@ -67,7 +104,7 @@ const shouldShowValues = computed(() => {
   if (props.showValues === 'always') return true
   if (props.showValues === 'never') return false
   // Auto mode: hide if more than 20 attributes
-  return props.attributes.length <= 20
+  return Math.max(resolvedLeftAttributes.value.length, resolvedBottomAttributes.value.length) <= 20
 })
 
 // Calculate correlations from filtered data
@@ -75,7 +112,12 @@ function calculateCorrelations() {
   isCalculating.value = true
 
   // Guard: No attributes or no data
-  if (!props.attributes || props.attributes.length === 0 || !props.filteredData || props.filteredData.length === 0) {
+  if (
+    resolvedLeftAttributes.value.length === 0 ||
+    resolvedBottomAttributes.value.length === 0 ||
+    !props.filteredData ||
+    props.filteredData.length === 0
+  ) {
     correlationData.value = null
     isCalculating.value = false
     return
@@ -83,7 +125,11 @@ function calculateCorrelations() {
 
   // Compute correlation matrix
   try {
-    correlationData.value = computeCorrelationMatrix(props.filteredData, props.attributes)
+    correlationData.value = computeCorrelationGrid(
+      props.filteredData,
+      resolvedLeftAttributes.value,
+      resolvedBottomAttributes.value
+    )
     renderChart()
   } catch (error) {
     console.error('[CorrelationMatrixCard] Error computing correlation matrix:', error)
@@ -114,12 +160,13 @@ function buildHoverTemplate(): string {
 // Build custom data for hover (p-values and sample sizes)
 function buildCustomData(): any[][][] {
   if (!correlationData.value) return []
-  const n = correlationData.value.matrix.length
+  const rowCount = correlationData.value.matrix.length
+  const colCount = rowCount > 0 ? correlationData.value.matrix[0].length : 0
   const customData: any[][][] = []
 
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < rowCount; i++) {
     customData[i] = []
-    for (let j = 0; j < n; j++) {
+    for (let j = 0; j < colCount; j++) {
       customData[i][j] = [
         correlationData.value.matrix[i][j],     // r value
         correlationData.value.pValues[i][j],    // p-value
@@ -147,18 +194,24 @@ function renderChart() {
     : undefined
 
   const matrix = correlationData.value.matrix
-  const pValues = correlationData.value.pValues
-  const n = matrix.length
+  const displayMatrix = getDisplayMatrix(matrix)
+  const rowAttributes = correlationData.value.rowAttributes || resolvedLeftAttributes.value
+  const columnAttributes = correlationData.value.columnAttributes || resolvedBottomAttributes.value
+  const rowCount = matrix.length
+  const colCount = rowCount > 0 ? matrix[0].length : 0
 
   // Build annotations if showing values
   const annotations: any[] = []
   if (shouldShowValues.value) {
     // Use compact format when matrix is cramped (many attributes)
-    const useCompactFormat = n > 6
+    const useCompactFormat = Math.max(rowCount, colCount) > 6
 
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
+    for (let i = 0; i < rowCount; i++) {
+      for (let j = 0; j < colCount; j++) {
+        if (!isCellVisible(i, j)) continue
+
         const r = matrix[i][j]
+        if (!Number.isFinite(r)) continue
 
         // Format correlation value
         let text: string
@@ -178,8 +231,8 @@ function renderChart() {
         const textColorAnnotation = Math.abs(r) > 0.5 ? '#ffffff' : '#000000'
 
         annotations.push({
-          x: formatChartTitle(props.attributes[j], undefined, { stripEmptyUnits: true }),
-          y: formatChartTitle(props.attributes[i], undefined, { stripEmptyUnits: true }),
+          x: formatChartTitle(columnAttributes[j], undefined, { stripEmptyUnits: true }),
+          y: formatChartTitle(rowAttributes[i], undefined, { stripEmptyUnits: true }),
           text: text,
           showarrow: false,
           font: {
@@ -194,14 +247,14 @@ function renderChart() {
 
   // Plotly heatmap trace
   const trace = {
-    z: matrix,
-    x: props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
-    y: props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
+    z: displayMatrix,
+    x: columnAttributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
+    y: rowAttributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
     type: 'heatmap',
     colorscale: [
-      [0.0, '#3b4cc0'],  // Blue for -1 (negative)
+      [0, '#3b4cc0'],  // Blue for -1 (negative)
       [0.5, '#f7f7f7'],  // White for 0
-      [1.0, '#b40426']   // Red for +1 (positive)
+      [1, '#b40426']   // Red for +1 (positive)
     ],
     zmid: 0,
     zmin: -1,
@@ -216,7 +269,10 @@ function renderChart() {
   }
 
   // Layout with adaptive margins based on label lengths
-  const maxLabelLength = Math.max(...props.attributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true }).length))
+  const allAxisLabels = [...rowAttributes, ...columnAttributes]
+  const maxLabelLength = allAxisLabels.length > 0
+    ? Math.max(...allAxisLabels.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true }).length))
+    : 0
   // Scale margins based on longest label: base 80px + 5px per char over 10
   const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLabelLength - 10) * 5)
 
@@ -243,7 +299,7 @@ function renderChart() {
   }
 
   Plotly.newPlot(plotContainer.value, [trace], layout, {
-    displayModeBar: !isScientific ? false : false,  // Always hide modebar
+    displayModeBar: false,
     responsive: true,
   })
 
@@ -255,8 +311,12 @@ function renderChart() {
 
     // Use indices to get ORIGINAL column names (not title-cased display labels)
     // This is critical for data lookups in ScatterCard
-    const originalAttrX = props.attributes[colIdx]
-    const originalAttrY = props.attributes[rowIdx]
+    if (!isCellVisible(rowIdx, colIdx) || !Number.isFinite(matrix[rowIdx][colIdx])) {
+      return
+    }
+
+    const originalAttrX = columnAttributes[colIdx]
+    const originalAttrY = rowAttributes[rowIdx]
 
     console.log('[CorrelationMatrixCard] Cell clicked:', originalAttrX, 'vs', originalAttrY, '(display:', point.x, 'vs', point.y, ')')
 
@@ -273,8 +333,8 @@ function renderChart() {
     if (!plotContainer.value) return
 
     const shapes: any[] = []
-    const attrs = props.attributes
-    const n = attrs.length
+    const rowCount = rowAttributes.length
+    const colCount = columnAttributes.length
 
     // For categorical heatmaps, use category indices (0, 1, 2...) as coordinates
     // Plotly maps categories to indices internally
@@ -302,7 +362,7 @@ function renderChart() {
       const { row, col } = hoveredCell.value
       const hoverColor = 'rgba(255, 200, 0, 0.3)'  // Semi-transparent orange/yellow
 
-      console.log('[CorrelationMatrix] Hover highlight at row:', row, 'col:', col, 'n:', n)
+      console.log('[CorrelationMatrix] Hover highlight at row:', row, 'col:', col)
 
       // Row highlight (horizontal band across all columns)
       shapes.push({
@@ -310,7 +370,7 @@ function renderChart() {
         xref: 'x',
         yref: 'y',
         x0: -0.5,
-        x1: n - 0.5,
+        x1: colCount - 0.5,
         y0: row - 0.5,
         y1: row + 0.5,
         fillcolor: hoverColor,
@@ -326,7 +386,7 @@ function renderChart() {
         x0: col - 0.5,
         x1: col + 0.5,
         y0: -0.5,
-        y1: n - 0.5,
+        y1: rowCount - 0.5,
         fillcolor: hoverColor,
         line: { color: 'rgba(255, 180, 0, 0.6)', width: 1 },
         layer: 'above'
@@ -367,6 +427,10 @@ function handleResize() {
 
 // Watch handlers
 watch(() => props.filteredData, debouncedCalculate)
+watch(() => props.attributes, debouncedCalculate, { deep: true })
+watch(() => props.leftAttributes, debouncedCalculate, { deep: true })
+watch(() => props.bottomAttributes, debouncedCalculate, { deep: true })
+watch(() => props.matrixPart, renderChart)
 // Re-render on color scheme changes (including scientific mode)
 watch(() => globalStore.state.colorScheme, renderChart)
 

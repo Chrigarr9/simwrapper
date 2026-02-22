@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { correlationWithPValue, computeCorrelationMatrix, CorrelationResult, CorrelationMatrixResult } from '../statistics'
+import {
+  correlationWithPValue,
+  computeCorrelationMatrix,
+  computeCorrelationGrid,
+  CorrelationResult,
+  CorrelationMatrixResult,
+} from '../statistics'
 
 describe('statistics module', () => {
   describe('correlationWithPValue', () => {
@@ -307,6 +313,50 @@ describe('statistics module', () => {
       for (let i = 0; i < 10; i++) {
         expect(result.matrix[i][i]).toBe(1)
       }
+    })
+  })
+
+  describe('computeCorrelationGrid', () => {
+    it('should compute rectangular row×column correlation grid', () => {
+      const data = [
+        { kpi1: 10, kpi2: 20, decision1: 1, decision2: 5 },
+        { kpi1: 20, kpi2: 30, decision1: 2, decision2: 4 },
+        { kpi1: 30, kpi2: 40, decision1: 3, decision2: 3 },
+        { kpi1: 40, kpi2: 50, decision1: 4, decision2: 2 },
+        { kpi1: 50, kpi2: 60, decision1: 5, decision2: 1 },
+      ]
+
+      const result = computeCorrelationGrid(
+        data,
+        ['kpi1', 'kpi2'],
+        ['decision1', 'decision2']
+      )
+
+      expect(result.matrix).toHaveLength(2)
+      expect(result.matrix[0]).toHaveLength(2)
+      expect(result.rowAttributes).toEqual(['kpi1', 'kpi2'])
+      expect(result.columnAttributes).toEqual(['decision1', 'decision2'])
+      expect(result.attributes).toEqual(['decision1', 'decision2'])
+
+      // kpi1 increases with decision1 and decreases with decision2
+      expect(result.matrix[0][0]).toBeGreaterThan(0.95)
+      expect(result.matrix[0][1]).toBeLessThan(-0.95)
+    })
+
+    it('should preserve square behavior when row and column lists are identical', () => {
+      const data = [
+        { a: 1, b: 2 },
+        { a: 2, b: 4 },
+        { a: 3, b: 6 },
+        { a: 4, b: 8 },
+      ]
+
+      const result = computeCorrelationGrid(data, ['a', 'b'], ['a', 'b'])
+
+      expect(result.matrix[0][0]).toBe(1)
+      expect(result.matrix[1][1]).toBe(1)
+      expect(result.sampleSizes[0][0]).toBe(data.length)
+      expect(result.sampleSizes[1][1]).toBe(data.length)
     })
   })
 

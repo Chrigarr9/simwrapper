@@ -8,17 +8,6 @@
     span.detail-title Ride {{ detailRideId }} - Requests
 
   .plot-container(ref="plotContainer")
-
-  .minimap-container(v-if="viewMode === 'rides'")
-    .minimap-controls(v-if="!isScientificMode")
-      button.zoom-btn(@click="zoomIn" title="Zoom in")
-        i.fa.fa-plus
-      button.zoom-btn(@click="zoomOut" title="Zoom out")
-        i.fa.fa-minus
-      button.zoom-btn(@click="resetZoom" title="Reset zoom")
-        i.fa.fa-compress
-    .minimap(ref="minimapContainer" @click="handleMinimapClick")
-    .viewport-indicator(:style="viewportIndicatorStyle" v-if="!isScientificMode")
 </template>
 
 <script setup lang="ts">
@@ -47,6 +36,13 @@ interface TableConfig {
   columns?: {
     formats?: Record<string, ColumnFormat>
   }
+}
+
+interface ColorByOption {
+  attribute: string
+  label?: string
+  type?: 'categorical' | 'numeric' | string
+  colorScheme?: string
 }
 
 /**
@@ -92,6 +88,10 @@ interface Props {
   linkage?: LinkageConfig
   /** Table config for column formatting */
   tableConfig?: TableConfig
+  /** Dashboard-level color-by attribute */
+  colorByAttribute?: string
+  /** Color-by options from YAML */
+  colorByOptions?: ColorByOption[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -131,7 +131,7 @@ const minZoomRange = 3600           // 1 hour minimum
 const maxZoomRange = 86400          // 24 hours maximum
 
 // Zoom state - Y axis (tracks)
-const viewportTopTrack = ref(0)     // top track index (inverted - 0 is top)
+const viewportTopTrack = ref(0)     // top track index (0 at bottom in display)
 const viewportBottomTrack = ref(100) // bottom track index
 const minTrackRange = 5              // minimum 5 tracks visible
 let maxTrackRange = 100              // updated dynamically based on totalTracks
@@ -139,6 +139,7 @@ let maxTrackRange = 100              // updated dynamically based on totalTracks
 // View mode state
 const viewMode = ref<'rides' | 'requests'>('rides')
 const detailRideId = ref<string | null>(null)
+const shouldAutoFitRides = ref(true)
 
 // Internal state
 const selectedRides = ref<Set<any>>(new Set())
@@ -151,6 +152,7 @@ const isScientificMode = computed(() => StyleManager.getInstance().isScientificM
  */
 interface ExtendedTimelineItem extends TimelineItem {
   degree: number
+  colorValue?: unknown
   earliestPickup?: number
   latestDropoff?: number
 }
@@ -174,6 +176,8 @@ const timelineData = computed((): ExtendedTimelineItem[] => {
     const start = row[props.startColumn]
     const end = row[props.endColumn]
     const degree = row[props.degreeColumn]
+    const numericDegree = typeof degree === 'number' ? degree : Number(degree)
+    const colorAttribute = props.colorByAttribute || props.degreeColumn
 
     // Validate required fields
     if (id !== null && id !== undefined &&
@@ -183,7 +187,8 @@ const timelineData = computed((): ExtendedTimelineItem[] => {
         id: String(id),
         start,
         end,
-        degree: typeof degree === 'number' && !isNaN(degree) ? degree : 1,
+        degree: Number.isNaN(numericDegree) ? 1 : numericDegree,
+        colorValue: row[colorAttribute],
       }
 
       // Include constraint window fields if available
@@ -215,6 +220,123 @@ const trackAllocation = computed(() => {
   debugLog('[TimelineCard] Allocating', timelineData.value.length, 'items to tracks')
   return allocateTracks(timelineData.value)
 })
+
+/**
+ * Stable color map for exact degree values present in rides data
+ */
+const degreeColorMap = computed(() => {
+  const styleManager = StyleManager.getInstance()
+  const uniqueDegrees = Array.from(new Set(
+    timelineData.value
+      .map(item => Number(item.degree))
+      .filter(value => Number.isFinite(value))
+  )).sort((a, b) => a - b)
+
+  const colorMap = new Map<number, string>()
+  uniqueDegrees.forEach((value, index) => {
+    colorMap.set(value, styleManager.getCategoricalColor(index))
+  })
+
+  return colorMap
+})
+
+const activeColorByType = computed<'categorical' | 'numeric'>(() => {
+  const attr = props.colorByAttribute
+  if (!attr) return 'categorical'
+
+  const configuredType = props.colorByOptions?.find(opt => opt.attribute === attr)?.type
+  if (configuredType === 'numeric' || configuredType === 'categorical') return configuredType
+
+  const values = timelineData.value
+    .map(item => item.colorValue)
+    .filter(value => value !== null && value !== undefined)
+
+  if (values.length === 0) return 'categorical'
+
+  const allNumeric = values.every(value => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric)
+  })
+
+  return allNumeric ? 'numeric' : 'categorical'
+})
+
+const categoricalColorByMap = computed(() => {
+  const styleManager = StyleManager.getInstance()
+
+  if (activeColorByType.value !== 'categorical') {
+    return new Map<string, string>()
+  }
+
+  const uniqueValues = Array.from(new Set(
+    timelineData.value
+      .map(item => item.colorValue)
+      .filter(value => value !== null && value !== undefined)
+        .map(String)
+  )).sort((a, b) => a.localeCompare(b))
+
+  return styleManager.buildCategoricalColorMap(uniqueValues)
+})
+
+const numericColorByRange = computed<[number, number] | null>(() => {
+  if (activeColorByType.value !== 'numeric') {
+    return null
+  }
+
+  const values = timelineData.value
+    .map(item => Number(item.colorValue))
+    .filter(value => Number.isFinite(value))
+
+  if (values.length === 0) return null
+
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  return [min, max]
+})
+
+function getNumericColorScaleName(): 'viridis' | 'blues' | 'reds' | 'greens' | 'plasma' {
+  const configured = props.colorByOptions
+    ?.find(opt => opt.attribute === props.colorByAttribute)
+    ?.colorScheme
+    ?.toLowerCase()
+
+  if (configured === 'reds' || configured === 'ylorrd') return 'reds'
+  if (configured === 'blues') return 'blues'
+  if (configured === 'greens') return 'greens'
+  if (configured === 'plasma') return 'plasma'
+  return 'viridis'
+}
+
+function getTimelineItemColor(item: ExtendedTimelineItem): string {
+  const styleManager = StyleManager.getInstance()
+
+  if (!props.colorByAttribute || viewMode.value === 'requests') {
+    return getDegreeColor(item.degree)
+  }
+
+  if (activeColorByType.value === 'categorical') {
+    const key = String(item.colorValue ?? '')
+    return categoricalColorByMap.value.get(key) || getDegreeColor(item.degree)
+  }
+
+  const numericValue = Number(item.colorValue)
+  if (!Number.isFinite(numericValue)) {
+    return getDegreeColor(item.degree)
+  }
+
+  const range = numericColorByRange.value
+  if (!range) {
+    return getDegreeColor(item.degree)
+  }
+
+  const [min, max] = range
+  if (max <= min) {
+    return styleManager.getSequentialColor(getNumericColorScaleName(), 0.6)
+  }
+
+  const t = (numericValue - min) / (max - min)
+  return styleManager.getSequentialColor(getNumericColorScaleName(), Math.max(0, Math.min(1, t)))
+}
 
 /**
  * Get data for the currently selected ride in detail view
@@ -308,19 +430,21 @@ function generateTimeTickText(): string[] {
 
 /**
  * Get color for degree (pooling effectiveness)
- * degree 1: single passenger - color index 0
- * degree 2: 2 passengers - color index 1
- * degree 3+: 3+ passengers - color index 2
+ * Uses exact degree values mapped to a stable categorical palette
  */
 function getDegreeColor(degree: number): string {
+  const numericDegree = Number(degree)
   const styleManager = StyleManager.getInstance()
-  if (degree <= 1) {
+
+  if (!Number.isFinite(numericDegree)) {
     return styleManager.getCategoricalColor(0)
-  } else if (degree === 2) {
-    return styleManager.getCategoricalColor(1)
-  } else {
-    return styleManager.getCategoricalColor(2)
   }
+
+  const mappedColor = degreeColorMap.value.get(numericDegree)
+  if (mappedColor) return mappedColor
+
+  const fallbackIndex = Math.max(0, Math.round(numericDegree) - 1)
+  return styleManager.getCategoricalColor(fallbackIndex)
 }
 
 /**
@@ -395,7 +519,7 @@ function getActualTravelTraceIndex(): number {
 function updateHoverVisuals() {
   if (!plotContainer.value || !props.hoveredIds || props.hoveredIds.size === 0) {
     // Reset to normal colors
-    const colors = timelineData.value.map(item => getDegreeColor(item.degree))
+    const colors = timelineData.value.map(item => getTimelineItemColor(item))
     if (timelineData.value.length > 0 && plotContainer.value) {
       const traceIndex = getActualTravelTraceIndex()
       Plotly.restyle(plotContainer.value as any, { 'marker.color': [colors] }, [traceIndex])
@@ -406,9 +530,9 @@ function updateHoverVisuals() {
   // Highlight hovered, dim others
   const colors = timelineData.value.map(item => {
     if (props.hoveredIds!.has(item.id) || props.hoveredIds!.has(Number(item.id))) {
-      return getDegreeColor(item.degree)  // Full color
+      return getTimelineItemColor(item)  // Full color
     }
-    return applyOpacity(getDegreeColor(item.degree), 0.3)  // Dimmed
+    return applyOpacity(getTimelineItemColor(item), 0.3)  // Dimmed
   })
 
   if (timelineData.value.length > 0 && plotContainer.value) {
@@ -424,22 +548,12 @@ function updateHoverVisuals() {
 function updateSelectionVisuals() {
   if (!plotContainer.value || timelineData.value.length === 0) return
 
-  const styleManager = StyleManager.getInstance()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const selectedColor = styleManager.getColor('interaction.selected')
-
-  // Add selection outline to selected bars
-  const lineWidths = timelineData.value.map(item =>
-    selectedRides.value.has(item.id) ? 2 : 0.5
-  )
-  const lineColors = timelineData.value.map(item =>
-    selectedRides.value.has(item.id) ? selectedColor : bgColor
-  )
+  // Keep bars outline-free in all states
+  const lineWidths = timelineData.value.map(() => 0)
 
   const traceIndex = getActualTravelTraceIndex()
   Plotly.restyle(plotContainer.value as any, {
     'marker.line.width': [lineWidths],
-    'marker.line.color': [lineColors],
   }, [traceIndex])
 }
 
@@ -492,6 +606,7 @@ function handleClick(data: any) {
  */
 function handleBackToRides() {
   viewMode.value = 'rides'
+  shouldAutoFitRides.value = true
   detailRideId.value = null
   selectedRides.value.clear()
   selectedRides.value = new Set()
@@ -541,6 +656,7 @@ function handleKeydown(e: KeyboardEvent) {
  * Zoom in: halve the visible time and track range centered on current view
  */
 function zoomIn() {
+  shouldAutoFitRides.value = false
   // X-axis zoom
   const currentRange = viewportEnd.value - viewportStart.value
   const center = (viewportStart.value + viewportEnd.value) / 2
@@ -564,6 +680,7 @@ function zoomIn() {
  * Zoom out: double the visible time and track range centered on current view
  */
 function zoomOut() {
+  shouldAutoFitRides.value = false
   // X-axis zoom
   const currentRange = viewportEnd.value - viewportStart.value
   const center = (viewportStart.value + viewportEnd.value) / 2
@@ -587,11 +704,55 @@ function zoomOut() {
  * Reset zoom to full 24-hour and all-tracks view
  */
 function resetZoom() {
+  if (viewMode.value === 'rides') {
+    shouldAutoFitRides.value = true
+    renderChart()
+    return
+  }
+
   viewportStart.value = 0
   viewportEnd.value = 86400
   viewportTopTrack.value = 0
   viewportBottomTrack.value = maxTrackRange
   updateMainChartRange()
+}
+
+/**
+ * Auto-fit rides viewport to visible data bounds
+ * Adds small padding around min/max ride times for readability
+ */
+function fitViewportToRides(items: ExtendedTimelineItem[], totalTracks: number) {
+  if (items.length === 0) {
+    viewportStart.value = 0
+    viewportEnd.value = 86400
+    viewportTopTrack.value = 0
+    viewportBottomTrack.value = Math.max(1, totalTracks)
+    return
+  }
+
+  let minStart = Number.POSITIVE_INFINITY
+  let maxEnd = Number.NEGATIVE_INFINITY
+
+  for (const item of items) {
+    if (item.start < minStart) minStart = item.start
+    if (item.end > maxEnd) maxEnd = item.end
+  }
+
+  const span = Math.max(1, maxEnd - minStart)
+  const padding = Math.max(60, span * 0.02)
+  let start = Math.max(0, minStart - padding)
+  let end = Math.min(86400, maxEnd + padding)
+
+  if (end - start < minZoomRange) {
+    const center = (start + end) / 2
+    start = Math.max(0, center - minZoomRange / 2)
+    end = Math.min(86400, center + minZoomRange / 2)
+  }
+
+  viewportStart.value = start
+  viewportEnd.value = end
+  viewportTopTrack.value = 0
+  viewportBottomTrack.value = Math.max(1, totalTracks)
 }
 
 /**
@@ -601,7 +762,7 @@ function updateMainChartRange() {
   if (!plotContainer.value) return
   Plotly.relayout(plotContainer.value as any, {
     'xaxis.range': [viewportStart.value, viewportEnd.value],
-    'yaxis.range': [viewportBottomTrack.value - 0.5, viewportTopTrack.value - 0.5]
+    'yaxis.range': [viewportTopTrack.value - 0.5, viewportBottomTrack.value - 0.5]
   })
 }
 
@@ -635,6 +796,7 @@ function handleMinimapClick(e: MouseEvent) {
   const clickTime = clickPercent * 86400
 
   // Center viewport on clicked time
+  shouldAutoFitRides.value = false
   const currentRange = viewportEnd.value - viewportStart.value
   viewportStart.value = Math.max(0, clickTime - currentRange / 2)
   viewportEnd.value = Math.min(86400, viewportStart.value + currentRange)
@@ -655,14 +817,14 @@ function handlePlotlyRelayout(eventData: any) {
     viewportEnd.value = eventData['xaxis.range'][1]
   }
 
-  // Y-axis viewport sync (inverted: range is [bottom - 0.5, top - 0.5])
+  // Y-axis viewport sync (natural: range is [top - 0.5, bottom - 0.5])
   if (eventData['yaxis.range[0]'] !== undefined) {
-    viewportBottomTrack.value = eventData['yaxis.range[0]'] + 0.5
-    viewportTopTrack.value = eventData['yaxis.range[1]'] + 0.5
+    viewportTopTrack.value = eventData['yaxis.range[0]'] + 0.5
+    viewportBottomTrack.value = eventData['yaxis.range[1]'] + 0.5
   }
   if (eventData['yaxis.range'] !== undefined) {
-    viewportBottomTrack.value = eventData['yaxis.range'][0] + 0.5
-    viewportTopTrack.value = eventData['yaxis.range'][1] + 0.5
+    viewportTopTrack.value = eventData['yaxis.range'][0] + 0.5
+    viewportBottomTrack.value = eventData['yaxis.range'][1] + 0.5
   }
 }
 
@@ -720,7 +882,6 @@ function handleWheel(e: WheelEvent) {
   const clampedTrackRange = Math.max(minTrackRange, Math.min(maxTrackRange, newTrackRange))
 
   // Calculate new top/bottom centered on mouse position
-  // Note: Y-axis is inverted (track 0 at top, higher tracks at bottom)
   const cursorTrackRatio = (mouseTrack - viewportTopTrack.value) / currentTrackRange
   let newTopTrack = mouseTrack - clampedTrackRange * cursorTrackRatio
   let newBottomTrack = newTopTrack + clampedTrackRange
@@ -736,15 +897,16 @@ function handleWheel(e: WheelEvent) {
   }
 
   // Update viewport refs
+  shouldAutoFitRides.value = false
   viewportStart.value = newStart
   viewportEnd.value = newEnd
   viewportTopTrack.value = newTopTrack
   viewportBottomTrack.value = newBottomTrack
 
-  // Apply new ranges to chart (Y range is inverted: [bottom - 0.5, top - 0.5])
+  // Apply new ranges to chart
   Plotly.relayout(plotEl, {
     'xaxis.range': [newStart, newEnd],
-    'yaxis.range': [newBottomTrack - 0.5, newTopTrack - 0.5]
+    'yaxis.range': [newTopTrack - 0.5, newBottomTrack - 0.5]
   })
 }
 
@@ -861,10 +1023,15 @@ function renderChart() {
 
   // Update maxTrackRange based on current data
   maxTrackRange = totalTracks
+  // Auto-fit rides view on initial load and data changes
+  if (viewMode.value === 'rides' && shouldAutoFitRides.value) {
+    fitViewportToRides(items, totalTracks)
+    shouldAutoFitRides.value = false
+  }
   // Initialize Y viewport on first render or when tracks change significantly
-  if (viewportBottomTrack.value === 100 || viewportBottomTrack.value > totalTracks) {
+  else if (viewportBottomTrack.value === 100 || viewportBottomTrack.value > totalTracks) {
     viewportTopTrack.value = 0
-    viewportBottomTrack.value = totalTracks
+    viewportBottomTrack.value = Math.max(1, totalTracks)
   }
 
   debugLog('[TimelineCard] Rendering chart, mode:', viewMode.value, 'tracks:', totalTracks, 'items:', items.length)
@@ -931,7 +1098,7 @@ function renderChart() {
       travelY.push(trackInfo.trackIndex)
       travelBase.push(item.start)
       travelWidth.push(item.end - item.start)
-      travelColors.push(getDegreeColor(item.degree))
+      travelColors.push(getTimelineItemColor(item))
       travelIds.push(item.id)
       travelDegrees.push(item.degree)
     }
@@ -958,8 +1125,8 @@ function renderChart() {
       marker: {
         color: travelColors,
         line: {
-          color: bgColor,
-          width: 0.5,
+          color: gridColor,
+          width: 0,
         },
       },
       width: hasConstraintWindows ? 0.5 : 0.7,  // Narrower if showing constraint window
@@ -970,10 +1137,10 @@ function renderChart() {
     })
   }
 
-  // Calculate y-axis range based on Y viewport (inverted: [bottom - 0.5, top - 0.5])
+  // Calculate y-axis range based on Y viewport
   const yRange = viewMode.value === 'requests'
     ? (totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5])  // Full range for request view
-    : [viewportBottomTrack.value - 0.5, viewportTopTrack.value - 0.5]  // Viewport for rides view
+    : [viewportTopTrack.value - 0.5, viewportBottomTrack.value - 0.5]  // Viewport for rides view
 
   // Calculate x-axis range based on view mode
   let xAxisRange: [number, number]
@@ -1058,6 +1225,10 @@ function renderChart() {
   plotEl.on('plotly_hover', handleHover)
   plotEl.on('plotly_unhover', handleUnhover)
   plotEl.on('plotly_click', handleClick)
+  plotEl.on('plotly_doubleclick', () => {
+    resetZoom()
+    return false
+  })
   plotEl.on('plotly_relayout', handlePlotlyRelayout)
 
   // Re-render minimap only in rides view
@@ -1092,6 +1263,7 @@ function handleResize() {
 // Watch for data changes
 watch(() => props.filteredData, () => {
   debugLog('[TimelineCard] filteredData changed, re-rendering')
+  shouldAutoFitRides.value = true
   renderChart()
 })
 
@@ -1123,9 +1295,16 @@ watch(() => globalStore.state.colorScheme, () => {
   renderMinimap()
 })
 
+watch(() => props.colorByAttribute, () => {
+  renderChart()
+})
+
 // Re-render when comparison mode changes
 watch(() => props.showComparison, (newVal) => {
   debugLog('[TimelineCard] showComparison changed to:', newVal, '- re-rendering')
+  if (viewMode.value === 'rides') {
+    shouldAutoFitRides.value = true
+  }
   renderChart()
 })
 
@@ -1139,6 +1318,9 @@ watch(viewMode, (newMode) => {
 watch(() => props.baselineData, () => {
   if (props.showComparison) {
     debugLog('[TimelineCard] baselineData changed in comparison mode - re-rendering')
+    if (viewMode.value === 'rides') {
+      shouldAutoFitRides.value = true
+    }
     renderChart()
   }
 })

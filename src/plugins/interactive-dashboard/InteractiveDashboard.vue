@@ -112,6 +112,9 @@
               :connect-lines="card.connectLines"
               :id-column="card.idColumn || yaml.table?.idColumn"
               :attributes="card.attributes"
+              :left-attributes="card.leftAttributes"
+              :bottom-attributes="card.bottomAttributes"
+              :matrix-part="card.matrixPart"
               :show-values="card.showValues"
               :p-value-threshold="card.pValueThreshold"
               :listen-to-attribute-pair-selection="card.listenToAttributePairSelection"
@@ -129,7 +132,7 @@
               :tooltip="card.tooltip"
               :multi-level-selection="card.multiLevelSelection"
               :geometry-type="geometryType"
-              :color-by-attribute="(card.type === 'map' || card.colorBy) ? colorByAttribute : ''"
+              :color-by-attribute="(card.type === 'map' || card.type === 'timeline' || card.colorBy) ? colorByAttribute : ''"
               :map-controls-config="yaml.map?.controls"
               :geometry-type-options="geometryTypeOptions"
               :color-by-options="colorByOptions"
@@ -410,7 +413,7 @@ export default defineComponent({
       ]
     },
 
-    colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
+    colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric'; aggregation?: 'first' | 'mean' | 'sum' | 'min' | 'max' }> {
       // Prioritize top-level colorBy, fall back to map.colorBy for backward compatibility
       return this.yaml.colorBy?.attributes || this.yaml.map?.colorBy?.attributes || []
     },

@@ -52,6 +52,9 @@ export interface ExportPlotDef {
   mapStyle?: string
   // Correlation-specific
   attributes?: string[]
+  leftAttributes?: string[]
+  bottomAttributes?: string[]
+  matrixPart?: 'full' | 'lower'
   // Per-plot export overrides
   format?: ExportFormat
   width?: number
