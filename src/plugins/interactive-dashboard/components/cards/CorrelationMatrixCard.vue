@@ -178,15 +178,33 @@ function buildCustomData(): any[][][] {
   return customData
 }
 
+function getDashboardThemeColors(): { bgColor: string; textColor: string } {
+  const styleManager = StyleManager.getInstance()
+  const fallbackBg = styleManager.getColor('theme.background.primary')
+  const fallbackText = styleManager.getColor('theme.text.primary')
+
+  if (globalThis.window === undefined) {
+    return { bgColor: fallbackBg, textColor: fallbackText }
+  }
+
+  const rootStyles = globalThis.window.getComputedStyle(document.documentElement)
+  const cssBg = rootStyles.getPropertyValue('--dashboard-bg-primary').trim()
+  const cssText = rootStyles.getPropertyValue('--dashboard-text-primary').trim()
+
+  return {
+    bgColor: cssBg || fallbackBg,
+    textColor: cssText || fallbackText,
+  }
+}
+
 // Render Plotly heatmap
 function renderChart() {
   if (!plotContainer.value || !correlationData.value) return
 
-  // Theme colors from StyleManager
+  // Theme colors from live CSS variables (fallback to StyleManager)
   const styleManager = StyleManager.getInstance()
   const isScientific = styleManager.isScientificMode()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const textColor = styleManager.getColor('theme.text.primary')
+  const { bgColor, textColor } = getDashboardThemeColors()
 
   // Scientific mode font configuration
   const fontFamily = isScientific
@@ -414,6 +432,18 @@ function renderChart() {
 // Resize handling for responsive chart sizing
 let resizeObserver: ResizeObserver | null = null
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
+let themeObserver: MutationObserver | null = null
+let themeRenderTimeout: ReturnType<typeof setTimeout> | null = null
+
+function scheduleThemeRender() {
+  if (themeRenderTimeout) clearTimeout(themeRenderTimeout)
+  themeRenderTimeout = setTimeout(() => {
+    if (correlationData.value) {
+      renderChart()
+    }
+    themeRenderTimeout = null
+  }, 0)
+}
 
 function handleResize() {
   if (resizeTimeout) clearTimeout(resizeTimeout)
@@ -447,6 +477,20 @@ onMounted(() => {
   // Also listen for window resize events (for fullscreen)
   window.addEventListener('resize', handleResize)
 
+  // Re-render when dashboard theme CSS variables/classes are updated
+  if (typeof document !== 'undefined') {
+    themeObserver = new MutationObserver(() => scheduleThemeRender())
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+    })
+    themeObserver.observe(document.head, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+  }
+
   emit('isLoaded')
 })
 
@@ -460,6 +504,12 @@ onUnmounted(() => {
     resizeObserver = null
   }
   if (resizeTimeout) clearTimeout(resizeTimeout)
+
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
+  }
+  if (themeRenderTimeout) clearTimeout(themeRenderTimeout)
 
   window.removeEventListener('resize', handleResize)
 })

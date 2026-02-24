@@ -9,6 +9,8 @@
     :export-yaml="yamlText"
     :file-loader="loadFile"
     :subfolder="subfolder"
+    :config-path="configPath"
+    :file-system-config="fileSystemConfig"
     @complete="handleComplete"
     @close="handleClose"
   )
@@ -42,6 +44,7 @@ export default defineComponent({
     const yamlText = ref('')
     const loadError = ref('')
     const fileApi = ref<HTTPFileSystem | null>(null)
+    const fileSystemConfig = ref<FileSystemConfig | null>(null)
 
     function getFileSystem(name: string): FileSystemConfig {
       const svnProject: FileSystemConfig[] = globalStore.state.svnProjects.filter(
@@ -63,6 +66,7 @@ export default defineComponent({
       try {
         // Initialize file system
         const fsConfig = props.root ? getFileSystem(props.root) : getFileSystem('files')
+        fileSystemConfig.value = fsConfig
         fileApi.value = new HTTPFileSystem(fsConfig)
 
         // Load the YAML config file
@@ -103,6 +107,7 @@ export default defineComponent({
       loadFile,
       handleComplete,
       handleClose,
+      fileSystemConfig,
     }
   },
 })

@@ -5,6 +5,7 @@ import type {
   ExportConfig,
   ExportFormat,
   FilterDef,
+  ExportColorByOption,
   ResolvedPlotExport,
 } from '../types/exportConfig'
 import { EXPORT_DEFAULTS } from '../types/exportConfig'
@@ -37,6 +38,21 @@ export function resolveExportPlan(config: ExportConfig): ResolvedPlotExport[] {
       const scale = plotDef.scale ?? stateDef.scale ?? globalDefaults.scale
       const scientific = globalDefaults.scientific // Scientific is global only
       const colorBy = plotDef.colorBy ?? stateDef.colorBy ?? globalDefaults.colorBy
+      const axisTitleFontSize =
+        plotDef.axisTitleFontSize ?? stateDef.axisTitleFontSize ?? globalDefaults.axisTitleFontSize
+      const axisTickFontSize =
+        plotDef.axisTickFontSize ?? stateDef.axisTickFontSize ?? globalDefaults.axisTickFontSize
+      const legendTitleFontSize =
+        plotDef.legendTitleFontSize ??
+        stateDef.legendTitleFontSize ??
+        globalDefaults.legendTitleFontSize
+      const legendFontSize =
+        plotDef.legendFontSize ?? stateDef.legendFontSize ?? globalDefaults.legendFontSize
+      const lineWidth = plotDef.lineWidth ?? stateDef.lineWidth ?? globalDefaults.lineWidth
+      const markerSizeMultiplier =
+        plotDef.markerSizeMultiplier ??
+        stateDef.markerSizeMultiplier ??
+        globalDefaults.markerSizeMultiplier
 
       const filename = namingPattern.replace('{state}', stateId).replace('{plot}', plotId)
 
@@ -50,6 +66,12 @@ export function resolveExportPlan(config: ExportConfig): ResolvedPlotExport[] {
         scale,
         scientific,
         colorBy,
+        axisTitleFontSize,
+        axisTickFontSize,
+        legendTitleFontSize,
+        legendFontSize,
+        lineWidth,
+        markerSizeMultiplier,
         comparison: stateDef.comparison ?? false,
         filters: stateDef.filters ?? {},
         plotDef,
@@ -84,6 +106,12 @@ export interface ExportProgress {
 
 export type ProgressCallback = (progress: ExportProgress) => void
 
+interface DashboardContext {
+  tableConfig?: Record<string, any>
+  colorByOptions?: ExportColorByOption[]
+  cards: Record<string, any>[]
+}
+
 /**
  * ExportEngine orchestrates the full export pipeline.
  *
@@ -93,6 +121,7 @@ export type ProgressCallback = (progress: ExportProgress) => void
  *   await engine.run(yamlText, renderFn, loadFile)
  */
 export class ExportEngine {
+  private static readonly PLOT_RENDER_TIMEOUT_MS = 120000
   private progressCallbacks: ProgressCallback[] = []
   private cancelled = false
   private progress: ExportProgress = {
@@ -158,8 +187,12 @@ export class ExportEngine {
     filterManager.clearAllFilters()
 
     for (const [column, filterDef] of Object.entries(filters)) {
-      if (typeof filterDef === 'string') {
-        // Single categorical value
+      if (
+        typeof filterDef === 'string' ||
+        typeof filterDef === 'number' ||
+        typeof filterDef === 'boolean'
+      ) {
+        // Single categorical value (supports string/number/boolean)
         filterManager.setFilter(`export-${column}`, column, new Set([filterDef]), 'categorical')
       } else if (Array.isArray(filterDef)) {
         // Multiple categorical values
@@ -196,9 +229,12 @@ export class ExportEngine {
     renderAndCapture: (
       item: ResolvedPlotExport,
       filteredData: any[],
-      baselineData: any[]
+      baselineData: any[],
+      tableConfig?: Record<string, any>,
+      colorByOptions?: ExportColorByOption[]
     ) => Promise<ExportResult>,
-    loadFile: (path: string) => Promise<Blob>
+    loadFile: (path: string) => Promise<Blob>,
+    exportConfigPath?: string
   ): Promise<ExportResult[]> {
     this.cancelled = false
     const results: ExportResult[] = []
@@ -208,6 +244,8 @@ export class ExportEngine {
       this.updateProgress({ status: 'loading', currentState: '', currentPlot: '' })
       const { config, plan } = this.parseConfig(yamlText)
       this.updateProgress({ totalCount: plan.length })
+
+      const dashboardContext = await this.loadDashboardContext(config, loadFile, exportConfigPath)
 
       // Load data
       const blob = await loadFile(config.table.file)
@@ -254,8 +292,23 @@ export class ExportEngine {
 
           this.updateProgress({ currentPlot: item.plotId, status: 'capturing' })
 
+          const matchedCard = dashboardContext
+            ? this.findMatchingDashboardCard(item, dashboardContext.cards)
+            : null
+          const effectiveItem = matchedCard ? this.applyCardOverrides(item, matchedCard) : item
+
           try {
-            const result = await renderAndCapture(item, filteredData, baselineData)
+            const result = await this.withTimeout(
+              renderAndCapture(
+                effectiveItem,
+                filteredData,
+                baselineData,
+                dashboardContext?.tableConfig,
+                dashboardContext?.colorByOptions
+              ),
+              ExportEngine.PLOT_RENDER_TIMEOUT_MS,
+              `Timed out rendering ${item.plotId} after ${ExportEngine.PLOT_RENDER_TIMEOUT_MS}ms`
+            )
             result.filename = item.filename
             results.push(result)
             this.progress.completedItems.push({
@@ -263,7 +316,17 @@ export class ExportEngine {
               success: true,
             })
           } catch (error) {
-            const errMsg = error instanceof Error ? error.message : String(error)
+            let errMsg = error instanceof Error ? error.message : String(error)
+            if (errMsg.includes('Timed out rendering')) {
+              const stageKey = `${item.stateId}:${item.plotId}`
+              const stageMap = (globalThis as any).__exportCaptureStages as
+                | Record<string, string>
+                | undefined
+              const stage = stageMap?.[stageKey]
+              if (stage) {
+                errMsg = `${errMsg} (stage: ${stage})`
+              }
+            }
             this.progress.completedItems.push({
               filename: `${item.filename}.${item.format}`,
               success: false,
@@ -289,6 +352,135 @@ export class ExportEngine {
       this.updateProgress({ status: 'error', error: errMsg })
       throw error
     }
+  }
+
+  private async loadDashboardContext(
+    config: ExportConfig,
+    loadFile: (path: string) => Promise<Blob>,
+    exportConfigPath?: string
+  ): Promise<DashboardContext | null> {
+    let dashboardPath = config.dashboard?.file
+
+    if (!dashboardPath && exportConfigPath) {
+      const inferred = exportConfigPath.replace(/^export-/, 'dashboard-')
+      if (inferred !== exportConfigPath) {
+        dashboardPath = inferred
+      }
+    }
+
+    if (!dashboardPath) return null
+
+    try {
+      const dashboardBlob = await loadFile(dashboardPath)
+      const dashboardText = await dashboardBlob.text()
+      const dashboardYaml = YAML.parse(dashboardText) as Record<string, any>
+
+      const cards = this.flattenDashboardCards(dashboardYaml?.layout)
+      const colorByOptions = (dashboardYaml?.map?.colorBy?.attributes ||
+        config.colorBy?.attributes) as ExportColorByOption[] | undefined
+
+      return {
+        tableConfig: dashboardYaml?.table || config.table,
+        colorByOptions,
+        cards,
+      }
+    } catch (error) {
+      console.warn('[ExportEngine] Dashboard context load failed, continuing with export config only:', error)
+      return {
+        tableConfig: config.table,
+        colorByOptions: config.colorBy?.attributes,
+        cards: [],
+      }
+    }
+  }
+
+  private flattenDashboardCards(layout: Record<string, any> | undefined): Record<string, any>[] {
+    if (!layout || typeof layout !== 'object') return []
+    const cards: Record<string, any>[] = []
+    for (const rowCards of Object.values(layout)) {
+      if (!Array.isArray(rowCards)) continue
+      for (const card of rowCards) {
+        if (card && typeof card === 'object' && card.type) {
+          cards.push(card)
+        }
+      }
+    }
+    return cards
+  }
+
+  private findMatchingDashboardCard(
+    item: ResolvedPlotExport,
+    cards: Record<string, any>[]
+  ): Record<string, any> | null {
+    if (!cards.length) return null
+
+    const def = item.plotDef as Record<string, any>
+    const candidates = cards.filter(card => card.type === def.type)
+    if (!candidates.length) return null
+
+    const title = typeof def.title === 'string' ? def.title.trim().toLowerCase() : ''
+    if (title) {
+      const byTitle = candidates.find(card =>
+        typeof card.title === 'string' && card.title.trim().toLowerCase() === title
+      )
+      if (byTitle) return byTitle
+    }
+
+    if (def.type === 'scatter-plot') {
+      return (
+        candidates.find(card =>
+          card.xColumn === (def.xColumn || def.x) && card.yColumn === (def.yColumn || def.y)
+        ) || null
+      )
+    }
+
+    if (def.type === 'histogram' || def.type === 'pie-chart' || def.type === 'timeline') {
+      return candidates.find(card => card.column === def.column) || null
+    }
+
+    return candidates[0] || null
+  }
+
+  private applyCardOverrides(item: ResolvedPlotExport, card: Record<string, any>): ResolvedPlotExport {
+    const mergedPlotDef = {
+      ...card,
+      ...item.plotDef,
+      xColumn: (item.plotDef as any).xColumn || (item.plotDef as any).x || card.xColumn,
+      yColumn: (item.plotDef as any).yColumn || (item.plotDef as any).y || card.yColumn,
+      colorColumn: (item.plotDef as any).colorColumn || card.colorColumn,
+      connectLines:
+        (item.plotDef as any).connectLines !== undefined
+          ? (item.plotDef as any).connectLines
+          : card.connectLines,
+      markerSize:
+        (item.plotDef as any).markerSize !== undefined
+          ? (item.plotDef as any).markerSize
+          : card.markerSize,
+      idColumn: (item.plotDef as any).idColumn || card.idColumn,
+    }
+
+    const nextColorBy = item.colorBy || mergedPlotDef.colorColumn || ''
+
+    return {
+      ...item,
+      colorBy: nextColorBy,
+      plotDef: mergedPlotDef,
+    }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+      promise
+        .then(result => {
+          clearTimeout(timer)
+          resolve(result)
+        })
+        .catch(error => {
+          clearTimeout(timer)
+          reject(error)
+        })
+    })
   }
 
   private updateProgress(partial: Partial<ExportProgress>): void {

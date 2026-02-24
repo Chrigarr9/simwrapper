@@ -61,8 +61,8 @@
 import { defineComponent, ref, computed, onMounted, nextTick, markRaw } from 'vue'
 
 import { ExportEngine } from './ExportEngine'
-import type { ExportProgress, ExportStatus } from './ExportEngine'
-import type { ResolvedPlotExport } from '../types/exportConfig'
+import type { ExportProgress } from './ExportEngine'
+import type { ResolvedPlotExport, ExportColorByOption } from '../types/exportConfig'
 import type { ExportResult } from '../types/export'
 import { exportPlotlyChart, exportAllChartsAsZip } from '../utils/exportUtils'
 import { panelLookup } from '@/dash-panels/_allPanels'
@@ -84,6 +84,8 @@ export default defineComponent({
     exportYaml: { type: String, required: true },
     fileLoader: { type: Function, required: true },
     subfolder: { type: String, default: '' },
+    configPath: { type: String, default: '' },
+    fileSystemConfig: { type: Object, default: null },
   },
 
   emits: ['complete', 'close'],
@@ -119,6 +121,243 @@ export default defineComponent({
       height: currentCardProps.value?.height ? `${currentCardProps.value.height}px` : '800px',
     }))
 
+    function composeMapCanvases(canvases: HTMLCanvasElement[]): HTMLCanvasElement {
+      const baseCanvas = canvases.reduce((best, current) => {
+        const bestArea = best.width * best.height
+        const currentArea = current.width * current.height
+        return currentArea > bestArea ? current : best
+      }, canvases[0])
+
+      const composite = document.createElement('canvas')
+      composite.width = Math.max(1, baseCanvas.width)
+      composite.height = Math.max(1, baseCanvas.height)
+      const context = composite.getContext('2d')
+      if (!context) {
+        throw new Error('Composite canvas context unavailable for map export')
+      }
+
+      for (const mapCanvas of canvases) {
+        if (!mapCanvas.width || !mapCanvas.height) continue
+        context.drawImage(mapCanvas, 0, 0, composite.width, composite.height)
+      }
+
+      return composite
+    }
+
+    function getAlphaBounds(canvas: HTMLCanvasElement): {
+      minX: number
+      minY: number
+      maxX: number
+      maxY: number
+    } | null {
+      const context = canvas.getContext('2d')
+      if (!context) return null
+
+      const { width, height } = canvas
+      if (!width || !height) return null
+
+      const imageData = context.getImageData(0, 0, width, height)
+      const data = imageData.data
+
+      let minX = width
+      let minY = height
+      let maxX = -1
+      let maxY = -1
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const alpha = data[(y * width + x) * 4 + 3]
+          if (alpha > 0) {
+            if (x < minX) minX = x
+            if (y < minY) minY = y
+            if (x > maxX) maxX = x
+            if (y > maxY) maxY = y
+          }
+        }
+      }
+
+      if (maxX < minX || maxY < minY) return null
+      return { minX, minY, maxX, maxY }
+    }
+
+    function cropCanvas(
+      source: HTMLCanvasElement,
+      bounds: { minX: number; minY: number; maxX: number; maxY: number },
+      padding: number
+    ): HTMLCanvasElement {
+      const minX = Math.max(0, Math.floor(bounds.minX - padding))
+      const minY = Math.max(0, Math.floor(bounds.minY - padding))
+      const maxX = Math.min(source.width - 1, Math.ceil(bounds.maxX + padding))
+      const maxY = Math.min(source.height - 1, Math.ceil(bounds.maxY + padding))
+
+      const width = Math.max(1, maxX - minX + 1)
+      const height = Math.max(1, maxY - minY + 1)
+
+      const cropped = document.createElement('canvas')
+      cropped.width = width
+      cropped.height = height
+      const context = cropped.getContext('2d')
+      if (!context) {
+        throw new Error('Cropped canvas context unavailable for map export')
+      }
+
+      context.drawImage(source, minX, minY, width, height, 0, 0, width, height)
+      return cropped
+    }
+
+    function scaleCanvas(source: HTMLCanvasElement, width: number, height: number): HTMLCanvasElement {
+      const target = document.createElement('canvas')
+      target.width = Math.max(1, Math.round(width))
+      target.height = Math.max(1, Math.round(height))
+      const context = target.getContext('2d')
+      if (!context) {
+        throw new Error('Scaled canvas context unavailable for map export')
+      }
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
+      context.drawImage(source, 0, 0, target.width, target.height)
+      return target
+    }
+
+    function drawLegendOverlay(
+      ctx: CanvasRenderingContext2D,
+      legendData: any,
+      canvasWidth: number,
+      canvasHeight: number,
+      dpr: number
+    ) {
+      const margin = 16 * dpr
+      const padding = 10 * dpr
+      const titleFontSize = 13 * dpr
+      const labelFontSize = 11 * dpr
+      const titleFont = `bold ${titleFontSize}px sans-serif`
+      const labelFont = `${labelFontSize}px sans-serif`
+
+      if (legendData.type === 'numeric') {
+        // Vertical gradient bar with tick labels
+        const barWidth = 18 * dpr
+        const barHeight = 140 * dpr
+        const tickCount = 5
+        const title = legendData.title || ''
+
+        // Measure text widths for box sizing
+        ctx.font = labelFont
+        const maxLabel = String(legendData.maxValue?.toFixed?.(2) ?? legendData.maxValue)
+        const labelWidth = ctx.measureText(maxLabel).width + 8 * dpr
+
+        const boxWidth = barWidth + labelWidth + padding * 3
+        const boxHeight = barHeight + (title ? titleFontSize + padding : 0) + padding * 2
+
+        const boxX = canvasWidth - boxWidth - margin
+        const boxY = canvasHeight - boxHeight - margin
+
+        // Semi-transparent background
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)'
+        ctx.lineWidth = dpr
+        ctx.beginPath()
+        ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 4 * dpr)
+        ctx.fill()
+        ctx.stroke()
+
+        let yOffset = boxY + padding
+
+        // Title
+        if (title) {
+          ctx.fillStyle = '#333'
+          ctx.font = titleFont
+          ctx.textAlign = 'left'
+          ctx.fillText(title, boxX + padding, yOffset + titleFontSize * 0.85)
+          yOffset += titleFontSize + padding * 0.5
+        }
+
+        // Gradient bar
+        const barX = boxX + padding
+        const barY = yOffset
+        const minColor = legendData.minColor || '#ffffcc'
+        const maxColor = legendData.maxColor || '#bd0026'
+        const gradient = ctx.createLinearGradient(barX, barY + barHeight, barX, barY)
+        gradient.addColorStop(0, minColor)
+        gradient.addColorStop(1, maxColor)
+        ctx.fillStyle = gradient
+        ctx.fillRect(barX, barY, barWidth, barHeight)
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)'
+        ctx.lineWidth = dpr * 0.5
+        ctx.strokeRect(barX, barY, barWidth, barHeight)
+
+        // Tick labels
+        ctx.fillStyle = '#333'
+        ctx.font = labelFont
+        ctx.textAlign = 'left'
+        const minVal = legendData.minValue ?? 0
+        const maxVal = legendData.maxValue ?? 1
+        for (let i = 0; i < tickCount; i++) {
+          const frac = i / (tickCount - 1)
+          const val = maxVal - frac * (maxVal - minVal)
+          const tickY = barY + frac * barHeight
+          ctx.fillText(
+            val.toFixed(2),
+            barX + barWidth + 6 * dpr,
+            tickY + labelFontSize * 0.35
+          )
+        }
+      } else if (legendData.type === 'categorical' && legendData.items?.length) {
+        // Colored swatches with labels
+        const swatchSize = 14 * dpr
+        const rowHeight = swatchSize + 6 * dpr
+        const items = legendData.items
+        const title = legendData.title || ''
+
+        ctx.font = labelFont
+        const maxLabelWidth = Math.max(...items.map((it: any) => ctx.measureText(it.label).width))
+
+        const boxWidth = swatchSize + maxLabelWidth + padding * 3 + 8 * dpr
+        const boxHeight =
+          items.length * rowHeight +
+          (title ? titleFontSize + padding : 0) +
+          padding * 2
+
+        const boxX = canvasWidth - boxWidth - margin
+        const boxY = canvasHeight - boxHeight - margin
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)'
+        ctx.lineWidth = dpr
+        ctx.beginPath()
+        ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 4 * dpr)
+        ctx.fill()
+        ctx.stroke()
+
+        let yOffset = boxY + padding
+
+        if (title) {
+          ctx.fillStyle = '#333'
+          ctx.font = titleFont
+          ctx.textAlign = 'left'
+          ctx.fillText(title, boxX + padding, yOffset + titleFontSize * 0.85)
+          yOffset += titleFontSize + padding * 0.5
+        }
+
+        for (const item of items) {
+          ctx.fillStyle = item.color
+          ctx.fillRect(boxX + padding, yOffset, swatchSize, swatchSize)
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'
+          ctx.lineWidth = dpr * 0.5
+          ctx.strokeRect(boxX + padding, yOffset, swatchSize, swatchSize)
+
+          ctx.fillStyle = '#333'
+          ctx.font = labelFont
+          ctx.textAlign = 'left'
+          ctx.fillText(
+            item.label,
+            boxX + padding + swatchSize + 6 * dpr,
+            yOffset + swatchSize * 0.75
+          )
+          yOffset += rowHeight
+        }
+      }
+    }
+
     function handleCardLoaded() {
       if (cardLoadedResolve.value) {
         cardLoadedResolve.value()
@@ -126,12 +365,27 @@ export default defineComponent({
       }
     }
 
-    function mapPlotDefToProps(item: ResolvedPlotExport, filteredData: any[], baselineData: any[]) {
+    function mapPlotDefToProps(
+      item: ResolvedPlotExport,
+      filteredData: any[],
+      baselineData: any[],
+      tableConfig?: Record<string, any>,
+      colorByOptions?: ExportColorByOption[]
+    ) {
       const def = item.plotDef
       const base: Record<string, any> = {
         filteredData,
         baselineData,
         showComparison: item.comparison,
+        tableConfig,
+        colorByOptions,
+        exportMode: true,
+        exportAxisTitleFontSize: item.axisTitleFontSize,
+        exportAxisTickFontSize: item.axisTickFontSize,
+        exportLegendTitleFontSize: item.legendTitleFontSize,
+        exportLegendFontSize: item.legendFontSize,
+        exportLineWidth: item.lineWidth,
+        exportMarkerSizeMultiplier: item.markerSizeMultiplier,
       }
 
       if (item.colorBy) {
@@ -140,11 +394,37 @@ export default defineComponent({
 
       switch (def.type) {
         case 'histogram':
-          return { ...base, column: def.column, binSize: def.binSize, xMin: def.xMin, xMax: def.xMax, autoTrim: def.autoTrim, title: def.title }
+          return {
+            ...base,
+            column: def.column,
+            binSize: def.binSize,
+            xMin: def.xMin,
+            xMax: def.xMax,
+            autoTrim: def.autoTrim,
+            title: def.title,
+            idColumn: def.idColumn,
+          }
         case 'pie-chart':
-          return { ...base, column: def.column, title: def.title }
+          return { ...base, column: def.column, title: def.title, idColumn: def.idColumn }
         case 'scatter-plot':
-          return { ...base, xColumn: def.xColumn || def.x, yColumn: def.yColumn || def.y, title: def.title }
+          return {
+            ...base,
+            xColumn: def.xColumn || def.x,
+            yColumn: def.yColumn || def.y,
+            yColumnRight: def.yColumnRight,
+            colorColumn: def.colorColumn,
+            sizeColumn: def.sizeColumn,
+            markerSize: def.markerSize,
+            connectLines: def.connectLines,
+            idColumn: def.idColumn,
+            xMin: def.xMin,
+            xMax: def.xMax,
+            yMin: def.yMin,
+            yMax: def.yMax,
+            xAutoTrim: def.xAutoTrim,
+            yAutoTrim: def.yAutoTrim,
+            title: def.title,
+          }
         case 'correlation-matrix':
           return {
             ...base,
@@ -157,7 +437,16 @@ export default defineComponent({
         case 'timeline':
           return { ...base, column: def.column, title: def.title }
         case 'map':
-          return { ...base, layers: def.layers, center: def.center, zoom: def.zoom, mapStyle: def.mapStyle, title: def.title }
+          return {
+            ...base,
+            layers: def.layers,
+            center: def.center,
+            zoom: def.zoom,
+            mapStyle: def.mapStyle,
+            title: def.title,
+            fileSystemConfig: props.fileSystemConfig,
+            subfolder: props.subfolder,
+          }
         default:
           return base
       }
@@ -166,8 +455,19 @@ export default defineComponent({
     async function renderAndCapture(
       item: ResolvedPlotExport,
       filteredData: any[],
-      baselineData: any[]
+      baselineData: any[],
+      tableConfig?: Record<string, any>,
+      colorByOptions?: ExportColorByOption[]
     ): Promise<ExportResult> {
+      const stageKey = `${item.stateId}:${item.plotId}`
+      const setStage = (stage: string) => {
+        const current = ((globalThis as any).__exportCaptureStages || {}) as Record<string, string>
+        current[stageKey] = stage
+        ;(globalThis as any).__exportCaptureStages = current
+      }
+
+      setStage('resolve-component')
+
       // Resolve the component
       const lookupKey = CARD_TYPE_MAP[item.plotDef.type]
       if (!lookupKey || !panelLookup[lookupKey]) {
@@ -175,35 +475,68 @@ export default defineComponent({
       }
 
       // Set up the dynamic component
-      const resolvedComponent = await panelLookup[lookupKey].__asyncLoader()
+      const panelComponent = panelLookup[lookupKey] as any
+      const resolvedComponent = panelComponent?.__asyncLoader
+        ? await panelComponent.__asyncLoader()
+        : panelComponent
       currentCardComponent.value = markRaw(resolvedComponent)
-      currentCardProps.value = mapPlotDefToProps(item, filteredData, baselineData)
+      currentCardProps.value = mapPlotDefToProps(
+        item,
+        filteredData,
+        baselineData,
+        tableConfig,
+        colorByOptions
+      )
 
       // Wait for Vue to render
+      setStage('vue-next-tick')
       await nextTick()
 
-      // Wait for card to signal it's loaded
-      await new Promise<void>((resolve) => {
-        cardLoadedResolve.value = resolve
-        // Timeout after 15s to prevent hanging
-        setTimeout(() => {
-          if (cardLoadedResolve.value) {
-            cardLoadedResolve.value = null
+      // Map cards need explicit load completion before canvas capture
+      if (item.plotDef.type === 'map') {
+        setStage('wait-map-loaded-event')
+        await new Promise<void>(resolve => {
+          let done = false
+          cardLoadedResolve.value = () => {
+            if (done) return
+            done = true
             resolve()
           }
-        }, 15000)
-      })
+          setTimeout(() => {
+            if (done) return
+            done = true
+            cardLoadedResolve.value = null
+            resolve()
+          }, 30000)
+        })
+      }
 
-      // Give Plotly extra time to finish rendering
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait until a renderable chart/map element appears
+      setStage('wait-renderable-element')
+      const waitStart = Date.now()
+      let exportableEl = renderTarget.value?.querySelector('.js-plotly-plot, canvas') as
+        | HTMLElement
+        | null
+      while (!exportableEl && Date.now() - waitStart < 30000) {
+        await new Promise(resolve => setTimeout(resolve, 400))
+        exportableEl = renderTarget.value?.querySelector('.js-plotly-plot, canvas') as
+          | HTMLElement
+          | null
+      }
+
+      // Small settle delay after element appears
+      setStage('post-render-settle')
+      await new Promise(resolve => setTimeout(resolve, 300))
 
       // Capture the rendered output
+      setStage('capture-element')
       const target = renderTarget.value
       if (!target) throw new Error('Render target not found')
 
       // Try Plotly chart first
       const plotlyEl = target.querySelector('.js-plotly-plot') as HTMLElement
       if (plotlyEl) {
+        setStage('capture-plotly')
         return exportPlotlyChart(plotlyEl, {
           format: item.format,
           width: item.width,
@@ -214,10 +547,76 @@ export default defineComponent({
       }
 
       // Try canvas (for maps)
-      const canvas = target.querySelector('canvas') as HTMLCanvasElement
+      const canvasSelector = item.plotDef.type === 'map' ? '[data-exportable-map="true"] canvas, canvas' : 'canvas'
+      const canvas = target.querySelector(canvasSelector) as HTMLCanvasElement
       if (canvas) {
+        setStage('capture-canvas')
         const mimeType = item.format === 'svg' ? 'image/svg+xml' : 'image/png'
-        const dataUrl = canvas.toDataURL(mimeType)
+
+        // Map cards may render base map and overlays on separate canvases
+        // (e.g. MapLibre + deck.gl). Composite all map canvases to preserve features.
+        let exportCanvas: HTMLCanvasElement
+        if (item.plotDef.type === 'map') {
+          const mapContainer = target.querySelector('[data-exportable-map="true"]') as HTMLElement | null
+          const mapCanvases = Array.from(mapContainer?.querySelectorAll('canvas') ?? []) as HTMLCanvasElement[]
+
+          if (mapCanvases.length > 1) {
+            setStage('capture-map-composite')
+            const baseCanvas = mapCanvases.reduce((best, current) => {
+              const bestArea = best.width * best.height
+              const currentArea = current.width * current.height
+              return currentArea > bestArea ? current : best
+            }, mapCanvases[0])
+            let composed = composeMapCanvases(mapCanvases)
+
+            const shouldCrop = item.plotDef.cropToVisibleFeatures === true
+            if (shouldCrop) {
+              const padding = Number.isFinite(item.plotDef.cropPadding)
+                ? Math.max(0, Number(item.plotDef.cropPadding))
+                : 24
+
+              const overlayCanvases = mapCanvases.filter(c => c !== baseCanvas)
+              const combinedOverlay =
+                overlayCanvases.length > 0 ? composeMapCanvases(overlayCanvases) : null
+              const featureBounds = combinedOverlay ? getAlphaBounds(combinedOverlay) : null
+
+              if (featureBounds) {
+                setStage('capture-map-crop')
+                composed = cropCanvas(composed, featureBounds, padding)
+              }
+            }
+
+            const targetWidth = item.width * item.scale
+            const targetHeight = item.height * item.scale
+            exportCanvas = scaleCanvas(composed, targetWidth, targetHeight)
+          } else {
+            const targetWidth = item.width * item.scale
+            const targetHeight = item.height * item.scale
+            exportCanvas = scaleCanvas(canvas, targetWidth, targetHeight)
+          }
+        } else {
+          exportCanvas = canvas
+        }
+
+        // Draw legend overlay onto the export canvas if legend data is available
+        if (item.plotDef.type === 'map') {
+          const mapContainer = target.querySelector('[data-exportable-map="true"]') as HTMLElement | null
+          const legendJson = mapContainer?.getAttribute('data-legend-json')
+          if (legendJson) {
+            try {
+              const legendInfo = JSON.parse(legendJson)
+              const legendCtx = exportCanvas.getContext('2d')
+              if (legendCtx) {
+                drawLegendOverlay(legendCtx, legendInfo, exportCanvas.width, exportCanvas.height, item.scale)
+              }
+            } catch (e) {
+              console.warn('[ExportView] Failed to draw legend overlay:', e)
+            }
+          }
+        }
+
+        const dataUrl = exportCanvas.toDataURL(mimeType)
+
         const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '')
         return {
           data: base64Data,
@@ -227,6 +626,7 @@ export default defineComponent({
         }
       }
 
+      setStage('capture-no-element')
       throw new Error(`No exportable element found for ${item.plotId}`)
     }
 
@@ -235,7 +635,8 @@ export default defineComponent({
         const results = await engine.run(
           props.exportYaml,
           renderAndCapture,
-          props.fileLoader as (path: string) => Promise<Blob>
+          props.fileLoader as (path: string) => Promise<Blob>,
+          props.configPath
         )
         exportResults.value = results
 
@@ -244,10 +645,24 @@ export default defineComponent({
         currentCardProps.value = null
 
         // Signal completion for headless detection
-        ;(window as any).__exportComplete = true
+        ;(globalThis as any).__exportResults = results
+        ;(globalThis as any).__exportSummary = {
+          status: progress.value.status,
+          completedCount: progress.value.completedCount,
+          totalCount: progress.value.totalCount,
+          completedItems: progress.value.completedItems,
+        }
+        ;(globalThis as any).__exportComplete = true
         emit('complete', results)
       } catch (error) {
         console.error('[ExportView] Export failed:', error)
+        ;(globalThis as any).__exportSummary = {
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+          completedCount: progress.value.completedCount,
+          totalCount: progress.value.totalCount,
+          completedItems: progress.value.completedItems,
+        }
       }
     }
 

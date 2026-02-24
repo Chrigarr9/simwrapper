@@ -43,6 +43,7 @@
         :export-yaml="activeYaml"
         :file-loader="fileLoader"
         :subfolder="subfolder"
+        :config-path="activeConfigPath"
         @complete="handleExportComplete"
         @close="showExportView = false"
       )
@@ -80,6 +81,7 @@ export default defineComponent({
     const isOpen = ref(false)
     const showExportView = ref(false)
     const activeYaml = ref('')
+    const activeConfigPath = ref('')
     const dropdownButton = ref<HTMLElement>()
     const dropdownMenu = ref<HTMLElement>()
     const fileInput = ref<HTMLInputElement>()
@@ -165,6 +167,7 @@ export default defineComponent({
       try {
         const blob = await (props.fileLoader as (path: string) => Promise<Blob>)(config.file)
         activeYaml.value = await blob.text()
+        activeConfigPath.value = config.file
         showExportView.value = true
       } catch (error) {
         console.error('[ExportButton] Failed to load export config:', error)
@@ -182,6 +185,7 @@ export default defineComponent({
       if (!file) return
 
       activeYaml.value = await file.text()
+      activeConfigPath.value = file.name
       showExportView.value = true
 
       // Reset file input so the same file can be re-selected
@@ -204,6 +208,7 @@ export default defineComponent({
       isOpen,
       showExportView,
       activeYaml,
+      activeConfigPath,
       dropdownButton,
       dropdownMenu,
       fileInput,

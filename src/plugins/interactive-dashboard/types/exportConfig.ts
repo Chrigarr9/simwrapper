@@ -29,6 +29,18 @@ export interface ExportDefaults {
   scale?: number
   scientific?: boolean
   colorBy?: string
+  axisTitleFontSize?: number
+  axisTickFontSize?: number
+  legendTitleFontSize?: number
+  legendFontSize?: number
+  lineWidth?: number
+  markerSizeMultiplier?: number
+}
+
+export interface ExportColorByOption {
+  attribute: string
+  label?: string
+  type?: string
 }
 
 /** Plot definition */
@@ -44,12 +56,26 @@ export interface ExportPlotDef {
   y?: string
   xColumn?: string
   yColumn?: string
+  yColumnRight?: string
   colorBy?: string
+  colorColumn?: string
+  sizeColumn?: string
+  markerSize?: number
+  connectLines?: boolean
+  idColumn?: string
+  axisTitleFontSize?: number
+  axisTickFontSize?: number
+  legendTitleFontSize?: number
+  legendFontSize?: number
+  lineWidth?: number
+  markerSizeMultiplier?: number
   // Map-specific
   layers?: any[]
   center?: [number, number]
   zoom?: number
   mapStyle?: string
+  cropToVisibleFeatures?: boolean
+  cropPadding?: number
   // Correlation-specific
   attributes?: string[]
   leftAttributes?: string[]
@@ -65,7 +91,9 @@ export interface ExportPlotDef {
   xMax?: number
   yMin?: number
   yMax?: number
-  autoTrim?: boolean
+  autoTrim?: number
+  xAutoTrim?: number
+  yAutoTrim?: number
 }
 
 /** State definition: filter context + which plots to export */
@@ -79,6 +107,12 @@ export interface ExportStateDef {
   width?: number
   height?: number
   scale?: number
+  axisTitleFontSize?: number
+  axisTickFontSize?: number
+  legendTitleFontSize?: number
+  legendFontSize?: number
+  lineWidth?: number
+  markerSizeMultiplier?: number
 }
 
 /** Output configuration */
@@ -91,12 +125,25 @@ export interface ExportOutputConfig {
 export interface ExportTableConfig {
   file: string // CSV file path (relative to YAML location)
   idColumn?: string // ID column name
+  columns?: {
+    formats?: Record<string, any>
+  }
+  [key: string]: any
+}
+
+export interface DashboardSourceConfig {
+  file?: string
 }
 
 /** Complete export configuration (root of the YAML) */
 export interface ExportConfig {
   table: ExportTableConfig
   defaults?: ExportDefaults
+  colorBy?: {
+    default?: string
+    attributes?: ExportColorByOption[]
+  }
+  dashboard?: DashboardSourceConfig
   plots: Record<string, ExportPlotDef>
   states: Record<string, ExportStateDef>
   output?: ExportOutputConfig
@@ -113,6 +160,12 @@ export interface ResolvedPlotExport {
   scale: number
   scientific: boolean
   colorBy: string
+  axisTitleFontSize: number
+  axisTickFontSize: number
+  legendTitleFontSize: number
+  legendFontSize: number
+  lineWidth: number
+  markerSizeMultiplier: number
   comparison: boolean
   filters: Record<string, FilterDef>
   plotDef: ExportPlotDef
@@ -126,4 +179,10 @@ export const EXPORT_DEFAULTS: Required<ExportDefaults> = {
   scale: 2,
   scientific: true,
   colorBy: '',
+  axisTitleFontSize: 14,
+  axisTickFontSize: 12,
+  legendTitleFontSize: 13,
+  legendFontSize: 12,
+  lineWidth: 2.4,
+  markerSizeMultiplier: 1.35,
 }

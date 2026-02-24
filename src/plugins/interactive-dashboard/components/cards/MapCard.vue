@@ -17,6 +17,7 @@
       class="map-container"
       :class="{ 'scientific-mode': isScientificMode }"
       data-exportable-map="true"
+      :data-legend-json="exportMode && legendData ? JSON.stringify(legendData) : undefined"
     ></div>
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
@@ -184,6 +185,9 @@ interface Props {
   showComparison?: boolean
   baselineData?: any[]
 
+  // Export mode (headless image capture)
+  exportMode?: boolean
+
   // Map control selections (from dashboard)
   geometryType?: string
   colorByAttribute?: string
@@ -212,6 +216,7 @@ const props = withDefaults(defineProps<Props>(), {
   filteredData: () => [],
   hoveredIds: () => new Set(),
   selectedIds: () => new Set(),
+  exportMode: false,
   geometryType: 'all',
   colorByAttribute: '',
   layerStrategy: 'auto',
@@ -234,6 +239,7 @@ const mapId = ref(`map-${Math.random().toString(36).substring(7)}`)
 const map = ref<maplibregl.Map | null>(null)
 const deckOverlay = ref<MapboxOverlay | null>(null)
 const isLoading = ref(true)
+const hasEmittedLoaded = ref(false)
 
 // Layer data storage
 const layerData = ref<Map<string, any[]>>(new Map())
@@ -283,11 +289,20 @@ const fileApi = computed(() => {
 // ============================================================================
 
 onMounted(async () => {
-  await initMap()
-  await loadLayerData()
-  initDeckOverlay()
-  updateLayers()
-  fitBounds()
+  try {
+    await initMap()
+    await loadLayerData()
+    initDeckOverlay()
+    updateLayers()
+    fitBounds()
+
+    // Ensure the first rendered frame includes deck layers before export capture
+    await waitForMapRenderSettled()
+    emitLoadedOnce()
+  } catch (error) {
+    console.error('[MapCard] Failed during mounted initialization:', error)
+    emitLoadedOnce()
+  }
 })
 
 onUnmounted(() => {
@@ -355,13 +370,13 @@ async function initMap(): Promise<void> {
       style: mapStyle,
       center: props.center || [13.4, 52.52],
       zoom: Number(props.zoom) || 10,
+      canvasContextAttributes: props.exportMode ? { preserveDrawingBuffer: true } : undefined,
     })
 
     // Wait for map to load
     await new Promise<void>((resolve) => {
       map.value!.on('load', () => {
         isLoading.value = false
-        emit('isLoaded')  // Notify parent that card is loaded (hides loading spinner)
         resolve()
       })
     })
@@ -370,9 +385,35 @@ async function initMap(): Promise<void> {
   } catch (error) {
     console.error('[MapCard] Failed to initialize map:', error)
     isLoading.value = false
-    emit('isLoaded')  // Still emit on error to hide spinner
     throw error
   }
+}
+
+function emitLoadedOnce(): void {
+  if (hasEmittedLoaded.value) return
+  hasEmittedLoaded.value = true
+  emit('isLoaded')
+}
+
+async function waitForMapRenderSettled(timeoutMs: number = 5000): Promise<void> {
+  if (!map.value) return
+
+  await new Promise<void>(resolve => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+
+    const timer = setTimeout(finish, timeoutMs)
+    map.value!.once('idle', () => {
+      clearTimeout(timer)
+      finish()
+    })
+  })
+
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 }
 
 function getMapStyle(): string {
@@ -543,6 +584,9 @@ function applyPropertyFilters(features: any[], filterConfig: any): any[] {
   return features.filter((feature) => {
     return filters.every((filter) => {
       const propertyValue = feature.properties?.[filter.property]
+      if (Array.isArray(filter.value)) {
+        return filter.value.includes(propertyValue)
+      }
       return propertyValue === filter.value
     })
   })
@@ -609,6 +653,7 @@ function initDeckOverlay() {
   }
 
   deckOverlay.value = new MapboxOverlay({
+    interleaved: true,
     layers: [],
     getTooltip: ({ object }: any) => getTooltipContent(object),
   })
@@ -1075,8 +1120,8 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
         pickable: false,
         greatCircle: false,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+        getSourcePosition: (d: any) => getArcSourcePosition(d),
+        getTargetPosition: (d: any) => getArcTargetPosition(d),
 
         getWidth: 2,
         getSourceColor: baselineColor,
@@ -1195,8 +1240,8 @@ function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]):
         pickable: false,
         greatCircle: false,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+        getSourcePosition: (d: any) => getArcSourcePosition(d),
+        getTargetPosition: (d: any) => getArcTargetPosition(d),
 
         getWidth: (d: any) => getFeatureWidth(d, layerConfig), // Same width, just on top
         getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
@@ -1384,6 +1429,22 @@ function isSelfLoop(feature: any): boolean {
   return Math.abs(src[0] - tgt[0]) < 0.0001 && Math.abs(src[1] - tgt[1]) < 0.0001
 }
 
+function getArcSourcePosition(feature: any): Position {
+  const coords = feature?.geometry?.coordinates
+  if (Array.isArray(coords) && coords.length > 0 && Array.isArray(coords[0])) {
+    return coords[0] as Position
+  }
+  return [0, 0]
+}
+
+function getArcTargetPosition(feature: any): Position {
+  const coords = feature?.geometry?.coordinates
+  if (Array.isArray(coords) && coords.length > 0 && Array.isArray(coords[coords.length - 1])) {
+    return coords[coords.length - 1] as Position
+  }
+  return [0, 0]
+}
+
 // ArcLayer Factory
 function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | null {
   try {
@@ -1400,8 +1461,8 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
       pickable: true,
       greatCircle: false,
 
-      getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-      getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+      getSourcePosition: (d: any) => getArcSourcePosition(d),
+      getTargetPosition: (d: any) => getArcTargetPosition(d),
 
       getWidth: (d: any) => getFeatureWidth(d, layerConfig),
       getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
@@ -1600,7 +1661,7 @@ function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, n
   const boundaryDefaults = role?.role === 'neutral'
     ? styleManager.getODBoundaryLayerStyle()
     : styleManager.getBoundaryLayerStyle()
-  const configuredOpacity = layerConfig.fillOpacity === 0 ? 0 : boundaryDefaults.fillOpacity
+  const configuredOpacity = layerConfig.fillOpacity ?? boundaryDefaults.fillOpacity
   const isOutlineOnly = configuredOpacity === 0
 
   // For outline-only layers (fillOpacity: 0), always return transparent fill

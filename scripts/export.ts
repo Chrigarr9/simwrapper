@@ -6,6 +6,7 @@
  *   npm run export -- path/to/export-config.yaml
  *   npm run export -- path/to/export-config.yaml --output ./figures
  *   npm run export -- path/to/export-config.yaml --root projectSlug --subfolder path/to/data
+ *   npm run export -- path/to/export-config.yaml --dpr 2
  *
  * This script:
  * 1. Starts a Vite dev server
@@ -17,9 +18,44 @@
 
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
-import { resolve, dirname, basename } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { resolve, dirname, basename, join } from 'path'
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
+import JSZip from 'jszip'
+
+type ExportItem = {
+  data: string
+  extension: string
+  filename: string
+}
+
+async function extractZipBuffer(zipBuffer: Buffer, outputDir: string, zipName: string): Promise<string> {
+  const zip = await JSZip.loadAsync(zipBuffer)
+  const extractFolder = resolve(outputDir, zipName.replace(/\.zip$/i, ''))
+  if (!existsSync(extractFolder)) mkdirSync(extractFolder, { recursive: true })
+
+  for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+    if (zipEntry.dir) {
+      mkdirSync(join(extractFolder, relativePath), { recursive: true })
+      continue
+    }
+
+    const safePath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
+    if (safePath.includes('..')) {
+      console.warn(`[export] Skipping unsafe zip entry: ${relativePath}`)
+      continue
+    }
+
+    const fullPath = join(extractFolder, safePath)
+    const parentDir = dirname(fullPath)
+    if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true })
+
+    const content = await zipEntry.async('nodebuffer')
+    writeFileSync(fullPath, content)
+  }
+
+  return extractFolder
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -43,6 +79,7 @@ async function main() {
   let outputDir = resolve(dirname(configPath), 'export')
   let root = ''
   let subfolder = ''
+  let deviceScaleFactor = 2
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '--output' && args[i + 1]) {
       outputDir = resolve(args[++i])
@@ -56,12 +93,21 @@ async function main() {
       subfolder = args[++i]
       continue
     }
+    if (args[i] === '--dpr' && args[i + 1]) {
+      const parsed = Number(args[++i])
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(`Invalid --dpr value: ${args[i]}`)
+      }
+      deviceScaleFactor = parsed
+      continue
+    }
   }
 
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
   console.log(`[export] Config: ${configPath}`)
   console.log(`[export] Output: ${outputDir}`)
+  console.log(`[export] DPR: ${deviceScaleFactor}`)
 
   // Start Vite dev server
   console.log('[export] Starting dev server...')
@@ -78,11 +124,28 @@ async function main() {
   // Launch headless browser
   console.log('[export] Launching browser...')
   const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext({ acceptDownloads: true })
+  const context = await browser.newContext({
+    acceptDownloads: true,
+    viewport: { width: 1920, height: 1080 },
+    deviceScaleFactor,
+  })
   const page = await context.newPage()
 
-  // Set up download handler
-  const downloadPromise = page.waitForEvent('download', { timeout: 300000 })
+  page.on('console', msg => {
+    const type = msg.type()
+    const text = msg.text()
+    if (type === 'error' || text.includes('Error') || text.includes('error')) {
+      console.log(`[page:${type}] ${text}`)
+    }
+  })
+
+  page.on('pageerror', err => {
+    console.log(`[pageerror] ${err.message}`)
+  })
+
+  page.on('requestfailed', req => {
+    console.log(`[requestfailed] ${req.method()} ${req.url()} :: ${req.failure()?.errorText || 'unknown'}`)
+  })
 
   // Navigate to export route
   const configName = basename(configPath)
@@ -93,19 +156,95 @@ async function main() {
   })
   const exportUrl = `${baseUrl}/export?${params.toString()}`
   console.log(`[export] Navigating to ${exportUrl}`)
-  await page.goto(exportUrl)
+  await page.goto(exportUrl, { waitUntil: 'networkidle' })
 
-  // Wait for export to complete
+  // Wait for export to complete, then trigger ZIP download.
   console.log('[export] Waiting for export to complete...')
   try {
+    await page.waitForFunction('window.__exportComplete === true', undefined, { timeout: 300000 })
+  } catch (error) {
+    const timeoutDiagnostics = await page.evaluate(() => {
+      const bodyText = document?.body?.innerText || ''
+      return {
+        location: window.location.href,
+        title: document.title,
+        exportComplete: (window as any).__exportComplete,
+        exportSummary: (window as any).__exportSummary || null,
+        exportResultsLength: Array.isArray((window as any).__exportResults)
+          ? (window as any).__exportResults.length
+          : null,
+        bodySnippet: bodyText.slice(0, 1200),
+      }
+    })
+    console.log('[export] Timeout diagnostics:', timeoutDiagnostics)
+    throw error
+  }
+
+  const inPageResults = (await page.evaluate(() => (window as any).__exportResults || null)) as ExportItem[] | null
+  const debugInfo = await page.evaluate(() => ({
+    exportComplete: (window as any).__exportComplete,
+    exportResultsType: typeof (window as any).__exportResults,
+    exportResultsLength: Array.isArray((window as any).__exportResults)
+      ? (window as any).__exportResults.length
+      : null,
+    exportSummary: (window as any).__exportSummary || null,
+  }))
+  console.log('[export] Debug markers:', JSON.stringify(debugInfo, null, 2))
+
+  const downloadButton = page.locator('button.btn-download')
+  const buttonCount = await downloadButton.count()
+  if (buttonCount === 0) {
+    throw new Error('Export completed but Download ZIP button was not found.')
+  }
+
+  const downloadPromise = page.waitForEvent('download', { timeout: 120000 })
+  await downloadButton.first().click()
+
+  try {
     const download = await downloadPromise
-    const downloadPath = resolve(outputDir, download.suggestedFilename())
+    const suggestedName = download.suggestedFilename()
+    const downloadPath = resolve(outputDir, suggestedName)
     await download.saveAs(downloadPath)
     console.log(`[export] Downloaded: ${downloadPath}`)
+
+    const downloadedZipBuffer = readFileSync(downloadPath)
+    const extractedDir = await extractZipBuffer(downloadedZipBuffer, outputDir, suggestedName)
+    console.log(`[export] Extracted to: ${extractedDir}`)
   } catch {
-    // Fallback: check for window.__exportComplete
-    await page.waitForFunction('window.__exportComplete === true', { timeout: 300000 })
-    console.log('[export] Export complete (no download intercepted)')
+    console.log('[export] No browser download event intercepted, using in-page export fallback...')
+
+    const exportItems = inPageResults
+    if (!exportItems || exportItems.length === 0) {
+      const summary = await page.evaluate(() => (window as any).__exportSummary || null)
+      throw new Error(
+        `Export completed but produced 0 files. Summary: ${JSON.stringify(summary)}`
+      )
+    }
+
+    const zip = new JSZip()
+    const usedFilenames = new Set<string>()
+    for (const item of exportItems) {
+      let filename = `${item.filename}.${item.extension}`
+      let counter = 1
+      while (usedFilenames.has(filename)) {
+        filename = `${item.filename}-${counter}.${item.extension}`
+        counter += 1
+      }
+      usedFilenames.add(filename)
+      zip.file(filename, item.data, { base64: true })
+    }
+
+    const zipBuffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    })
+    const zipPath = resolve(outputDir, 'dashboard-export.zip')
+    writeFileSync(zipPath, zipBuffer)
+    console.log(`[export] Saved via fallback: ${zipPath}`)
+
+    const extractedDir = await extractZipBuffer(zipBuffer, outputDir, 'dashboard-export.zip')
+    console.log(`[export] Extracted to: ${extractedDir}`)
   }
 
   // Cleanup

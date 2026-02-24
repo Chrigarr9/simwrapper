@@ -60,6 +60,13 @@ interface Props {
   xAutoTrim?: number        // X-axis percentile auto-trim (e.g. 95)
   yAutoTrim?: number        // Y-axis percentile auto-trim (e.g. 99)
   connectLines?: boolean    // Connect same-color points with lines (sorted by x-axis)
+  exportMode?: boolean
+  exportAxisTitleFontSize?: number
+  exportAxisTickFontSize?: number
+  exportLegendTitleFontSize?: number
+  exportLegendFontSize?: number
+  exportLineWidth?: number
+  exportMarkerSizeMultiplier?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -73,6 +80,7 @@ const props = withDefaults(defineProps<Props>(), {
   showComparison: false,
   connectLines: false,
   yColumnRight: '',
+  exportMode: false,
 })
 
 const emit = defineEmits<{
@@ -80,6 +88,32 @@ const emit = defineEmits<{
   select: [ids: Set<any>]
   isLoaded: []
 }>()
+
+const axisTitleFontSize = computed(() =>
+  props.exportMode ? (props.exportAxisTitleFontSize ?? 14) : 11
+)
+
+const axisTickFontSize = computed(() =>
+  props.exportMode ? (props.exportAxisTickFontSize ?? 12) : 10
+)
+
+const legendTitleFontSize = computed(() =>
+  props.exportMode ? (props.exportLegendTitleFontSize ?? 13) : 11
+)
+
+const legendFontSize = computed(() =>
+  props.exportMode ? (props.exportLegendFontSize ?? 12) : 10
+)
+
+const traceLineWidth = computed(() =>
+  props.exportMode ? (props.exportLineWidth ?? 2.4) : 1.5
+)
+
+const effectiveMarkerSize = computed(() => {
+  const base = props.markerSize ?? 8
+  const multiplier = props.exportMode ? (props.exportMarkerSizeMultiplier ?? 1.35) : 1
+  return base * multiplier
+})
 
 const plotContainer = ref<HTMLElement>()
 // Note: Selection state is managed by the parent via props.selectedIds
@@ -231,6 +265,11 @@ function generateCategoryColors(categories: string[]): Record<string, string> {
   return colors
 }
 
+function isFiniteNumeric(value: any): boolean {
+  const numeric = Number(value)
+  return Number.isFinite(numeric)
+}
+
 const scatterData = computed(() => {
   if (!props.filteredData || props.filteredData.length === 0) {
     debugLog('[ScatterCard] No filtered data available')
@@ -262,7 +301,7 @@ const scatterData = computed(() => {
     const xVal = row[currentXColumn.value]
     const yVal = row[currentYColumn.value]
     
-    if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+    if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
       x.push(convertValue(Number(xVal), currentXColumn.value))
       y.push(convertValue(Number(yVal), currentYColumn.value))
 
@@ -283,7 +322,7 @@ const scatterData = computed(() => {
         // Normalize size between 5 and 25
         sizes.push(Math.max(5, Math.min(25, row[props.sizeColumn])))
       } else {
-        sizes.push(props.markerSize)
+        sizes.push(effectiveMarkerSize.value)
       }
 
       // Hover text
@@ -319,7 +358,7 @@ const baselineScatterData = computed(() => {
     const xVal = row[currentXColumn.value]
     const yVal = row[currentYColumn.value]
 
-    if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+    if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
       x.push(convertValue(Number(xVal), currentXColumn.value))
       y.push(convertValue(Number(yVal), currentYColumn.value))
       const id = props.idColumn ? row[props.idColumn] : null
@@ -513,9 +552,9 @@ const getTraceLineStyle = (categoryIndex: number, categoryColor: string): any | 
   const isScientific = styleManager.isScientificMode()
   if (isScientific) {
     const style = styleManager.getScientificTraceStyle(categoryIndex, categoryColor)
-    return { width: 1.5, dash: style.lineDash, color: style.color }
+    return { width: traceLineWidth.value, dash: style.lineDash, color: style.color }
   }
-  return { width: 1.5, color: categoryColor }
+  return { width: traceLineWidth.value, color: categoryColor }
 }
 
 /**
@@ -579,7 +618,7 @@ const buildChartData = () => {
       hoverinfo: 'text',
       marker: {
         color: `rgba(156, 163, 175, ${baselineDimAlpha})`,
-        size: props.markerSize * 0.8,      // Slightly smaller
+        size: effectiveMarkerSize.value * 0.8,      // Slightly smaller
         symbol: isScientific ? 'circle-open' : undefined,  // Hollow circle in scientific mode
         line: {
           color: `rgba(156, 163, 175, ${Math.min(1, baselineDimAlpha + 0.15)})`,
@@ -620,7 +659,7 @@ const buildChartData = () => {
         if (String(row[props.colorByAttribute!]) === categoryStr) {
           const xVal = row[currentXColumn.value]
           const yVal = row[currentYColumn.value]
-          if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+          if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
             const id = props.idColumn ? row[props.idColumn] : null
             categoryX.push(convertValue(Number(xVal), currentXColumn.value))
             categoryY.push(convertValue(Number(yVal), currentYColumn.value))
@@ -636,7 +675,7 @@ const buildChartData = () => {
 
             const baseSize = props.sizeColumn && row[props.sizeColumn] !== undefined
               ? Math.max(5, Math.min(25, row[props.sizeColumn]))
-              : props.markerSize
+              : effectiveMarkerSize.value
             const isHovered = id && props.hoveredIds?.has(id)
             const isSelected = id && props.selectedIds?.has(id)
 
@@ -771,14 +810,14 @@ const buildChartData = () => {
       showlegend: false,
       text: enhancedText,
       hoverinfo: 'text',
-      ...(props.connectLines ? { line: { width: 1.5, color: 'rgba(100,100,100,0.3)' } } : {}),
+      ...(props.connectLines ? { line: { width: traceLineWidth.value, color: 'rgba(100,100,100,0.3)' } } : {}),
       marker: {
         color: colorByValues,
         colorscale: 'Viridis',
         showscale: true,
         colorbar: {
-          title: { text: attributeLabel, font: { color: textColor, size: 11, family: fontFamily }, side: 'right' },
-          tickfont: { color: textColor, size: 9, family: fontFamily },
+          title: { text: attributeLabel, font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily }, side: 'right' },
+          tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
         },
         size: markerSizes,
         line: {
@@ -809,7 +848,7 @@ const buildChartData = () => {
         if (String(row[props.colorColumn!]) === category) {
           const xVal = row[currentXColumn.value]
           const yVal = row[currentYColumn.value]
-          if (xVal !== null && xVal !== undefined && yVal !== null && yVal !== undefined) {
+          if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
             const id = props.idColumn ? row[props.idColumn] : null
             categoryIndices.push(i)
             categoryX.push(convertValue(Number(xVal), currentXColumn.value))
@@ -825,7 +864,7 @@ const buildChartData = () => {
             }
             categoryText.push(hoverText)
 
-            const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || props.markerSize
+            const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || effectiveMarkerSize.value
             const isHovered = id && props.hoveredIds?.has(id)
             const isSelected = id && props.selectedIds?.has(id)
 
@@ -940,7 +979,7 @@ const buildChartData = () => {
       type: 'scatter',
       text: scatterData.value.text,
       hoverinfo: 'text',
-      ...(props.connectLines ? { line: { width: 1.5, color: defaultColor } } : {}),
+      ...(props.connectLines ? { line: { width: traceLineWidth.value, color: defaultColor } } : {}),
       marker: {
         color: markerColors,
         size: markerSizes,
@@ -981,7 +1020,7 @@ const buildChartData = () => {
 
         const xVal = row[currentXColumn.value]
         const yVal = row[secondaryCol]
-        if (xVal == null || yVal == null) return
+        if (!isFiniteNumeric(xVal) || !isFiniteNumeric(yVal)) return
 
         const id = props.idColumn ? row[props.idColumn] : null
         secX.push(convertValue(Number(xVal), currentXColumn.value))
@@ -998,7 +1037,7 @@ const buildChartData = () => {
 
         const baseSize = props.sizeColumn && row[props.sizeColumn] !== undefined
           ? Math.max(5, Math.min(25, row[props.sizeColumn]))
-          : props.markerSize
+          : effectiveMarkerSize.value
         const isHovered = id && props.hoveredIds?.has(id)
         const isSelected = id && props.selectedIds?.has(id)
 
@@ -1036,7 +1075,7 @@ const buildChartData = () => {
         // Use dashed line for secondary axis traces to distinguish from primary
         const secondaryLine = traceLine
           ? { ...traceLine, dash: isScientific ? traceLine.dash : 'dash' }
-          : (props.connectLines ? { width: 1.5, color: catColor, dash: 'dash' } : undefined)
+          : (props.connectLines ? { width: traceLineWidth.value, color: catColor, dash: 'dash' } : undefined)
 
         // Open marker symbols for secondary axis — visually distinct from filled primary markers
         const primarySymbol = getTraceMarkerSymbol(categoryIndex)
@@ -1090,8 +1129,8 @@ const buildChartData = () => {
   const yPadding = (yMax - yMin) * 0.05 || 1
 
   const xAxisConfig: any = {
-    title: { text: formatChartTitle(currentXColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: 11, family: fontFamily } },
-    tickfont: { color: textColor, size: 10, family: fontFamily },
+    title: { text: formatChartTitle(currentXColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
+    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
     gridcolor: gridColor,
     linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
     linewidth: isScientific ? 1.5 : 1,
@@ -1104,8 +1143,8 @@ const buildChartData = () => {
   }
 
   const yAxisConfig: any = {
-    title: { text: formatChartTitle(currentYColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: 11, family: fontFamily } },
-    tickfont: { color: textColor, size: 10, family: fontFamily },
+    title: { text: formatChartTitle(currentYColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
+    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
     gridcolor: gridColor,
     linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
     linewidth: isScientific ? 1.5 : 1,
@@ -1153,8 +1192,8 @@ const buildChartData = () => {
 
   // Secondary Y-axis config (right side)
   const yAxis2Config: any = hasSecondaryY ? {
-    title: { text: formatChartTitle(props.yColumnRight!, props.tableConfig?.columns?.formats), font: { color: textColor, size: 11, family: fontFamily } },
-    tickfont: { color: textColor, size: 10, family: fontFamily },
+    title: { text: formatChartTitle(props.yColumnRight!, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
+    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
     gridcolor: 'rgba(0,0,0,0)',  // Hide secondary gridlines to avoid clutter
     linecolor: isScientific ? textColor : gridColor,
     linewidth: isScientific ? 1.5 : 1,
@@ -1187,12 +1226,12 @@ const buildChartData = () => {
     hovermode: 'closest',
     showlegend: showLegend,
     legend: showLegend ? {
-      title: legendTitle ? { text: legendTitle, font: { color: textColor, size: 11, family: fontFamily } } : undefined,
+      title: legendTitle ? { text: legendTitle, font: { color: textColor, size: legendTitleFontSize.value, family: fontFamily } } : undefined,
       x: 1.02,
       y: 1,
       xanchor: 'left',
       yanchor: 'top',
-      font: { color: textColor, size: 10, family: fontFamily },
+      font: { color: textColor, size: legendFontSize.value, family: fontFamily },
       bgcolor: 'rgba(0,0,0,0)',
       borderwidth: 0,
     } : undefined,
