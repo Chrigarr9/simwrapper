@@ -294,7 +294,11 @@ onMounted(async () => {
     await loadLayerData()
     initDeckOverlay()
     updateLayers()
-    fitBounds()
+
+    // Only auto-fit bounds if no explicit center/zoom was provided in config
+    if (!props.center || !props.zoom) {
+      fitBounds()
+    }
 
     // Ensure the first rendered frame includes deck layers before export capture
     await waitForMapRenderSettled()
