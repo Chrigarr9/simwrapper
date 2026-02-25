@@ -581,9 +581,11 @@ const buildChartData = () => {
   const textColor = styleManager.getColor('theme.text.primary')
   const gridColor = styleManager.getColor('theme.border.default')
   const defaultColor = styleManager.getColor('chart.bar.default')
-  // Interaction states - consistent with MapCard
-  const highlightColor = styleManager.getColor('interaction.hover')
-  const selectedColor = styleManager.getColor('interaction.selected')
+  // Interaction states — red star at 2x size for hover/select
+  const highlightColor = '#ef4444'
+  const selectedColor = '#ef4444'
+  const hoverSelectSymbol = 'star'
+  const hoverSelectSizeMultiplier = 2
 
   // Scientific mode font configuration
   const fontFamily = isScientific
@@ -653,6 +655,7 @@ const buildChartData = () => {
       const categoryLineWidths: number[] = []
       const categoryLineColors: string[] = []
       const categoryOpacities: number[] = []
+      const categorySymbols: string[] = []
       const categoryIds: any[] = []
 
       props.filteredData?.forEach((row) => {
@@ -679,8 +682,11 @@ const buildChartData = () => {
             const isHovered = id && props.hoveredIds?.has(id)
             const isSelected = id && props.selectedIds?.has(id)
 
-            // Size: 1.5x larger for highlighted/selected points
-            categorySizes.push((isSelected || isHovered) ? baseSize * 1.5 : baseSize)
+            // Symbol: star for hover/select
+            categorySymbols.push((isSelected || isHovered) ? hoverSelectSymbol : (getTraceMarkerSymbol(categoryIndex) || 'circle'))
+
+            // Size: 2x larger for highlighted/selected points
+            categorySizes.push((isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize)
 
             // Color based on selection state
             if (isSelected) {
@@ -709,7 +715,7 @@ const buildChartData = () => {
           x: categoryX, y: categoryY, text: categoryText,
           sizes: categorySizes, colors: categoryMarkerColors,
           lineColors: categoryLineColors, lineWidths: categoryLineWidths,
-          opacities: categoryOpacities, ids: categoryIds,
+          opacities: categoryOpacities, symbols: categorySymbols, ids: categoryIds,
         }
         if (props.connectLines) sortByX(traceArrays, 'x')
 
@@ -728,7 +734,7 @@ const buildChartData = () => {
           marker: {
             color: traceArrays.colors,
             size: traceArrays.sizes,
-            symbol: getTraceMarkerSymbol(categoryIndex),
+            symbol: traceArrays.symbols,
             line: {
               color: traceArrays.lineColors,
               width: traceArrays.lineWidths,
@@ -756,7 +762,13 @@ const buildChartData = () => {
       const baseSize = scatterData.value.sizes[i]
       const isHovered = id && props.hoveredIds?.has(id)
       const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? baseSize * 1.5 : baseSize
+      return (isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize
+    })
+
+    const markerSymbols = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      return (isSelected || isHovered) ? hoverSelectSymbol : 'circle'
     })
 
     const lineWidths = scatterData.value.ids.map((id) => {
@@ -820,6 +832,7 @@ const buildChartData = () => {
           tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
         },
         size: markerSizes,
+        symbol: markerSymbols,
         line: {
           color: lineColors,
           width: lineWidths,
@@ -841,6 +854,7 @@ const buildChartData = () => {
       const categoryLineWidths: number[] = []
       const categoryLineColors: string[] = []
       const categoryOpacities: number[] = []
+      const categorySymbols: string[] = []
       const categoryIds: any[] = []  // Store IDs for this trace
 
       // Find all points belonging to this category
@@ -868,9 +882,12 @@ const buildChartData = () => {
             const isHovered = id && props.hoveredIds?.has(id)
             const isSelected = id && props.selectedIds?.has(id)
 
-            // Size: 1.5x larger for highlighted/selected points
+            // Symbol: star for hover/select
+            categorySymbols.push((isSelected || isHovered) ? hoverSelectSymbol : (getTraceMarkerSymbol(categoryIndex) || 'circle'))
+
+            // Size: 2x larger for highlighted/selected points
             if (isSelected || isHovered) {
-              categorySizes.push(baseSize * 1.5)
+              categorySizes.push(baseSize * hoverSelectSizeMultiplier)
             } else {
               categorySizes.push(baseSize)
             }
@@ -902,7 +919,7 @@ const buildChartData = () => {
           x: categoryX, y: categoryY, text: categoryText,
           sizes: categorySizes, colors: categoryMarkerColors,
           lineColors: categoryLineColors, lineWidths: categoryLineWidths,
-          opacities: categoryOpacities, ids: categoryIds,
+          opacities: categoryOpacities, symbols: categorySymbols, ids: categoryIds,
         }
         if (props.connectLines) sortByX(traceArrays, 'x')
 
@@ -921,7 +938,7 @@ const buildChartData = () => {
           marker: {
             color: traceArrays.colors,
             size: traceArrays.sizes,
-            symbol: getTraceMarkerSymbol(categoryIndex),
+            symbol: traceArrays.symbols,
             line: {
               color: traceArrays.lineColors,
               width: traceArrays.lineWidths,
@@ -947,8 +964,13 @@ const buildChartData = () => {
       const baseSize = scatterData.value.sizes[i]
       const isHovered = id && props.hoveredIds?.has(id)
       const isSelected = id && props.selectedIds?.has(id)
-      // 1.5x size for highlighted/selected points
-      return (isSelected || isHovered) ? baseSize * 1.5 : baseSize
+      return (isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize
+    })
+
+    const markerSymbols = scatterData.value.ids.map((id) => {
+      const isHovered = id && props.hoveredIds?.has(id)
+      const isSelected = id && props.selectedIds?.has(id)
+      return (isSelected || isHovered) ? hoverSelectSymbol : 'circle'
     })
 
     const lineWidths = scatterData.value.ids.map((id) => {
@@ -962,7 +984,6 @@ const buildChartData = () => {
     const lineColors = scatterData.value.ids.map((id) => {
       const isHovered = id && props.hoveredIds?.has(id)
       const isSelected = id && props.selectedIds?.has(id)
-      // White border for highlighted/selected, text color for normal
       return (isSelected || isHovered) ? '#ffffff' : textColor
     })
 
@@ -983,6 +1004,7 @@ const buildChartData = () => {
       marker: {
         color: markerColors,
         size: markerSizes,
+        symbol: markerSymbols,
         line: {
           color: lineColors,
           width: lineWidths,
@@ -1012,6 +1034,7 @@ const buildChartData = () => {
       const secLineWidths: number[] = []
       const secLineColors: string[] = []
       const secOpacities: number[] = []
+      const secSymbols: string[] = []
       const secIds: any[] = []
 
       props.filteredData?.forEach((row) => {
@@ -1041,7 +1064,12 @@ const buildChartData = () => {
         const isHovered = id && props.hoveredIds?.has(id)
         const isSelected = id && props.selectedIds?.has(id)
 
-        secSizes.push((isSelected || isHovered) ? baseSize * 1.5 : baseSize)
+        // Derive the default open symbol for this secondary trace
+        const primarySym = getTraceMarkerSymbol(categoryIndex)
+        const defaultSecSym = primarySym ? `${primarySym}-open` : (isScientific ? 'circle-open' : 'diamond-open')
+        secSymbols.push((isSelected || isHovered) ? hoverSelectSymbol : defaultSecSym)
+
+        secSizes.push((isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize)
 
         if (isSelected) {
           secMarkerColors.push(selectedColor)
@@ -1066,7 +1094,7 @@ const buildChartData = () => {
           x: secX, y: secY, text: secText,
           sizes: secSizes, colors: secMarkerColors,
           lineColors: secLineColors, lineWidths: secLineWidths,
-          opacities: secOpacities, ids: secIds,
+          opacities: secOpacities, symbols: secSymbols, ids: secIds,
         }
         if (props.connectLines) sortByX(traceArrays, 'x')
 
@@ -1076,12 +1104,6 @@ const buildChartData = () => {
         const secondaryLine = traceLine
           ? { ...traceLine, dash: isScientific ? traceLine.dash : 'dash' }
           : (props.connectLines ? { width: traceLineWidth.value, color: catColor, dash: 'dash' } : undefined)
-
-        // Open marker symbols for secondary axis — visually distinct from filled primary markers
-        const primarySymbol = getTraceMarkerSymbol(categoryIndex)
-        const secondarySymbol = primarySymbol
-          ? `${primarySymbol}-open`
-          : (isScientific ? 'circle-open' : 'diamond-open')
 
         const legendName = hasCategories
           ? `${formatLegendValue(category, props.colorColumn)} (right)`
@@ -1100,7 +1122,7 @@ const buildChartData = () => {
           marker: {
             color: traceArrays.colors,
             size: traceArrays.sizes,
-            symbol: secondarySymbol,
+            symbol: traceArrays.symbols,
             line: {
               color: traceArrays.lineColors,
               width: traceArrays.lineWidths,

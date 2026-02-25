@@ -135,7 +135,19 @@ const updateFilteredData = () => {
   // Use centralized cached filtering instead of per-card applyFilters.
   // All N wrappers now share the SAME cached array reference from getFilteredData(),
   // so filter computation happens exactly once per filter change.
-  const filtered = props.filterManager.getFilteredData(allData, idColumn)
+  let filtered = props.filterManager.getFilteredData(allData, idColumn)
+
+  // Apply per-card fixed filter (e.g., fixedFilter: {anchor_zone_policy: "force"})
+  const fixedFilter = props.card?.fixedFilter
+  if (fixedFilter && typeof fixedFilter === 'object') {
+    filtered = filtered.filter((row: any) => {
+      for (const [col, val] of Object.entries(fixedFilter as Record<string, any>)) {
+        if (String(row[col]) !== String(val)) return false
+      }
+      return true
+    })
+  }
+
   debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
     '- all:', allData.length, 'filtered:', filtered.length)
   filteredData.value = applyVisualSampleFilter(filtered)

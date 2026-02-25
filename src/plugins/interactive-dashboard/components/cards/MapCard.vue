@@ -205,6 +205,10 @@ interface Props {
 
   // If true, hover/select all layers under the cursor (multi-level picking)
   multiLevelSelection?: boolean
+
+  // ViewSync: linked viewport across maps in the same group
+  viewSyncGroup?: string
+  externalViewport?: { center: [number, number]; zoom: number; bearing?: number; pitch?: number } | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -232,11 +236,13 @@ const emit = defineEmits<{
   select: [ids: Set<any>]
   'update:geometry-type': [value: string]
   isLoaded: []
+  'map-move': [viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }]
 }>()
 
 // Component state
 const mapId = ref(`map-${Math.random().toString(36).substring(7)}`)
 const map = ref<maplibregl.Map | null>(null)
+const isApplyingExternalViewport = ref(false)
 const deckOverlay = ref<MapboxOverlay | null>(null)
 const isLoading = ref(true)
 const hasEmittedLoaded = ref(false)
@@ -354,6 +360,19 @@ watch(() => props.layerStrategy, (newVal, oldVal) => {
   updateLayers()
 })
 
+// ViewSync: apply external viewport from other maps in the same group
+watch(() => props.externalViewport, (viewport) => {
+  if (!viewport || !map.value) return
+  isApplyingExternalViewport.value = true
+  map.value.jumpTo({
+    center: viewport.center,
+    zoom: viewport.zoom,
+    bearing: viewport.bearing ?? 0,
+    pitch: viewport.pitch ?? 0,
+  })
+  setTimeout(() => { isApplyingExternalViewport.value = false }, 100)
+})
+
 // ============================================================================
 // TASK 2: MapLibre Initialization with Theme Switching
 // ============================================================================
@@ -386,6 +405,18 @@ async function initMap(): Promise<void> {
     })
 
     debugLog('[MapCard] MapLibre initialized')
+
+    // ViewSync: emit map-move when user pans/zooms
+    map.value!.on('moveend', () => {
+      if (props.viewSyncGroup && map.value && !isApplyingExternalViewport.value) {
+        emit('map-move', {
+          center: [map.value.getCenter().lng, map.value.getCenter().lat],
+          zoom: map.value.getZoom(),
+          bearing: map.value.getBearing(),
+          pitch: map.value.getPitch(),
+        })
+      }
+    })
   } catch (error) {
     console.error('[MapCard] Failed to initialize map:', error)
     isLoading.value = false

@@ -128,6 +128,8 @@
               :center="card.center ? [Number(card.center[0]), Number(card.center[1])] : undefined"
               :zoom="card.zoom ? Number(card.zoom) : undefined"
               :map-style="card.mapStyle"
+              :view-sync-group="card.viewSync"
+              :external-viewport="card.viewSync ? getExternalViewport(card) : undefined"
               :legend="card.legend"
               :tooltip="card.tooltip"
               :multi-level-selection="card.multiLevelSelection"
@@ -149,6 +151,7 @@
               @update:show-comparison="handleShowComparisonUpdate"
               @attribute-pair-selected="handleAttributePairSelected"
               @isLoaded="handleCardIsLoaded(card)"
+              @map-move="card.viewSync && handleMapMove(card.id, card.viewSync, $event)"
               @dimension-resizer="setDimensionResizer"
               @titles="setCardTitles(card, $event)"
               @error="setCardError(card, $event)"
@@ -288,6 +291,8 @@ export default defineComponent({
       cardRenderKey: 0,
       // Comparison mode state
       showComparison: true,
+      // ViewSync: latest viewport per sync group (groupId -> viewport + sourceCardId)
+      viewSyncViewports: {} as Record<string, { center: [number, number]; zoom: number; bearing: number; pitch: number; sourceCardId: string }>,
     }
   },
 
@@ -759,6 +764,20 @@ export default defineComponent({
      * Handle card resize events from DashboardCard component
      * This is called when the card's container resizes (via ResizeObserver)
      */
+    handleMapMove(cardId: string, groupId: string, viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }) {
+      this.viewSyncViewports = {
+        ...this.viewSyncViewports,
+        [groupId]: { ...viewport, sourceCardId: cardId },
+      }
+    },
+
+    getExternalViewport(card: any) {
+      if (!card.viewSync) return null
+      const vp = this.viewSyncViewports[card.viewSync]
+      if (!vp || vp.sourceCardId === card.id) return null
+      return vp
+    },
+
     handleCardResize(cardId: string, dimensions: { width: number; height: number }) {
       // If a card has registered a resizer, call it with the new dimensions
       if (this.resizers[cardId]) {
