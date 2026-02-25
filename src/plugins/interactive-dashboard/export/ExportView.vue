@@ -416,6 +416,7 @@ export default defineComponent({
             sizeColumn: def.sizeColumn,
             markerSize: def.markerSize,
             connectLines: def.connectLines,
+            showTooltip: def.showTooltip,
             idColumn: def.idColumn,
             xMin: def.xMin,
             xMax: def.xMax,

@@ -60,6 +60,7 @@ interface Props {
   xAutoTrim?: number        // X-axis percentile auto-trim (e.g. 95)
   yAutoTrim?: number        // Y-axis percentile auto-trim (e.g. 99)
   connectLines?: boolean    // Connect same-color points with lines (sorted by x-axis)
+  showTooltip?: boolean     // Show hover tooltip (default: true)
   exportMode?: boolean
   exportAxisTitleFontSize?: number
   exportAxisTickFontSize?: number
@@ -79,6 +80,7 @@ const props = withDefaults(defineProps<Props>(), {
   baselineData: () => [],
   showComparison: false,
   connectLines: false,
+  showTooltip: true,
   yColumnRight: '',
   exportMode: false,
 })
@@ -88,6 +90,8 @@ const emit = defineEmits<{
   select: [ids: Set<any>]
   isLoaded: []
 }>()
+
+const hoverInfo = computed(() => (props.showTooltip ? 'text' : 'none'))
 
 const axisTitleFontSize = computed(() =>
   props.exportMode ? (props.exportAxisTitleFontSize ?? 14) : 11
@@ -617,7 +621,7 @@ const buildChartData = () => {
       type: 'scatter',
       name: 'Baseline (All Data)',
       text: baselineScatterData.value.text,
-      hoverinfo: 'text',
+      hoverinfo: hoverInfo.value,
       marker: {
         color: `rgba(156, 163, 175, ${baselineDimAlpha})`,
         size: effectiveMarkerSize.value * 0.8,      // Slightly smaller
@@ -729,7 +733,7 @@ const buildChartData = () => {
           type: 'scatter',
           name: formatLegendValue(categoryStr, props.colorByAttribute),
           text: traceArrays.text,
-          hoverinfo: 'text',
+          hoverinfo: hoverInfo.value,
           ...(traceLine ? { line: traceLine } : {}),
           marker: {
             color: traceArrays.colors,
@@ -821,7 +825,7 @@ const buildChartData = () => {
       name: attributeLabel,
       showlegend: false,
       text: enhancedText,
-      hoverinfo: 'text',
+      hoverinfo: hoverInfo.value,
       ...(props.connectLines ? { line: { width: traceLineWidth.value, color: 'rgba(100,100,100,0.3)' } } : {}),
       marker: {
         color: colorByValues,
@@ -933,7 +937,7 @@ const buildChartData = () => {
           type: 'scatter',
           name: formatLegendValue(category, props.colorColumn),
           text: traceArrays.text,
-          hoverinfo: 'text',
+          hoverinfo: hoverInfo.value,
           ...(traceLine ? { line: traceLine } : {}),
           marker: {
             color: traceArrays.colors,
@@ -999,7 +1003,7 @@ const buildChartData = () => {
       mode: traceMode.value,
       type: 'scatter',
       text: scatterData.value.text,
-      hoverinfo: 'text',
+      hoverinfo: hoverInfo.value,
       ...(props.connectLines ? { line: { width: traceLineWidth.value, color: defaultColor } } : {}),
       marker: {
         color: markerColors,
@@ -1117,7 +1121,7 @@ const buildChartData = () => {
           type: 'scatter',
           name: legendName,
           text: traceArrays.text,
-          hoverinfo: 'text',
+          hoverinfo: hoverInfo.value,
           ...(secondaryLine ? { line: secondaryLine } : {}),
           marker: {
             color: traceArrays.colors,

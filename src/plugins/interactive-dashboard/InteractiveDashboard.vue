@@ -110,6 +110,7 @@
               :size-column="card.sizeColumn"
               :marker-size="card.markerSize"
               :connect-lines="card.connectLines"
+              :show-tooltip="card.showTooltip"
               :id-column="card.idColumn || yaml.table?.idColumn"
               :attributes="card.attributes"
               :left-attributes="card.leftAttributes"
