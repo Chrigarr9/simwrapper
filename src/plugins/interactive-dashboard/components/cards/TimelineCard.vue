@@ -18,6 +18,9 @@ import globalStore from '@/store'
 import { allocateTracks } from '../../utils/trackAllocator'
 import type { TimelineItem } from '../../utils/trackAllocator'
 import { debugLog } from '../../utils/debug'
+import { buildTimelineFigure } from '@/export/trace-builders/timeline'
+import type { TimelineInput } from '@/export/trace-builders/timeline'
+import type { ChartStyle } from '@/export/types'
 
 /**
  * Column format configuration from table config
@@ -991,25 +994,60 @@ function renderMinimap() {
 }
 
 /**
+ * Build a ChartStyle object from the current StyleManager state.
+ * Used to feed the shared trace builder with theme-aware styling.
+ */
+function buildInteractiveStyle(): ChartStyle {
+  const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : 'Arial, Helvetica, sans-serif'
+
+  return {
+    axisTitleFontSize: 11,
+    axisTickFontSize: 10,
+    legendTitleFontSize: 11,
+    legendFontSize: 10,
+    lineWidth: 1.5,
+    markerSizeMultiplier: 1.0,
+    fontFamily,
+    backgroundColor: styleManager.getColor('theme.background.primary'),
+    textColor: styleManager.getColor('theme.text.primary'),
+    gridColor: styleManager.getColor('theme.border.default'),
+    barColor: '#4e79a7',
+    selectedColor: '#666',
+    isScientific,
+  }
+}
+
+/**
+ * Build a colorMap keyed by string color-value for every item in the current data.
+ * This lets the shared trace builder resolve per-bar colors using the interactive
+ * dashboard's StyleManager-based palettes rather than the export default palette.
+ */
+function buildColorMapForTraceBuilder(items: ExtendedTimelineItem[]): Map<string, string> {
+  const colorMap = new Map<string, string>()
+  for (const item of items) {
+    const key = String(item.colorValue ?? '')
+    if (!colorMap.has(key)) {
+      colorMap.set(key, getTimelineItemColor(item))
+    }
+  }
+  return colorMap
+}
+
+/**
  * Render the Plotly timeline chart
- * Uses horizontal bar traces with base property for Gantt-style visualization
- * Two overlaid traces: constraint window (gray, outer) and actual travel (colored, inner)
- * Branches on viewMode: 'rides' shows all rides, 'requests' shows detail ride's requests
+ * Uses the shared buildTimelineFigure for the rides view base traces/layout,
+ * then layers on interactive-only features (constraint windows, viewport zoom,
+ * request detail view). Request detail view is built inline since it is
+ * interactive-dashboard specific.
  */
 function renderChart() {
   if (!plotContainer.value) return
 
-  // Theme-aware colors from StyleManager
-  const styleManager = StyleManager.getInstance()
-  const isScientific = styleManager.isScientificMode()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const textColor = styleManager.getColor('theme.text.primary')
-  const gridColor = styleManager.getColor('theme.border.default')
-
-  // Scientific mode font configuration
-  const fontFamily = isScientific
-    ? styleManager.getScientificConfig().fontFamily
-    : undefined
+  const style = buildInteractiveStyle()
 
   // Choose data based on view mode
   const items = viewMode.value === 'requests' ? requestTimelineData.value : timelineData.value
@@ -1036,189 +1074,237 @@ function renderChart() {
 
   debugLog('[TimelineCard] Rendering chart, mode:', viewMode.value, 'tracks:', totalTracks, 'items:', items.length)
 
-  // Build traces for Plotly
-  const traces: any[] = []
+  let traces: any[]
+  let layout: any
+  let config: any
 
-  // Get data items with their track positions
-  const hasConstraintWindows = items.some(item => item.earliestPickup !== undefined && item.latestDropoff !== undefined)
+  if (viewMode.value === 'rides') {
+    // ---- Rides view: delegate to shared trace builder ----
+    const colorAttribute = props.colorByAttribute || props.degreeColumn
+    const input: TimelineInput = {
+      filteredData: props.filteredData,
+      idColumn: props.idColumn,
+      startColumn: props.startColumn,
+      endColumn: props.endColumn,
+      degreeColumn: props.degreeColumn,
+      title: '',  // Title shown in card header, not in plot
+      colorBy: colorAttribute,
+      colorByType: activeColorByType.value,
+      colorMap: buildColorMapForTraceBuilder(timelineData.value),
+    }
 
-  // Constraint window trace (if data has constraint windows)
-  // Render first so it appears behind the actual travel bars
-  if (hasConstraintWindows) {
-    const constraintY: number[] = []
-    const constraintBase: number[] = []
-    const constraintWidth: number[] = []
-    const constraintIds: string[] = []
+    const figure = buildTimelineFigure(input, style)
+    traces = [...figure.traces]
+    layout = { ...figure.layout }
+    config = { ...figure.config }
 
-    for (const item of items) {
-      if (item.earliestPickup !== undefined && item.latestDropoff !== undefined) {
-        const trackInfo = allocation.get(item.id)
-        if (trackInfo) {
-          constraintY.push(trackInfo.trackIndex)
-          constraintBase.push(item.earliestPickup)
-          constraintWidth.push(item.latestDropoff - item.earliestPickup)
-          constraintIds.push(item.id)
+    // --- Interactive overlay: constraint window trace ---
+    const hasConstraintWindows = items.some(
+      item => item.earliestPickup !== undefined && item.latestDropoff !== undefined,
+    )
+
+    if (hasConstraintWindows) {
+      const constraintY: number[] = []
+      const constraintBase: number[] = []
+      const constraintWidth: number[] = []
+      const constraintIds: string[] = []
+
+      for (const item of items) {
+        if (item.earliestPickup !== undefined && item.latestDropoff !== undefined) {
+          const trackInfo = allocation.get(item.id)
+          if (trackInfo) {
+            constraintY.push(trackInfo.trackIndex)
+            constraintBase.push(item.earliestPickup)
+            constraintWidth.push(item.latestDropoff - item.earliestPickup)
+            constraintIds.push(item.id)
+          }
+        }
+      }
+
+      if (constraintY.length > 0) {
+        // Prepend constraint trace so it renders behind actual travel bars
+        traces.unshift({
+          x: constraintWidth,
+          y: constraintY,
+          base: constraintBase,
+          type: 'bar',
+          orientation: 'h',
+          name: 'Constraint Window',
+          marker: {
+            color: 'rgba(156, 163, 175, 0.4)',
+            line: { color: style.backgroundColor, width: 0 },
+          },
+          width: 0.8,
+          hovertemplate: '<b>Constraint</b><br>%{base:.0f}s - %{x:.0f}s<extra></extra>',
+          customdata: constraintIds,
+        })
+
+        // Narrow the actual travel bars when constraint windows are visible
+        const travelTrace = traces.find((t: any) => t.name === 'Actual Travel')
+        if (travelTrace) {
+          travelTrace.width = 0.5
         }
       }
     }
 
-    if (constraintY.length > 0) {
-      traces.push({
-        x: constraintWidth,
-        y: constraintY,
-        base: constraintBase,
-        type: 'bar',
-        orientation: 'h',
-        name: 'Constraint Window',
-        marker: {
-          color: 'rgba(156, 163, 175, 0.4)', // Gray with transparency
-          line: {
-            color: bgColor,
-            width: 0,
-          },
-        },
-        width: 0.8,  // Bar height (for horizontal bars, width controls height)
-        hovertemplate: '<b>Constraint</b><br>%{base:.0f}s - %{x:.0f}s<extra></extra>',
-        customdata: constraintIds,
-      })
+    // --- Interactive override: viewport zoom ranges ---
+    layout.xaxis = {
+      ...layout.xaxis,
+      range: [viewportStart.value, viewportEnd.value],
     }
-  }
-
-  // Actual travel trace (always present)
-  const travelY: number[] = []
-  const travelBase: number[] = []
-  const travelWidth: number[] = []
-  const travelColors: string[] = []
-  const travelIds: string[] = []
-  const travelDegrees: number[] = []
-
-  for (const item of items) {
-    const trackInfo = allocation.get(item.id)
-    if (trackInfo) {
-      travelY.push(trackInfo.trackIndex)
-      travelBase.push(item.start)
-      travelWidth.push(item.end - item.start)
-      travelColors.push(getTimelineItemColor(item))
-      travelIds.push(item.id)
-      travelDegrees.push(item.degree)
-    }
-  }
-
-  if (travelY.length > 0) {
-    // Different hover template for requests vs rides
-    const hoverTemplate = viewMode.value === 'requests'
-      ? '<b>Request %{customdata[0]}</b><br>' +
-        'Window: %{base:.0f}s - %{customdata[1]:.0f}s<br>' +
-        'Duration: %{x:.0f}s<extra></extra>'
-      : '<b>Ride %{customdata[0]}</b><br>' +
-        'Start: %{base:.0f}s<br>' +
-        'Duration: %{x:.0f}s<br>' +
-        'Degree: %{customdata[1]}<extra></extra>'
-
-    traces.push({
-      x: travelWidth,
-      y: travelY,
-      base: travelBase,
-      type: 'bar',
-      orientation: 'h',
-      name: viewMode.value === 'requests' ? 'Request Window' : 'Actual Travel',
-      marker: {
-        color: travelColors,
-        line: {
-          color: gridColor,
-          width: 0,
-        },
-      },
-      width: hasConstraintWindows ? 0.5 : 0.7,  // Narrower if showing constraint window
-      hovertemplate: hoverTemplate,
-      customdata: viewMode.value === 'requests'
-        ? travelIds.map((id, i) => [id, travelBase[i] + travelWidth[i]])  // [id, end_time]
-        : travelIds.map((id, i) => [id, travelDegrees[i]]),  // [id, degree]
-    })
-  }
-
-  // Calculate y-axis range based on Y viewport
-  const yRange = viewMode.value === 'requests'
-    ? (totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5])  // Full range for request view
-    : [viewportTopTrack.value - 0.5, viewportBottomTrack.value - 0.5]  // Viewport for rides view
-
-  // Calculate x-axis range based on view mode
-  let xAxisRange: [number, number]
-  let tickVals: number[]
-  let tickText: string[]
-
-  if (viewMode.value === 'requests' && detailRideData.value) {
-    // Request view: scale to ride's constraint window
-    const rideStart = detailRideData.value.earliestPickup ?? detailRideData.value.start
-    const rideEnd = detailRideData.value.latestDropoff ?? detailRideData.value.end
-    xAxisRange = [rideStart, rideEnd]
-
-    // Generate 5-6 ticks across the ride window
-    const rangeDuration = rideEnd - rideStart
-    const tickInterval = Math.ceil(rangeDuration / 5)
-    tickVals = []
-    tickText = []
-    for (let t = rideStart; t <= rideEnd; t += tickInterval) {
-      tickVals.push(t)
-      tickText.push(formatTime(t))
-    }
-    // Ensure end time is included
-    if (tickVals[tickVals.length - 1] < rideEnd) {
-      tickVals.push(rideEnd)
-      tickText.push(formatTime(rideEnd))
+    layout.yaxis = {
+      ...layout.yaxis,
+      range: [viewportTopTrack.value - 0.5, viewportBottomTrack.value - 0.5],
     }
   } else {
-    // Rides view: full 24-hour range with viewport
-    xAxisRange = [viewportStart.value, viewportEnd.value]
-    tickVals = generateTimeTickVals()
-    tickText = generateTimeTickText()
+    // ---- Request detail view: built inline (interactive-only) ----
+    traces = []
+    const hasConstraintWindows = items.some(
+      item => item.earliestPickup !== undefined && item.latestDropoff !== undefined,
+    )
+
+    // Constraint window trace for requests
+    if (hasConstraintWindows) {
+      const constraintY: number[] = []
+      const constraintBase: number[] = []
+      const constraintWidth: number[] = []
+      const constraintIds: string[] = []
+
+      for (const item of items) {
+        if (item.earliestPickup !== undefined && item.latestDropoff !== undefined) {
+          const trackInfo = allocation.get(item.id)
+          if (trackInfo) {
+            constraintY.push(trackInfo.trackIndex)
+            constraintBase.push(item.earliestPickup)
+            constraintWidth.push(item.latestDropoff - item.earliestPickup)
+            constraintIds.push(item.id)
+          }
+        }
+      }
+
+      if (constraintY.length > 0) {
+        traces.push({
+          x: constraintWidth,
+          y: constraintY,
+          base: constraintBase,
+          type: 'bar',
+          orientation: 'h',
+          name: 'Constraint Window',
+          marker: {
+            color: 'rgba(156, 163, 175, 0.4)',
+            line: { color: style.backgroundColor, width: 0 },
+          },
+          width: 0.8,
+          hovertemplate: '<b>Constraint</b><br>%{base:.0f}s - %{x:.0f}s<extra></extra>',
+          customdata: constraintIds,
+        })
+      }
+    }
+
+    // Request travel bars
+    const travelY: number[] = []
+    const travelBase: number[] = []
+    const travelWidth: number[] = []
+    const travelColors: string[] = []
+    const travelIds: string[] = []
+
+    for (const item of items) {
+      const trackInfo = allocation.get(item.id)
+      if (trackInfo) {
+        travelY.push(trackInfo.trackIndex)
+        travelBase.push(item.start)
+        travelWidth.push(item.end - item.start)
+        travelColors.push(getTimelineItemColor(item))
+        travelIds.push(item.id)
+      }
+    }
+
+    if (travelY.length > 0) {
+      traces.push({
+        x: travelWidth,
+        y: travelY,
+        base: travelBase,
+        type: 'bar',
+        orientation: 'h',
+        name: 'Request Window',
+        marker: {
+          color: travelColors,
+          line: { color: style.gridColor, width: 0 },
+        },
+        width: hasConstraintWindows ? 0.5 : 0.7,
+        hovertemplate:
+          '<b>Request %{customdata[0]}</b><br>' +
+          'Window: %{base:.0f}s - %{customdata[1]:.0f}s<br>' +
+          'Duration: %{x:.0f}s<extra></extra>',
+        customdata: travelIds.map((id, i) => [id, travelBase[i] + travelWidth[i]]),
+      })
+    }
+
+    // Request view x-axis: scale to ride's constraint window
+    let xAxisRange: [number, number] = [0, 86400]
+    let tickVals: number[] = generateTimeTickVals()
+    let tickText: string[] = generateTimeTickText()
+
+    if (detailRideData.value) {
+      const rideStart = detailRideData.value.earliestPickup ?? detailRideData.value.start
+      const rideEnd = detailRideData.value.latestDropoff ?? detailRideData.value.end
+      xAxisRange = [rideStart, rideEnd]
+
+      const rangeDuration = rideEnd - rideStart
+      const tickInterval = Math.ceil(rangeDuration / 5)
+      tickVals = []
+      tickText = []
+      for (let t = rideStart; t <= rideEnd; t += tickInterval) {
+        tickVals.push(t)
+        tickText.push(formatTime(t))
+      }
+      if (tickVals[tickVals.length - 1] < rideEnd) {
+        tickVals.push(rideEnd)
+        tickText.push(formatTime(rideEnd))
+      }
+    }
+
+    const yRange = totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5]
+
+    layout = {
+      font: { family: style.fontFamily, color: style.textColor },
+      title: { text: '', font: { color: style.textColor, size: 14, family: style.fontFamily } },
+      xaxis: {
+        title: { text: 'Time of Day', font: { color: style.textColor, size: style.axisTitleFontSize, family: style.fontFamily } },
+        tickfont: { color: style.textColor, size: style.axisTickFontSize, family: style.fontFamily },
+        gridcolor: style.gridColor,
+        linecolor: style.isScientific ? style.textColor : style.gridColor,
+        linewidth: style.isScientific ? 1.5 : 1,
+        showline: true,
+        zerolinecolor: style.gridColor,
+        range: xAxisRange,
+        tickmode: 'array',
+        tickvals: tickVals,
+        ticktext: tickText,
+      },
+      yaxis: {
+        title: { text: '' },
+        tickfont: { color: style.textColor, size: style.axisTickFontSize, family: style.fontFamily },
+        gridcolor: style.gridColor,
+        linecolor: style.isScientific ? style.textColor : style.gridColor,
+        linewidth: style.isScientific ? 1.5 : 1,
+        showline: true,
+        showticklabels: false,
+        range: yRange,
+      },
+      margin: { l: 15, r: 15, t: 10, b: 35 },
+      autosize: true,
+      paper_bgcolor: style.backgroundColor,
+      plot_bgcolor: style.backgroundColor,
+      barmode: 'overlay',
+      showlegend: false,
+      bargap: 0.1,
+    }
+
+    config = { displayModeBar: false, responsive: true }
   }
 
-  const layout = {
-    font: {
-      family: fontFamily,
-      color: textColor,
-    },
-    title: {
-      text: '',  // Title shown in card header
-      font: { color: textColor, size: 14, family: fontFamily },
-    },
-    xaxis: {
-      title: { text: 'Time of Day', font: { color: textColor, size: 11, family: fontFamily } },
-      tickfont: { color: textColor, size: 10, family: fontFamily },
-      gridcolor: gridColor,
-      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-      linewidth: isScientific ? 1.5 : 1,
-      showline: true,
-      zerolinecolor: gridColor,
-      range: xAxisRange,
-      tickmode: 'array',
-      tickvals: tickVals,
-      ticktext: tickText,
-    },
-    yaxis: {
-      title: { text: '', font: { color: textColor, size: 11, family: fontFamily } },
-      tickfont: { color: textColor, size: 10, family: fontFamily },
-      gridcolor: gridColor,
-      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-      linewidth: isScientific ? 1.5 : 1,
-      showline: true,
-      showticklabels: false,  // No labels for swim lanes
-      range: yRange,
-    },
-    margin: { l: 15, r: 15, t: 10, b: 35 },
-    autosize: true,
-    paper_bgcolor: bgColor,
-    plot_bgcolor: bgColor,
-    barmode: 'overlay',  // For nested bars (constraint window + actual travel)
-    showlegend: false,
-    bargap: 0.1,
-  }
-
-  Plotly.newPlot(plotContainer.value, traces, layout, {
-    displayModeBar: !isScientific ? false : false,  // Always hide modebar
-    responsive: true,
-  })
+  Plotly.newPlot(plotContainer.value, traces, layout, config)
 
   // Bind hover, click, and relayout events for cross-card coordination
   const plotEl = plotContainer.value as any
