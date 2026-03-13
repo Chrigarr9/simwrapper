@@ -11,8 +11,9 @@ import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 import { formatLabel } from '../../utils/labelFormatter'
-import { computeAxisRange } from '../../utils/axisLimits'
-import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
+import { formatChartTitle } from '../../utils/chartFormatting'
+import { buildHistogramFigure, type HistogramInput } from '@/export/trace-builders/histogram'
+import type { ChartStyle } from '@/export/types'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal'
@@ -142,125 +143,6 @@ function formatTickValue(value: number): string {
   }
 }
 
-const baselineHistogramData = computed(() => {
-  // Compute baseline histogram from all data (baselineData or filteredData as fallback)
-  const dataSource = props.baselineData?.length > 0 ? props.baselineData : props.filteredData
-  if (!dataSource || dataSource.length === 0) {
-    debugLog('[HistogramCard] No baseline data available')
-    return []
-  }
-
-  debugLog('[HistogramCard] Computing baseline histogram from', dataSource.length, 'rows')
-
-  const values = dataSource.map(row => row[props.column])
-  const binSize = props.binSize || 1
-
-  // Create bins from baseline data - this defines the canonical bin boundaries
-  const bins = new Map<number, number>()
-  values.forEach(val => {
-    if (val !== null && val !== undefined) {
-      const bin = Math.floor(val / binSize) * binSize
-      bins.set(bin, (bins.get(bin) || 0) + 1)
-    }
-  })
-
-  return Array.from(bins.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([bin, count]) => ({ bin, count }))
-})
-
-const histogramData = computed(() => {
-  // Defensive check - filteredData might be undefined if not wrapped properly
-  if (!props.filteredData || props.filteredData.length === 0) {
-    debugLog('[HistogramCard] No filtered data available')
-    return []
-  }
-
-  debugLog('[HistogramCard] Computing histogram from', props.filteredData.length, 'rows')
-
-  const binSize = props.binSize || 1
-
-  // In comparison mode, use baseline bins to ensure alignment
-  // This guarantees filtered bars overlay exactly on baseline bars
-  if (props.showComparison && baselineHistogramData.value.length > 0) {
-    // Start with all baseline bins set to 0
-    const bins = new Map<number, number>()
-    baselineHistogramData.value.forEach(d => bins.set(d.bin, 0))
-
-    // Count filtered values into the baseline bin structure
-    props.filteredData.forEach(row => {
-      const val = row[props.column]
-      if (val !== null && val !== undefined) {
-        const bin = Math.floor(val / binSize) * binSize
-        if (bins.has(bin)) {
-          bins.set(bin, bins.get(bin)! + 1)
-        }
-        // Note: filtered values outside baseline range are ignored for alignment
-      }
-    })
-
-    return Array.from(bins.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([bin, count]) => ({ bin, count }))
-  }
-
-  // Non-comparison mode: compute bins directly from filtered data
-  const values = props.filteredData.map(row => row[props.column])
-  const bins = new Map<number, number>()
-  values.forEach(val => {
-    if (val !== null && val !== undefined) {
-      const bin = Math.floor(val / binSize) * binSize
-      bins.set(bin, (bins.get(bin) || 0) + 1)
-    }
-  })
-
-  return Array.from(bins.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([bin, count]) => ({ bin, count }))
-})
-
-// Density data: convert counts to percentages for comparison mode
-// Enables meaningful shape comparison between filtered and baseline distributions
-const histogramDataDensity = computed(() => {
-  if (!props.showComparison) return histogramData.value
-  const total = histogramData.value.reduce((sum, d) => sum + d.count, 0)
-  if (total === 0) return histogramData.value
-  return histogramData.value.map(d => ({
-    bin: d.bin,
-    count: (d.count / total) * 100
-  }))
-})
-
-// Baseline density: convert counts to percentages for comparison mode
-const baselineHistogramDataDensity = computed(() => {
-  if (!props.showComparison) return baselineHistogramData.value
-  const total = baselineHistogramData.value.reduce((sum, d) => sum + d.count, 0)
-  if (total === 0) return baselineHistogramData.value
-  return baselineHistogramData.value.map(d => ({
-    bin: d.bin,
-    count: (d.count / total) * 100
-  }))
-})
-
-// Compute x-axis range from explicit min/max or autoTrim config
-// Uses baseline data (if available) so the range stays stable when filtering
-const xAxisRange = computed(() => {
-  const dataSource = props.baselineData?.length > 0 ? props.baselineData : props.filteredData
-  if (!dataSource || dataSource.length === 0) return undefined
-
-  const values = dataSource
-    .map(row => row[props.column])
-    .filter((v: any) => v !== null && v !== undefined && typeof v === 'number' && !isNaN(v))
-
-  return computeAxisRange({
-    values,
-    min: props.xMin,
-    max: props.xMax,
-    autoTrim: props.autoTrim,
-    padding: 0.02,
-  })
-})
-
 // Debounce timer for chart rendering (matches ScatterCard pattern)
 let renderTimeout: ReturnType<typeof setTimeout> | null = null
 // Track whether chart has been initialized (to know if we can use Plotly.react)
@@ -277,342 +159,220 @@ const debouncedRenderChart = () => {
   }, 50)  // 50ms debounce
 }
 
-// Build chart data (traces, layout, config) - extracted for reuse by initializeChart/updateChart
-const buildChartData = () => {
-  // Theme-aware colors from StyleManager
+// Resolve interactive ChartStyle from StyleManager
+const resolveInteractiveStyle = (): ChartStyle => {
   const styleManager = StyleManager.getInstance()
   const isScientific = styleManager.isScientificMode()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const textColor = styleManager.getColor('theme.text.primary')
-  const gridColor = styleManager.getColor('theme.border.default')
-  const barColor = styleManager.getColor('chart.bar.default')
-  // Selected color for user selection feedback
-  const selectedColor = styleManager.getColor('chart.bar.selected')
 
-  // Scientific mode font configuration
-  const fontFamily = isScientific
-    ? styleManager.getScientificConfig().fontFamily
-    : undefined
-
-  // Format tick values if column format is defined
-  const tickvals = histogramData.value.map(d => d.bin)
-  const ticktext = tickvals.map(v => formatTickValue(v))
-
-  // Build traces array for dual-trace rendering
-  // In comparison mode, use density (percentage) data for meaningful shape comparison
-  const traces: any[] = []
-  const usePercentage = props.showComparison
-  const displayData = usePercentage ? histogramDataDensity.value : histogramData.value
-  const baselineDisplayData = usePercentage ? baselineHistogramDataDensity.value : baselineHistogramData.value
-
-  // Determine if color-by is active and what type
-  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
-  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : 'categorical'
-
-  // Bar width based on bin size - use natural width without forcing minimum
-  // This avoids overlap when data has outliers stretching the x-axis
-  const binSize = props.binSize || 1
-  const barWidth = binSize * 0.85  // 85% of bin size for slight gap between bars
-
-  // Baseline trace (if comparison mode) - styled from StyleManager
-  // NO patterns - just opacity difference distinguishes baseline from filtered
-  const comparisonConfig = styleManager.getComparisonConfig()
-  debugLog('[HistogramCard] buildChartData - showComparison:', props.showComparison, 'baselineHistogramData length:', baselineHistogramData.value.length)
-  if (props.showComparison && baselineDisplayData.length > 0) {
-    debugLog('[HistogramCard] Adding baseline trace (density mode)')
-    traces.push({
-      x: baselineDisplayData.map(d => d.bin),
-      y: baselineDisplayData.map(d => d.count),
-      type: 'bar',
-      name: 'Baseline (All Data)',
-      width: barWidth,  // Match filtered trace width
-      marker: {
-        color: styleManager.getComparisonBaselineColor(),  // From StyleManager
-        line: {
-          color: comparisonConfig.baseline.lineColor,
-          width: comparisonConfig.baseline.lineWidth,
-        },
-      },
-      hovertemplate: usePercentage
-        ? '<b>%{x}</b><br>Baseline: %{y:.1f}%<extra></extra>'
-        : '<b>%{x}</b><br>Baseline: %{y}<extra></extra>',
-    })
+  return {
+    axisTitleFontSize: 11,
+    axisTickFontSize: 10,
+    legendTitleFontSize: 11,
+    legendFontSize: 10,
+    lineWidth: 1.5,
+    markerSizeMultiplier: 1.0,
+    fontFamily: isScientific
+      ? styleManager.getScientificConfig().fontFamily
+      : 'Arial, Helvetica, sans-serif',
+    backgroundColor: styleManager.getColor('theme.background.primary'),
+    textColor: styleManager.getColor('theme.text.primary'),
+    gridColor: styleManager.getColor('theme.border.default'),
+    barColor: styleManager.getColor('chart.bar.default'),
+    selectedColor: styleManager.getColor('chart.bar.selected'),
+    isScientific,
+    margin: { l: 60, r: 15, t: 10, b: 50 },
   }
+}
 
-  // Color-by rendering for filtered data
+// Build HistogramInput from Vue props
+const buildInput = (): HistogramInput => {
+  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
+  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : undefined
+
+  // Build color map for categorical color-by (StyleManager-aware)
+  let colorMap: Map<string, string> | undefined
   if (colorByActive && colorByType === 'categorical') {
-    // Categorical color-by: stacked bar traces per category
-    const colorByValues = sortLegendCategories(Array.from(
+    const styleManager = StyleManager.getInstance()
+    const categories = Array.from(
       new Set(
         props.filteredData
           ?.map(row => row[props.colorByAttribute!])
           .filter(v => v !== null && v !== undefined)
       )
-    ))
+    ).map(String)
+    // Sort for consistent color assignment
+    const nums = categories.map(Number)
+    const sorted = nums.every(v => Number.isFinite(v))
+      ? [...categories].sort((a, b) => Number(a) - Number(b))
+      : [...categories].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    colorMap = styleManager.buildCategoricalColorMap(sorted)
+  }
 
-    const colorMap = styleManager.buildCategoricalColorMap(colorByValues.map(String))
+  return {
+    filteredData: props.filteredData,
+    baselineData: props.baselineData,
+    column: props.column,
+    binSize: props.binSize,
+    // Use formatted title with units from chartFormatting utility
+    title: formatChartTitle(props.column, props.tableConfig?.columns?.formats),
+    xMin: props.xMin,
+    xMax: props.xMax,
+    autoTrim: props.autoTrim,
+    colorBy: colorByActive ? props.colorByAttribute : undefined,
+    colorByType,
+    colorMap,
+    showComparison: props.showComparison,
+  }
+}
 
-    // For each category, compute histogram bins
-    colorByValues.forEach((categoryValue) => {
-      const categoryStr = String(categoryValue)
-      const categoryRows = props.filteredData?.filter(
-        row => String(row[props.colorByAttribute!]) === categoryStr
-      ) || []
+// Build chart data (traces, layout, config) using shared trace builder
+// Then apply interactive-specific overrides
+const buildChartData = () => {
+  const style = resolveInteractiveStyle()
+  const input = buildInput()
+  const figure = buildHistogramFigure(input, style)
 
-      // Count category rows into bins (using same bin boundaries as displayData)
-      const categoryBins = new Map<number, number>()
-      displayData.forEach(d => categoryBins.set(d.bin, 0))  // Initialize all bins to 0
+  const styleManager = StyleManager.getInstance()
+  const comparisonConfig = styleManager.getComparisonConfig()
 
-      categoryRows.forEach(row => {
-        const val = row[props.column]
-        if (val !== null && val !== undefined) {
-          const bin = Math.floor(val / binSize) * binSize
-          if (categoryBins.has(bin)) {
-            categoryBins.set(bin, categoryBins.get(bin)! + 1)
-          }
-        }
-      })
+  debugLog('[HistogramCard] buildChartData - showComparison:', props.showComparison)
 
-      const categoryBinArray = Array.from(categoryBins.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([bin, count]) => ({ bin, count }))
+  // Determine color-by state for override logic
+  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
+  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : 'categorical'
+  const bgColor = style.backgroundColor
 
-      // Convert to percentage if comparison mode
-      let categoryDisplayData = categoryBinArray
-      if (usePercentage) {
-        const total = categoryRows.length
-        if (total > 0) {
-          categoryDisplayData = categoryBinArray.map(d => ({
-            bin: d.bin,
-            count: (d.count / total) * 100
-          }))
-        }
-      }
-
-      traces.push({
-        x: categoryDisplayData.map(d => d.bin),
-        y: categoryDisplayData.map(d => d.count),
-        type: 'bar',
-        name: formatLabel(categoryStr, props.tableConfig?.columns?.formats, props.colorByAttribute),
-        width: barWidth,
-        marker: {
-          color: colorMap.get(categoryStr) || barColor,
-          line: {
-            color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
-            width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
-          },
-        },
-        hovertemplate: usePercentage
-          ? `<b>%{x}</b><br>${categoryStr}: %{y:.1f}%<extra></extra>`
-          : `<b>%{x}</b><br>${categoryStr}: %{y}<extra></extra>`,
-      })
-    })
-  } else if (colorByActive && colorByType === 'numeric') {
-    // Numeric color-by: color each bar by average value of color-by attribute within that bin
-    const binAverages = displayData.map(d => {
-      const binRows = props.filteredData?.filter(row => {
-        const val = row[props.column]
-        if (val === null || val === undefined) return false
-        const bin = Math.floor(val / binSize) * binSize
-        return bin === d.bin
-      }) || []
-
-      if (binRows.length === 0) return null
-
-      const colorValues = binRows
-        .map(row => row[props.colorByAttribute!])
-        .filter(v => v !== null && v !== undefined && typeof v === 'number')
-
-      if (colorValues.length === 0) return null
-
-      const sum = colorValues.reduce((acc, v) => acc + v, 0)
-      return sum / colorValues.length
-    })
-
-    traces.push({
-      x: displayData.map(d => d.bin),
-      y: displayData.map(d => d.count),
-      type: 'bar',
-      name: props.showComparison ? 'Filtered' : 'Count',
-      width: barWidth,
-      marker: {
-        color: binAverages,
-        colorscale: 'Viridis',
-        showscale: true,
-        colorbar: {
-          title: {
-            text: formatChartTitle(
-              props.colorByAttribute!,
-              props.tableConfig?.columns?.formats,
-              {
-                labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
-                stripEmptyUnits: true,
-              }
-            ),
-            font: { color: textColor, size: 11, family: fontFamily },
-            side: 'right'
-          },
-          tickfont: { color: textColor, size: 9, family: fontFamily },
-        },
+  // --- Interactive override 1: Baseline trace uses StyleManager comparison colors ---
+  if (props.showComparison && figure.traces.length > 0) {
+    const baselineTrace = figure.traces.find((t: any) => t.name === 'Baseline (All Data)')
+    if (baselineTrace) {
+      debugLog('[HistogramCard] Applying StyleManager baseline colors')
+      ;(baselineTrace as any).marker = {
+        color: styleManager.getComparisonBaselineColor(),
         line: {
-          color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
-          width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
+          color: comparisonConfig.baseline.lineColor,
+          width: comparisonConfig.baseline.lineWidth,
         },
-      },
-      hovertemplate: usePercentage
-        ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
-        : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
-    })
-  } else {
-    // No color-by: standard single-trace histogram
-    traces.push({
-      x: displayData.map(d => d.bin),
-      y: displayData.map(d => d.count),
-      type: 'bar',
-      name: props.showComparison ? 'Filtered' : 'Count',
-      width: barWidth,  // Explicit bar width for consistent sizing
-      marker: {
-        color: displayData.map(d =>
-          selectedBins.value.has(d.bin) ? selectedColor : barColor
-        ),
-        // Solid color - no patterns. In comparison mode, add outline from StyleManager
-        line: {
-          color: props.showComparison ? comparisonConfig.filtered.lineColor : bgColor,
-          width: props.showComparison ? comparisonConfig.filtered.lineWidth : 1,
-        },
-      },
-      hovertemplate: usePercentage
-        ? '<b>%{x}</b><br>Filtered: %{y:.1f}%<extra></extra>'
-        : '<b>%{x}</b><br>Filtered: %{y}<extra></extra>',
-    })
-  }
-
-  // Build xaxis config with intelligent tick thinning
-  // When there are many bins, we need to auto-skip tick labels to prevent overlap
-  const numBins = histogramData.value.length
-
-  // Calculate actual max label length from generated tick text
-  // This determines both rotation and tick density
-  const maxLabelLength = Math.max(...ticktext.map(t => t.length))
-
-  // Adaptive maxTicksToShow based on actual label width
-  // Longer labels need more space, so show fewer of them
-  // Short labels (1-4 chars): 12 ticks, Medium (5-6): 10, Long (7+): 8
-  const maxTicksToShow = maxLabelLength <= 4 ? 12 : (maxLabelLength <= 6 ? 10 : 8)
-
-  // Rotate labels only when they're actually long (>4 chars) AND we have multiple bins
-  // Short labels like "1", "2", "100" stay horizontal for cleaner appearance
-  const shouldRotate = maxLabelLength > 4 && numBins > 3
-
-  const xaxisConfig: any = {
-    title: { text: formatChartTitle(props.column, props.tableConfig?.columns?.formats), font: { color: textColor, size: 11, family: fontFamily } },
-    tickfont: { color: textColor, size: 10, family: fontFamily },
-    gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-    linewidth: isScientific ? 1.5 : 1,
-    showline: true,
-    zerolinecolor: gridColor,
-    automargin: true,  // Let Plotly expand margins for long labels
-    tickangle: shouldRotate ? -45 : 0,
-  }
-
-  // Apply configured axis range (from xMin/xMax or autoTrim YAML config)
-  const axisRange = xAxisRange.value
-  if (axisRange) {
-    xaxisConfig.range = axisRange
-    xaxisConfig.autorange = false
-  }
-
-  // Apply intelligent tick thinning when we have many bins
-  if (numBins > maxTicksToShow) {
-    // Calculate tick skip interval: show at most maxTicksToShow labels
-    const skipInterval = Math.max(1, Math.ceil(numBins / maxTicksToShow))
-
-    // Filter tick values and text to show only every nth tick
-    const thinnedTickvals: number[] = []
-    const thinnedTicktext: string[] = []
-
-    tickvals.forEach((val, idx) => {
-      // Always show first and last tick, plus evenly spaced ticks in between
-      if (idx === 0 || idx === tickvals.length - 1 || idx % skipInterval === 0) {
-        thinnedTickvals.push(val)
-        thinnedTicktext.push(ticktext[idx])
       }
-    })
-
-    xaxisConfig.tickmode = 'array'
-    xaxisConfig.tickvals = thinnedTickvals
-    xaxisConfig.ticktext = thinnedTicktext
-  }
-
-  const layout = {
-    title: {
-      text: '',  // Title is shown in card header
-      font: { color: textColor, size: 14, family: fontFamily },
-    },
-    font: {
-      family: fontFamily,
-      color: textColor,
-    },
-    xaxis: xaxisConfig,
-    yaxis: {
-      title: { text: usePercentage ? 'Percentage [%]' : 'Count', font: { color: textColor, size: 11, family: fontFamily } },
-      tickfont: { color: textColor, size: 10, family: fontFamily },
-      gridcolor: gridColor,
-      linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-      linewidth: isScientific ? 1.5 : 1,
-      showline: true,
-      zerolinecolor: gridColor,
-      automargin: true,  // Let Plotly expand margins for large count values
-    },
-    margin: { l: 60, r: 15, t: 10, b: 50 },
-    autosize: true,
-    paper_bgcolor: bgColor,
-    plot_bgcolor: bgColor,
-    bargap: 0.1,
-    barmode: 'overlay',  // Always overlay mode - baseline behind filtered
-    showlegend: props.showComparison,  // Show legend only in comparison mode
-    legend: {
-      x: 1,
-      xanchor: 'right',
-      y: 1,
-      font: { color: textColor, size: 10 },
-    },
-  }
-
-  // Override layout for color-by modes
-  if (colorByActive && colorByType === 'categorical') {
-    const legendTitle = formatChartTitle(
-      props.colorByAttribute!,
-      props.tableConfig?.columns?.formats,
-      {
-        labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
-        stripEmptyUnits: true,
-      }
-    )
-    layout.barmode = 'stack'  // Stack bars when categorical color-by is active
-    layout.showlegend = true
-    layout.legend = {
-      title: { text: legendTitle, font: { color: textColor, size: 11, family: fontFamily } },
-      x: 1.02,
-      xanchor: 'left',
-      y: 1,
-      yanchor: 'top',
-      font: { color: textColor, size: 10, family: fontFamily },
-      bgcolor: 'rgba(0,0,0,0)',
-      borderwidth: 0,
     }
-    layout.margin.r = 100  // More space for legend
-  } else if (colorByActive && colorByType === 'numeric') {
-    layout.margin.r = 80  // Space for colorbar
   }
 
-  const config = {
-    displayModeBar: false,  // Always hide modebar
-    responsive: true,
+  // --- Interactive override 2: Comparison filtered trace line uses StyleManager ---
+  for (const trace of figure.traces) {
+    const t = trace as any
+    if (t.name === 'Baseline (All Data)') continue  // Already handled above
+    if (t.marker?.line) {
+      t.marker.line.color = props.showComparison ? comparisonConfig.filtered.lineColor : bgColor
+      t.marker.line.width = props.showComparison ? comparisonConfig.filtered.lineWidth : 1
+    }
   }
 
-  return { traces, layout, config }
+  // --- Interactive override 3: Selected bin highlighting (standard single-trace only) ---
+  if (!colorByActive && selectedBins.value.size > 0) {
+    const mainTrace = figure.traces.find((t: any) => t.name !== 'Baseline (All Data)') as any
+    if (mainTrace?.marker && Array.isArray(mainTrace.x)) {
+      mainTrace.marker.color = mainTrace.x.map((bin: number) =>
+        selectedBins.value.has(bin) ? style.selectedColor : style.barColor
+      )
+    }
+  }
+
+  // --- Interactive override 4: Format category names with formatLabel ---
+  if (colorByActive && colorByType === 'categorical') {
+    for (const trace of figure.traces) {
+      const t = trace as any
+      if (t.name === 'Baseline (All Data)') continue
+      // The builder uses raw category strings as names; apply formatLabel for display
+      t.name = formatLabel(t.name, props.tableConfig?.columns?.formats, props.colorByAttribute)
+    }
+  }
+
+  // --- Interactive override 5: Numeric color-by colorbar title uses formatChartTitle ---
+  if (colorByActive && colorByType === 'numeric') {
+    const numericTrace = figure.traces.find((t: any) => (t as any).marker?.colorbar) as any
+    if (numericTrace?.marker?.colorbar?.title) {
+      numericTrace.marker.colorbar.title.text = formatChartTitle(
+        props.colorByAttribute!,
+        props.tableConfig?.columns?.formats,
+        {
+          labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
+          stripEmptyUnits: true,
+        }
+      )
+    }
+  }
+
+  // --- Interactive override 6: Categorical legend title uses formatChartTitle ---
+  if (colorByActive && colorByType === 'categorical') {
+    const layout = figure.layout as any
+    if (layout.legend?.title) {
+      layout.legend.title.text = formatChartTitle(
+        props.colorByAttribute!,
+        props.tableConfig?.columns?.formats,
+        {
+          labelOverride: props.colorByOptions?.find(opt => opt.attribute === props.colorByAttribute)?.label || undefined,
+          stripEmptyUnits: true,
+        }
+      )
+    }
+  }
+
+  // --- Interactive override 7: Custom tick formatting from column format config ---
+  // The builder uses String(v) for tick text; we need formatTickValue for time/duration/distance
+  const xaxis = (figure.layout as any).xaxis
+  if (xaxis) {
+    if (xaxis.tickmode === 'array' && xaxis.tickvals) {
+      // Builder already applied tick thinning; reformat tick labels
+      xaxis.ticktext = xaxis.tickvals.map((v: number) => formatTickValue(v))
+    } else if (columnFormat.value) {
+      // No tick thinning from builder, but we have custom format config
+      // Build tick arrays from the data bins for custom formatting
+      const binSize = props.binSize || 1
+      const bins = new Map<number, boolean>()
+      for (const row of props.filteredData) {
+        const val = row[props.column]
+        if (val !== null && val !== undefined && typeof val === 'number' && !isNaN(val)) {
+          bins.set(Math.floor(val / binSize) * binSize, true)
+        }
+      }
+      const tickvals = Array.from(bins.keys()).sort((a, b) => a - b)
+      const ticktext = tickvals.map(v => formatTickValue(v))
+
+      // Apply tick thinning logic with formatted labels
+      const numBins = tickvals.length
+      const maxLabelLength = ticktext.length > 0 ? Math.max(...ticktext.map(t => t.length)) : 1
+      const maxTicksToShow = maxLabelLength <= 4 ? 12 : maxLabelLength <= 6 ? 10 : 8
+
+      if (numBins > maxTicksToShow) {
+        const skipInterval = Math.max(1, Math.ceil(numBins / maxTicksToShow))
+        const thinnedTickvals: number[] = []
+        const thinnedTicktext: string[] = []
+        tickvals.forEach((val, idx) => {
+          if (idx === 0 || idx === tickvals.length - 1 || idx % skipInterval === 0) {
+            thinnedTickvals.push(val)
+            thinnedTicktext.push(ticktext[idx])
+          }
+        })
+        xaxis.tickmode = 'array'
+        xaxis.tickvals = thinnedTickvals
+        xaxis.ticktext = thinnedTicktext
+      } else {
+        xaxis.tickmode = 'array'
+        xaxis.tickvals = tickvals
+        xaxis.ticktext = ticktext
+      }
+
+      // Re-evaluate rotation based on formatted label length
+      const shouldRotate = maxLabelLength > 4 && numBins > 3
+      xaxis.tickangle = shouldRotate ? -45 : 0
+    }
+  }
+
+  return {
+    traces: figure.traces as any[],
+    layout: figure.layout,
+    config: figure.config || { displayModeBar: false, responsive: true },
+  }
 }
 
 // Click handler extracted as named function - registered ONCE during initialization
@@ -640,7 +400,7 @@ const handleClick = (data: any) => {
 
 // Initial chart creation - registers event handlers ONCE (matches ScatterCard pattern)
 const initializeChart = () => {
-  if (!plotContainer.value || histogramData.value.length === 0) return
+  if (!plotContainer.value || props.filteredData.length === 0) return
 
   const { traces, layout, config } = buildChartData()
 
@@ -659,7 +419,7 @@ const updateChart = () => {
   if (!plotContainer.value) return
 
   // If no data, nothing to render
-  if (histogramData.value.length === 0) return
+  if (props.filteredData.length === 0) return
 
   const { traces, layout, config } = buildChartData()
 
