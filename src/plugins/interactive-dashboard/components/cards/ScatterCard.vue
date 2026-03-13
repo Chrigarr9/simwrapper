@@ -12,8 +12,9 @@ import { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 import { formatLabel } from '../../utils/labelFormatter'
-import { computeAxisRange } from '../../utils/axisLimits'
 import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
+import { buildScatterFigure, type ScatterInput } from '@/export/trace-builders/scatter'
+import type { ChartStyle } from '@/export/types'
 
 interface ColumnFormat {
   type: 'time' | 'duration' | 'distance' | 'decimal' | 'percent'
@@ -92,32 +93,6 @@ const emit = defineEmits<{
 }>()
 
 const hoverInfo = computed(() => (props.showTooltip ? 'text' : 'none'))
-
-const axisTitleFontSize = computed(() =>
-  props.exportMode ? (props.exportAxisTitleFontSize ?? 14) : 11
-)
-
-const axisTickFontSize = computed(() =>
-  props.exportMode ? (props.exportAxisTickFontSize ?? 12) : 10
-)
-
-const legendTitleFontSize = computed(() =>
-  props.exportMode ? (props.exportLegendTitleFontSize ?? 13) : 11
-)
-
-const legendFontSize = computed(() =>
-  props.exportMode ? (props.exportLegendFontSize ?? 12) : 10
-)
-
-const traceLineWidth = computed(() =>
-  props.exportMode ? (props.exportLineWidth ?? 2.4) : 1.5
-)
-
-const effectiveMarkerSize = computed(() => {
-  const base = props.markerSize ?? 8
-  const multiplier = props.exportMode ? (props.exportMarkerSizeMultiplier ?? 1.35) : 1
-  return base * multiplier
-})
 
 const plotContainer = ref<HTMLElement>()
 // Note: Selection state is managed by the parent via props.selectedIds
@@ -258,124 +233,498 @@ function formatValue(value: any, column: string): string {
   }
 }
 
-// Generate distinct colors for categories
-// Delegates to StyleManager for consistent color assignment across all charts
-function generateCategoryColors(categories: string[]): Record<string, string> {
-  const colorMap = StyleManager.getInstance().buildCategoricalColorMap(categories)
-  const colors: Record<string, string> = {}
-  colorMap.forEach((color, cat) => {
-    colors[cat] = color
-  })
-  return colors
-}
-
 function isFiniteNumeric(value: any): boolean {
   const numeric = Number(value)
   return Number.isFinite(numeric)
 }
 
-const scatterData = computed(() => {
-  if (!props.filteredData || props.filteredData.length === 0) {
-    debugLog('[ScatterCard] No filtered data available')
-    return { x: [], y: [], ids: [], colors: [], sizes: [], text: [], categories: [] as string[] }
+/**
+ * Build the ChartStyle for the shared trace builder.
+ * In interactive (non-export) mode uses compact sizes; export mode uses larger sizes.
+ */
+function buildChartStyle(): ChartStyle {
+  const styleManager = StyleManager.getInstance()
+  const isScientific = styleManager.isScientificMode()
+  const fontFamily = isScientific
+    ? styleManager.getScientificConfig().fontFamily
+    : 'Arial, Helvetica, sans-serif'
+
+  if (props.exportMode) {
+    return {
+      axisTitleFontSize: props.exportAxisTitleFontSize ?? 14,
+      axisTickFontSize: props.exportAxisTickFontSize ?? 12,
+      legendTitleFontSize: props.exportLegendTitleFontSize ?? 13,
+      legendFontSize: props.exportLegendFontSize ?? 12,
+      lineWidth: props.exportLineWidth ?? 2.4,
+      markerSizeMultiplier: props.exportMarkerSizeMultiplier ?? 1.35,
+      fontFamily,
+      backgroundColor: styleManager.getColor('theme.background.primary'),
+      textColor: styleManager.getColor('theme.text.primary'),
+      gridColor: styleManager.getColor('theme.border.default'),
+      barColor: styleManager.getColor('chart.bar.default'),
+      selectedColor: '#ef4444',
+      isScientific,
+    }
   }
 
-  debugLog('[ScatterCard] Computing scatter from', props.filteredData.length, 'rows')
-
-  const x: number[] = []
-  const y: number[] = []
-  const ids: any[] = []
-  const colors: string[] = []
-  const sizes: number[] = []
-  const text: string[] = []
-  const categorySet = new Set<string>()
-
-  // Get unique categories for color mapping
-  if (props.colorColumn) {
-    props.filteredData.forEach(row => {
-      if (row[props.colorColumn!] !== undefined) {
-        categorySet.add(String(row[props.colorColumn!]))
-      }
-    })
+  return {
+    axisTitleFontSize: 11,
+    axisTickFontSize: 10,
+    legendTitleFontSize: 11,
+    legendFontSize: 10,
+    lineWidth: 1.5,
+    markerSizeMultiplier: 1.0,
+    fontFamily,
+    backgroundColor: styleManager.getColor('theme.background.primary'),
+    textColor: styleManager.getColor('theme.text.primary'),
+    gridColor: styleManager.getColor('theme.border.default'),
+    barColor: styleManager.getColor('chart.bar.default'),
+    selectedColor: '#ef4444',
+    isScientific,
   }
-  const categories = sortLegendCategories(Array.from(categorySet))
-  const categoryColors = generateCategoryColors(categories)
+}
 
-  props.filteredData.forEach(row => {
+/**
+ * Build the ScatterInput for the shared trace builder.
+ * Pre-converts data values using column format configs (seconds->minutes, etc.)
+ * so the builder receives display-ready numeric values.
+ */
+function buildScatterInput(): ScatterInput {
+  const styleManager = StyleManager.getInstance()
+  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
+  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : undefined
+
+  // Pre-convert filtered data values using column format configs
+  const convertedData = (props.filteredData || []).map(row => {
+    const converted: Record<string, any> = { ...row }
     const xVal = row[currentXColumn.value]
     const yVal = row[currentYColumn.value]
-    
-    if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
-      x.push(convertValue(Number(xVal), currentXColumn.value))
-      y.push(convertValue(Number(yVal), currentYColumn.value))
-
-      // ID for linkage
-      const id = props.idColumn ? row[props.idColumn] : null
-      ids.push(id)
-
-      // Color by category
-      if (props.colorColumn && row[props.colorColumn] !== undefined) {
-        colors.push(categoryColors[String(row[props.colorColumn])])
-      } else {
-        // Use theme-aware default color from StyleManager
-        colors.push(StyleManager.getInstance().getColor('chart.bar.default'))
+    if (isFiniteNumeric(xVal)) {
+      converted[currentXColumn.value] = convertValue(Number(xVal), currentXColumn.value)
+    }
+    if (isFiniteNumeric(yVal)) {
+      converted[currentYColumn.value] = convertValue(Number(yVal), currentYColumn.value)
+    }
+    // Also convert yColumnRight if present
+    if (props.yColumnRight) {
+      const yRVal = row[props.yColumnRight]
+      if (isFiniteNumeric(yRVal)) {
+        converted[props.yColumnRight] = convertValue(Number(yRVal), props.yColumnRight)
       }
+    }
+    return converted
+  })
 
-      // Size by value
-      if (props.sizeColumn && row[props.sizeColumn] !== undefined) {
-        // Normalize size between 5 and 25
-        sizes.push(Math.max(5, Math.min(25, row[props.sizeColumn])))
-      } else {
-        sizes.push(effectiveMarkerSize.value)
+  // Pre-convert baseline data too
+  const convertedBaseline = (props.baselineData || []).map(row => {
+    const converted: Record<string, any> = { ...row }
+    const xVal = row[currentXColumn.value]
+    const yVal = row[currentYColumn.value]
+    if (isFiniteNumeric(xVal)) {
+      converted[currentXColumn.value] = convertValue(Number(xVal), currentXColumn.value)
+    }
+    if (isFiniteNumeric(yVal)) {
+      converted[currentYColumn.value] = convertValue(Number(yVal), currentYColumn.value)
+    }
+    return converted
+  })
+
+  // Build colorMap from StyleManager for consistent colors across all charts
+  let colorMap: Map<string, string> | undefined
+  const colorCol = colorByActive ? props.colorByAttribute! : props.colorColumn
+  if (colorCol) {
+    const categorySet = new Set<string>()
+    for (const row of props.filteredData || []) {
+      const v = row[colorCol]
+      if (v !== undefined && v !== null) categorySet.add(String(v))
+    }
+    const sorted = sortLegendCategories(Array.from(categorySet))
+    colorMap = styleManager.buildCategoricalColorMap(sorted)
+  }
+
+  return {
+    filteredData: convertedData,
+    baselineData: convertedBaseline.length > 0 ? convertedBaseline : undefined,
+    xColumn: currentXColumn.value,
+    yColumn: currentYColumn.value,
+    yColumnRight: props.yColumnRight || undefined,
+    idColumn: props.idColumn || undefined,
+    colorColumn: props.colorColumn || undefined,
+    colorBy: colorByActive ? props.colorByAttribute : undefined,
+    colorByType: colorByType,
+    colorMap,
+    sizeColumn: props.sizeColumn || undefined,
+    markerSize: props.markerSize,
+    connectLines: props.connectLines,
+    showComparison: props.showComparison,
+    title: props.title,
+    xMin: props.xMin,
+    xMax: props.xMax,
+    yMin: props.yMin,
+    yMax: props.yMax,
+    xAutoTrim: props.xAutoTrim,
+    yAutoTrim: props.yAutoTrim,
+  }
+}
+
+/**
+ * Build a map from (traceIndex, pointIndex) to the row's ID.
+ * This replicates the trace-grouping logic of buildScatterFigure so we can
+ * overlay interactive hover/selection styling on top of the builder's output.
+ *
+ * Returns an array of arrays: traceIdMap[traceIdx][pointIdx] = id
+ * The trace order matches what buildScatterFigure produces.
+ */
+function buildTraceIdMap(input: ScatterInput): any[][] {
+  const { filteredData, baselineData, xColumn, yColumn, yColumnRight,
+    colorColumn, colorBy, colorByType, connectLines, showComparison, idColumn } = input
+
+  const traceIdMap: any[][] = []
+
+  const categorySet = new Set<string>()
+  if (colorColumn) {
+    for (const row of filteredData) {
+      const v = row[colorColumn]
+      if (v !== undefined && v !== null) categorySet.add(String(v))
+    }
+  }
+  const categories = sortLegendCategories(Array.from(categorySet))
+  const hasCategories = !!colorColumn && colorColumn !== '' && categories.length > 0
+
+  const colorByActive = !!colorBy && colorBy !== ''
+  const effectiveColorByType = colorByType ?? 'categorical'
+  const forceColorColumnGrouping = hasCategories && connectLines
+
+  // Helper to sort IDs by x (mirrors sortByX in the builder)
+  const sortIdsByX = (xArr: number[], ids: any[]): any[] => {
+    const indices = xArr.map((_: any, i: number) => i)
+    indices.sort((a: number, b: number) => xArr[a] - xArr[b])
+    return indices.map(i => ids[i])
+  }
+
+  // 1. Baseline trace
+  if (showComparison && baselineData && baselineData.length > 0) {
+    const baseIds: any[] = []
+    for (const row of baselineData) {
+      const xv = row[xColumn]
+      const yv = row[yColumn]
+      if (isFiniteNumeric(xv) && isFiniteNumeric(yv)) {
+        baseIds.push(idColumn ? row[idColumn] : null)
       }
+    }
+    if (baseIds.length > 0) traceIdMap.push(baseIds)
+  }
 
-      // Hover text
+  // 2. Categorical colorBy
+  if (!forceColorColumnGrouping && colorByActive && effectiveColorByType === 'categorical') {
+    const colorByCategories = sortLegendCategories(
+      Array.from(new Set(
+        filteredData.map(r => r[colorBy!]).filter(v => v !== null && v !== undefined).map(String)
+      ))
+    )
+    for (const cat of colorByCategories) {
+      const ids: any[] = []
+      const xArr: number[] = []
+      for (const row of filteredData) {
+        if (String(row[colorBy!]) !== cat) continue
+        const xv = row[xColumn]
+        const yv = row[yColumn]
+        if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue
+        ids.push(idColumn ? row[idColumn] : null)
+        xArr.push(Number(xv))
+      }
+      if (ids.length > 0) {
+        traceIdMap.push(connectLines ? sortIdsByX(xArr, ids) : ids)
+      }
+    }
+
+  // 3. Numeric colorBy
+  } else if (!forceColorColumnGrouping && colorByActive && effectiveColorByType === 'numeric') {
+    const ids: any[] = []
+    for (const row of filteredData) {
+      const xv = row[xColumn]
+      const yv = row[yColumn]
+      if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue
+      ids.push(idColumn ? row[idColumn] : null)
+    }
+    if (ids.length > 0) traceIdMap.push(ids)
+
+  // 4. colorColumn grouping
+  } else if (hasCategories) {
+    for (const cat of categories) {
+      const ids: any[] = []
+      const xArr: number[] = []
+      for (const row of filteredData) {
+        if (String(row[colorColumn!]) !== cat) continue
+        const xv = row[xColumn]
+        const yv = row[yColumn]
+        if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue
+        ids.push(idColumn ? row[idColumn] : null)
+        xArr.push(Number(xv))
+      }
+      if (ids.length > 0) {
+        traceIdMap.push(connectLines ? sortIdsByX(xArr, ids) : ids)
+      }
+    }
+
+  // 5. Single trace
+  } else {
+    const ids: any[] = []
+    const xArr: number[] = []
+    for (const row of filteredData) {
+      const xv = row[xColumn]
+      const yv = row[yColumn]
+      if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue
+      ids.push(idColumn ? row[idColumn] : null)
+      xArr.push(Number(xv))
+    }
+    if (ids.length > 0) {
+      traceIdMap.push(connectLines ? sortIdsByX(xArr, ids) : ids)
+    }
+  }
+
+  // Secondary Y-axis traces
+  const hasSecondaryY = !!yColumnRight && yColumnRight !== ''
+  if (hasSecondaryY) {
+    const secondaryCategories = hasCategories ? categories : ['_all']
+    for (const cat of secondaryCategories) {
+      const ids: any[] = []
+      const xArr: number[] = []
+      for (const row of filteredData) {
+        if (hasCategories && String(row[colorColumn!]) !== cat) continue
+        const xv = row[xColumn]
+        const yv = row[yColumnRight!]
+        if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue
+        ids.push(idColumn ? row[idColumn] : null)
+        xArr.push(Number(xv))
+      }
+      if (ids.length > 0) {
+        traceIdMap.push(connectLines ? sortIdsByX(xArr, ids) : ids)
+      }
+    }
+  }
+
+  return traceIdMap
+}
+
+/**
+ * Apply interactive hover/selection overrides to traces from the shared builder.
+ * Replaces uniform marker styling with per-point arrays that highlight
+ * hovered/selected points (red star at 2x size).
+ */
+function applyInteractiveOverrides(
+  traces: any[],
+  traceIdMap: any[][],
+  hoveredIds: Set<any> | undefined,
+  selectedIds: Set<any> | undefined,
+  styleManager: StyleManager,
+): void {
+  const highlightColor = '#ef4444'
+  const selectedColor = '#ef4444'
+  const hoverSelectSymbol = 'star'
+  const hoverSelectSizeMultiplier = 2
+  const textColor = styleManager.getColor('theme.text.primary')
+  const defaultOpacity = styleManager.getDefaultOpacity()
+
+  for (let t = 0; t < traces.length; t++) {
+    const trace = traces[t]
+    const ids = traceIdMap[t]
+    if (!ids || !trace.x) continue
+
+    const n = trace.x.length
+    // Baseline trace — skip interactive overrides (no IDs to match)
+    if (trace.name === 'Baseline (All Data)') continue
+
+    // Read the base values from the builder's output
+    const baseColor = trace.marker?.color
+    const baseSize = trace.marker?.size
+    const baseSymbol = trace.marker?.symbol
+    const baseOpacity = trace.marker?.opacity ?? defaultOpacity
+
+    const colors: string[] = []
+    const sizes: number[] = []
+    const symbols: string[] = []
+    const lineColors: string[] = []
+    const lineWidths: number[] = []
+    const opacities: number[] = []
+    const customdata: any[] = []
+
+    for (let i = 0; i < n; i++) {
+      const id = ids[i]
+      const isHovered = id && hoveredIds?.has(id)
+      const isSelected = id && selectedIds?.has(id)
+
+      // Resolve base values (could be scalar or array)
+      const pointColor = Array.isArray(baseColor) ? baseColor[i] : baseColor
+      const pointSize = Array.isArray(baseSize) ? baseSize[i] : (baseSize ?? 8)
+      const pointSymbol = Array.isArray(baseSymbol) ? baseSymbol[i] : (baseSymbol ?? 'circle')
+
+      if (isSelected) {
+        colors.push(selectedColor)
+        sizes.push(pointSize * hoverSelectSizeMultiplier)
+        symbols.push(hoverSelectSymbol)
+        lineColors.push('#ffffff')
+        lineWidths.push(3)
+        opacities.push(1.0)
+      } else if (isHovered) {
+        colors.push(highlightColor)
+        sizes.push(pointSize * hoverSelectSizeMultiplier)
+        symbols.push(hoverSelectSymbol)
+        lineColors.push('#ffffff')
+        lineWidths.push(2.5)
+        opacities.push(1.0)
+      } else {
+        colors.push(pointColor)
+        sizes.push(pointSize)
+        symbols.push(pointSymbol)
+        lineColors.push(textColor)
+        lineWidths.push(0.5)
+        opacities.push(typeof baseOpacity === 'number' ? baseOpacity : defaultOpacity)
+      }
+      customdata.push({ id })
+    }
+
+    // For numeric colorBy traces, keep the colorscale on the base color array
+    // but override individual points that are hovered/selected
+    if (trace.marker?.colorscale) {
+      // Numeric colorBy: only override points that are hovered/selected
+      const hasAnyHighlight = ids.some(
+        (id: any) => id && (hoveredIds?.has(id) || selectedIds?.has(id))
+      )
+      if (hasAnyHighlight) {
+        // Must remove colorscale to use per-point hex colors
+        // Copy the Viridis-mapped values as fallback hex colors (approximate with the original array)
+        trace.marker.color = colors
+        delete trace.marker.colorscale
+        delete trace.marker.showscale
+        delete trace.marker.colorbar
+      }
+    } else {
+      trace.marker.color = colors
+    }
+
+    trace.marker.size = sizes
+    trace.marker.symbol = symbols
+    trace.marker.line = { color: lineColors, width: lineWidths }
+    trace.marker.opacity = opacities
+    trace.customdata = customdata
+  }
+}
+
+/**
+ * Apply formatted hover text to all traces.
+ * The shared builder doesn't include hover text (it's interactive-specific),
+ * so we build it here using the column format configs.
+ */
+function applyHoverText(
+  traces: any[],
+  traceIdMap: any[][],
+  input: ScatterInput,
+): void {
+  for (let t = 0; t < traces.length; t++) {
+    const trace = traces[t]
+    const ids = traceIdMap[t]
+    if (!ids || !trace.x) continue
+
+    const n = trace.x.length
+    const text: string[] = []
+
+    for (let i = 0; i < n; i++) {
+      const xVal = trace.x[i]
+      const yVal = trace.y[i]
+
+      // Format the already-converted values for display
+      // Since values are pre-converted, format them directly as decimals
       const xFormatted = formatValue(xVal, currentXColumn.value)
-      const yFormatted = formatValue(yVal, currentYColumn.value)
-      let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`
-      if (props.colorColumn && row[props.colorColumn]) {
-        hoverText += `<br>${props.colorColumn}: ${row[props.colorColumn]}`
+      const yFormatted = trace.yaxis === 'y2'
+        ? formatValue(yVal, input.yColumnRight || currentYColumn.value)
+        : formatValue(yVal, currentYColumn.value)
+
+      const yCol = trace.yaxis === 'y2' ? (input.yColumnRight || currentYColumn.value) : currentYColumn.value
+      let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${yCol}: ${yFormatted}`
+
+      // Add category info
+      if (trace.legendgroup && trace.legendgroup !== '_right' && !trace.legendgroup.endsWith('_right')) {
+        const groupCol = input.colorBy || input.colorColumn
+        if (groupCol) {
+          hoverText += `<br>${groupCol}: ${trace.legendgroup}`
+        }
       }
+
+      // Add ID
+      const id = ids[i]
       if (id) {
         hoverText += `<br>ID: ${id}`
       }
+
       text.push(hoverText)
     }
-  })
 
-  return { x, y, ids, colors, sizes, text, categories }
-})
+    trace.text = text
+    trace.hoverinfo = hoverInfo.value
+  }
+}
 
-const baselineScatterData = computed(() => {
-  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
-    return { x: [], y: [], ids: [], text: [] }
+/**
+ * Apply formatted axis titles and legend labels to the layout.
+ * The builder uses raw column names; the interactive component formats them
+ * with unit suffixes and title-case using tableConfig.
+ */
+function applyFormattedLabels(layout: any, traces: any[], input: ScatterInput): void {
+  // Format axis titles
+  if (layout.xaxis?.title) {
+    layout.xaxis.title.text = formatChartTitle(
+      currentXColumn.value, props.tableConfig?.columns?.formats
+    )
+  }
+  if (layout.yaxis?.title) {
+    layout.yaxis.title.text = formatChartTitle(
+      currentYColumn.value, props.tableConfig?.columns?.formats
+    )
+  }
+  if (layout.yaxis2?.title && input.yColumnRight) {
+    layout.yaxis2.title.text = formatChartTitle(
+      input.yColumnRight, props.tableConfig?.columns?.formats
+    )
   }
 
-  debugLog('[ScatterCard] Computing baseline scatter from', props.baselineData.length, 'rows')
+  // Format legend title
+  if (layout.legend?.title?.text) {
+    layout.legend.title.text = formatChartTitle(
+      layout.legend.title.text, props.tableConfig?.columns?.formats
+    )
+  }
 
-  const x: number[] = []
-  const y: number[] = []
-  const ids: any[] = []
-  const text: string[] = []
+  // Format trace legend names
+  for (const trace of traces) {
+    if (trace.name === 'Baseline (All Data)') continue
+    if (!trace.legendgroup) continue
 
-  props.baselineData.forEach(row => {
-    const xVal = row[currentXColumn.value]
-    const yVal = row[currentYColumn.value]
-
-    if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
-      x.push(convertValue(Number(xVal), currentXColumn.value))
-      y.push(convertValue(Number(yVal), currentYColumn.value))
-      const id = props.idColumn ? row[props.idColumn] : null
-      ids.push(id)
-
-      const xFormatted = formatValue(xVal, currentXColumn.value)
-      const yFormatted = formatValue(yVal, currentYColumn.value)
-      text.push(`${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`)
+    // Determine which column this trace's legend group refers to
+    const groupCol = input.colorBy || input.colorColumn
+    if (groupCol && trace.name) {
+      // Check if name looks like a secondary axis label: "cat (right)"
+      const rightSuffix = trace.name.endsWith(' (right)')
+      const baseName = rightSuffix ? trace.name.slice(0, -8) : trace.name
+      const formatted = formatLegendValue(baseName, groupCol)
+      trace.name = rightSuffix ? `${formatted} (right)` : formatted
     }
-  })
+  }
 
-  return { x, y, ids, text }
-})
+  // Format numeric colorBy colorbar title
+  for (const trace of traces) {
+    if (trace.marker?.colorbar?.title?.text && input.colorBy) {
+      const colorByLabelOverride = props.colorByOptions?.find(
+        opt => opt.attribute === input.colorBy
+      )?.label
+      trace.marker.colorbar.title.text = formatChartTitle(
+        input.colorBy,
+        props.tableConfig?.columns?.formats,
+        { labelOverride: colorByLabelOverride, stripEmptyUnits: true }
+      )
+    }
+  }
+}
 
 // Debounce timer for renderChart
 let renderTimeout: ReturnType<typeof setTimeout> | null = null
@@ -395,9 +744,10 @@ const debouncedRenderChart = () => {
 
 // Initial chart creation - registers event handlers
 const initializeChart = () => {
-  if (!plotContainer.value || scatterData.value.x.length === 0) return
+  if (!plotContainer.value || !props.filteredData?.length) return
 
   const { traces, layout, config } = buildChartData()
+  if (traces.length === 0) return
 
   Plotly.newPlot(plotContainer.value, traces, layout, config)
   chartInitialized = true
@@ -413,9 +763,10 @@ const updateChart = () => {
   if (!plotContainer.value) return
 
   // If no data, nothing to render
-  if (scatterData.value.x.length === 0) return
+  if (!props.filteredData?.length) return
 
   const { traces, layout, config } = buildChartData()
+  if (traces.length === 0) return
 
   if (chartInitialized) {
     // Use Plotly.react to update data/layout (preserves event handlers)
@@ -431,9 +782,21 @@ const updateChart = () => {
 const findIdsAtCoordinate = (x: number, y: number): any[] => {
   const ids: any[] = []
 
+  // Need to compute x/y ranges from all filtered data for tolerance calculation
+  const allX: number[] = []
+  const allY: number[] = []
+  props.filteredData?.forEach(row => {
+    const xv = row[currentXColumn.value]
+    const yv = row[currentYColumn.value]
+    if (isFiniteNumeric(xv) && isFiniteNumeric(yv)) {
+      allX.push(convertValue(Number(xv), currentXColumn.value))
+      allY.push(convertValue(Number(yv), currentYColumn.value))
+    }
+  })
+
   // Calculate tolerance based on data range (0.1% of range, minimum 0.001)
-  const xRange = Math.max(...scatterData.value.x) - Math.min(...scatterData.value.x)
-  const yRange = Math.max(...scatterData.value.y) - Math.min(...scatterData.value.y)
+  const xRange = allX.length > 0 ? Math.max(...allX) - Math.min(...allX) : 1
+  const yRange = allY.length > 0 ? Math.max(...allY) - Math.min(...allY) : 1
   const xTolerance = Math.max(xRange * 0.001, 0.001)
   const yTolerance = Math.max(yRange * 0.001, 0.001)
 
@@ -529,749 +892,57 @@ const registerEventHandlers = () => {
   })
 }
 
-// Sort parallel arrays by the x-values so lines connect left-to-right
-const sortByX = (arrays: Record<string, any[]>, xKey: string = 'x'): void => {
-  const indices = arrays[xKey].map((_: any, i: number) => i)
-  indices.sort((a: number, b: number) => arrays[xKey][a] - arrays[xKey][b])
-  for (const key of Object.keys(arrays)) {
-    arrays[key] = indices.map((i: number) => arrays[key][i])
-  }
-}
-
-// Plotly trace mode: use lines+markers when connectLines is enabled
-const traceMode = computed(() => props.connectLines ? 'lines+markers' as const : 'markers' as const)
-
 /**
- * Get line style for a trace. In scientific mode, each category gets a distinct
- * dash pattern + its category color from StyleManager. In normal mode, lines
- * use the category color with no dash.
+ * Build chart data using the shared trace builder, then apply interactive overrides.
  *
- * @param categoryIndex - Index of the category (for scientific dash lookup)
- * @param categoryColor - Hex color assigned to this category
- * @returns Plotly line config object, or undefined when connectLines is off
+ * Flow:
+ *   1. Build ScatterInput + ChartStyle from component state
+ *   2. Call buildScatterFigure() for base traces + layout
+ *   3. Build trace->ID mapping (for hover/selection overlays)
+ *   4. Apply interactive overrides (per-point hover/selection styling)
+ *   5. Apply formatted hover text
+ *   6. Apply formatted axis/legend labels
  */
-const getTraceLineStyle = (categoryIndex: number, categoryColor: string): any | undefined => {
-  if (!props.connectLines) return undefined
-  const styleManager = StyleManager.getInstance()
-  const isScientific = styleManager.isScientificMode()
-  if (isScientific) {
-    const style = styleManager.getScientificTraceStyle(categoryIndex, categoryColor)
-    return { width: traceLineWidth.value, dash: style.lineDash, color: style.color }
-  }
-  return { width: traceLineWidth.value, color: categoryColor }
-}
-
-/**
- * Get marker symbol for a trace. Scientific mode uses distinct symbols per
- * category from StyleManager; normal mode uses default circles.
- */
-const getTraceMarkerSymbol = (categoryIndex: number): string | undefined => {
-  const styleManager = StyleManager.getInstance()
-  return styleManager.isScientificMode()
-    ? styleManager.getScientificMarkerSymbol(categoryIndex)
-    : undefined
-}
-
-// Build chart data (traces, layout, config) - separated from rendering
 const buildChartData = () => {
-  if (!plotContainer.value || scatterData.value.x.length === 0) {
+  if (!plotContainer.value || !props.filteredData?.length) {
     return { traces: [], layout: {}, config: {} }
   }
 
-  // Theme-aware colors from StyleManager
+  const input = buildScatterInput()
+  const style = buildChartStyle()
   const styleManager = StyleManager.getInstance()
-  const isScientific = styleManager.isScientificMode()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const textColor = styleManager.getColor('theme.text.primary')
-  const gridColor = styleManager.getColor('theme.border.default')
-  const defaultColor = styleManager.getColor('chart.bar.default')
-  // Interaction states — red star at 2x size for hover/select
-  const highlightColor = '#ef4444'
-  const selectedColor = '#ef4444'
-  const hoverSelectSymbol = 'star'
-  const hoverSelectSizeMultiplier = 2
 
-  // Scientific mode font configuration
-  const fontFamily = isScientific
-    ? styleManager.getScientificConfig().fontFamily
-    : undefined
-
-  // Determine if color-by is active and what type
-  const colorByActive = props.colorByAttribute && props.colorByAttribute !== ''
-  const colorByType = colorByActive ? detectColorByType(props.colorByAttribute!) : 'categorical'
-
-  // Build traces - one per category for proper legend, or single trace if no categories
-  const traces: any[] = []
-  const categories = scatterData.value.categories
-  const hasCategories = props.colorColumn && categories.length > 0
-
-  // When connectLines + colorColumn are both set, the colorColumn MUST drive trace
-  // grouping so that lines connect within each category and each category gets its
-  // own marker symbol / line dash in scientific mode.  The global colorBy dropdown
-  // must NOT override the structural grouping in this case.
-  const forceColorColumnGrouping = hasCategories && props.connectLines
-
-  // Baseline trace (if comparison mode) - gray points behind, NEVER split by color-by category
-  if (props.showComparison && baselineScatterData.value.x.length > 0) {
-    const baselineDimAlpha = styleManager.getDimmedOpacity()
-    traces.unshift({  // unshift to add at beginning
-      x: baselineScatterData.value.x,
-      y: baselineScatterData.value.y,
-      mode: 'markers',
-      type: 'scatter',
-      name: 'Baseline (All Data)',
-      text: baselineScatterData.value.text,
-      hoverinfo: hoverInfo.value,
-      marker: {
-        color: `rgba(156, 163, 175, ${baselineDimAlpha})`,
-        size: effectiveMarkerSize.value * 0.8,      // Slightly smaller
-        symbol: isScientific ? 'circle-open' : undefined,  // Hollow circle in scientific mode
-        line: {
-          color: `rgba(156, 163, 175, ${Math.min(1, baselineDimAlpha + 0.15)})`,
-          width: isScientific ? 1 : 0.5,  // Thicker line in scientific mode
-        },
-      },
-      showlegend: true,
-    })
+  // 1. Get base traces and layout from shared builder
+  const figure = buildScatterFigure(input, style)
+  if (figure.traces.length === 0) {
+    return { traces: [], layout: {}, config: {} }
   }
 
-  // Color-by rendering: categorical (multi-trace) or numeric (colorscale)
-  // When forceColorColumnGrouping is true, skip colorBy paths entirely — fall through to hasCategories path
-  if (!forceColorColumnGrouping && colorByActive && colorByType === 'categorical') {
-    // Categorical color-by: create separate traces per category value
-    const colorByValues = sortLegendCategories(Array.from(
-      new Set(
-        props.filteredData
-          ?.map(row => row[props.colorByAttribute!])
-          .filter(v => v !== null && v !== undefined)
-      )
-    ))
+  // Deep-clone traces so we can mutate them for interactive overrides
+  const traces = JSON.parse(JSON.stringify(figure.traces))
+  const layout = JSON.parse(JSON.stringify(figure.layout))
 
-    const colorMap = styleManager.buildCategoricalColorMap(colorByValues.map(String))
+  // 2. Build trace-to-ID mapping
+  const traceIdMap = buildTraceIdMap(input)
 
-    colorByValues.forEach((categoryValue, categoryIndex) => {
-      const categoryStr = String(categoryValue)
-      const categoryX: number[] = []
-      const categoryY: number[] = []
-      const categoryText: string[] = []
-      const categorySizes: number[] = []
-      const categoryMarkerColors: string[] = []
-      const categoryLineWidths: number[] = []
-      const categoryLineColors: string[] = []
-      const categoryOpacities: number[] = []
-      const categorySymbols: string[] = []
-      const categoryIds: any[] = []
+  // 3. Apply interactive hover/selection overrides
+  applyInteractiveOverrides(traces, traceIdMap, props.hoveredIds, props.selectedIds, styleManager)
 
-      props.filteredData?.forEach((row) => {
-        if (String(row[props.colorByAttribute!]) === categoryStr) {
-          const xVal = row[currentXColumn.value]
-          const yVal = row[currentYColumn.value]
-          if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
-            const id = props.idColumn ? row[props.idColumn] : null
-            categoryX.push(convertValue(Number(xVal), currentXColumn.value))
-            categoryY.push(convertValue(Number(yVal), currentYColumn.value))
-            categoryIds.push(id)
+  // 4. Apply formatted hover text (interactive-specific)
+  applyHoverText(traces, traceIdMap, input)
 
-            // Hover text
-            const xFormatted = formatValue(xVal, currentXColumn.value)
-            const yFormatted = formatValue(yVal, currentYColumn.value)
-            let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${currentYColumn.value}: ${yFormatted}`
-            hoverText += `<br>${props.colorByAttribute}: ${categoryValue}`
-            if (id) hoverText += `<br>ID: ${id}`
-            categoryText.push(hoverText)
+  // 5. Apply formatted axis titles and legend labels
+  applyFormattedLabels(layout, traces, input)
 
-            const baseSize = props.sizeColumn && row[props.sizeColumn] !== undefined
-              ? Math.max(5, Math.min(25, row[props.sizeColumn]))
-              : effectiveMarkerSize.value
-            const isHovered = id && props.hoveredIds?.has(id)
-            const isSelected = id && props.selectedIds?.has(id)
-
-            // Symbol: star for hover/select
-            categorySymbols.push((isSelected || isHovered) ? hoverSelectSymbol : (getTraceMarkerSymbol(categoryIndex) || 'circle'))
-
-            // Size: 2x larger for highlighted/selected points
-            categorySizes.push((isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize)
-
-            // Color based on selection state
-            if (isSelected) {
-              categoryMarkerColors.push(selectedColor)
-              categoryLineColors.push('#ffffff')
-              categoryLineWidths.push(3)
-              categoryOpacities.push(1.0)
-            } else if (isHovered) {
-              categoryMarkerColors.push(highlightColor)
-              categoryLineColors.push('#ffffff')
-              categoryLineWidths.push(2.5)
-              categoryOpacities.push(1.0)
-            } else {
-              categoryMarkerColors.push(colorMap.get(categoryStr) || defaultColor)
-              categoryLineColors.push(textColor)
-              categoryLineWidths.push(0.5)
-              categoryOpacities.push(styleManager.getDefaultOpacity())
-            }
-          }
-        }
-      })
-
-      if (categoryX.length > 0) {
-        // Sort by x when connecting lines for clean left-to-right path
-        const traceArrays: Record<string, any[]> = {
-          x: categoryX, y: categoryY, text: categoryText,
-          sizes: categorySizes, colors: categoryMarkerColors,
-          lineColors: categoryLineColors, lineWidths: categoryLineWidths,
-          opacities: categoryOpacities, symbols: categorySymbols, ids: categoryIds,
-        }
-        if (props.connectLines) sortByX(traceArrays, 'x')
-
-        const catColor = colorMap.get(categoryStr) || defaultColor
-        const traceLine = getTraceLineStyle(categoryIndex, catColor)
-
-        traces.push({
-          x: traceArrays.x,
-          y: traceArrays.y,
-          mode: traceMode.value,
-          type: 'scatter',
-          name: formatLegendValue(categoryStr, props.colorByAttribute),
-          text: traceArrays.text,
-          hoverinfo: hoverInfo.value,
-          ...(traceLine ? { line: traceLine } : {}),
-          marker: {
-            color: traceArrays.colors,
-            size: traceArrays.sizes,
-            symbol: traceArrays.symbols,
-            line: {
-              color: traceArrays.lineColors,
-              width: traceArrays.lineWidths,
-            },
-            opacity: traceArrays.opacities,
-          },
-          legendgroup: categoryStr,
-          customdata: traceArrays.ids.map(id => ({ id })),
-        })
-      }
-    })
-  } else if (!forceColorColumnGrouping && colorByActive && colorByType === 'numeric') {
-    // Numeric color-by: single trace with Plotly colorscale
-    const colorByValues = scatterData.value.ids.map((id, i) => {
-      const rowIndex = props.filteredData?.findIndex(row =>
-        (props.idColumn ? row[props.idColumn] : null) === id
-      )
-      if (rowIndex !== undefined && rowIndex >= 0) {
-        return props.filteredData![rowIndex][props.colorByAttribute!]
-      }
-      return null
-    })
-
-    const markerSizes = scatterData.value.ids.map((id, i) => {
-      const baseSize = scatterData.value.sizes[i]
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize
-    })
-
-    const markerSymbols = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? hoverSelectSymbol : 'circle'
-    })
-
-    const lineWidths = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      if (isSelected) return 3
-      if (isHovered) return 2.5
-      return 0.5
-    })
-
-    const lineColors = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? '#ffffff' : textColor
-    })
-
-    const opacities = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? 1 : styleManager.getDefaultOpacity()
-    })
-
-    // Enhanced hover text with color-by attribute
-    const enhancedText = scatterData.value.text.map((txt, i) => {
-      const colorVal = colorByValues[i]
-      if (colorVal !== null && colorVal !== undefined) {
-        return `${txt}<br>${props.colorByAttribute}: ${colorVal}`
-      }
-      return txt
-    })
-
-    // Find attribute label for colorbar title (centralized formatting)
-    const colorByLabelOverride = props.colorByOptions?.find(
-      opt => opt.attribute === props.colorByAttribute
-    )?.label
-    const attributeLabel = formatChartTitle(
-      props.colorByAttribute!,
-      props.tableConfig?.columns?.formats,
-      {
-        labelOverride: colorByLabelOverride,
-        stripEmptyUnits: true,
-      }
-    )
-
-    traces.push({
-      x: scatterData.value.x,
-      y: scatterData.value.y,
-      mode: traceMode.value,
-      type: 'scatter',
-      name: attributeLabel,
-      showlegend: false,
-      text: enhancedText,
-      hoverinfo: hoverInfo.value,
-      ...(props.connectLines ? { line: { width: traceLineWidth.value, color: 'rgba(100,100,100,0.3)' } } : {}),
-      marker: {
-        color: colorByValues,
-        colorscale: 'Viridis',
-        showscale: true,
-        colorbar: {
-          title: { text: attributeLabel, font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily }, side: 'right' },
-          tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
-        },
-        size: markerSizes,
-        symbol: markerSymbols,
-        line: {
-          color: lineColors,
-          width: lineWidths,
-        },
-        opacity: opacities,
-      },
-    })
-  } else if (hasCategories) {
-    // Create separate traces for each category (enables proper legend)
-    const categoryColors = generateCategoryColors(categories)
-
-    categories.forEach((category, categoryIndex) => {
-      const categoryIndices: number[] = []
-      const categoryX: number[] = []
-      const categoryY: number[] = []
-      const categoryText: string[] = []
-      const categorySizes: number[] = []
-      const categoryMarkerColors: string[] = []
-      const categoryLineWidths: number[] = []
-      const categoryLineColors: string[] = []
-      const categoryOpacities: number[] = []
-      const categorySymbols: string[] = []
-      const categoryIds: any[] = []  // Store IDs for this trace
-
-      // Find all points belonging to this category
-      props.filteredData?.forEach((row, i) => {
-        if (String(row[props.colorColumn!]) === category) {
-          const xVal = row[currentXColumn.value]
-          const yVal = row[currentYColumn.value]
-          if (isFiniteNumeric(xVal) && isFiniteNumeric(yVal)) {
-            const id = props.idColumn ? row[props.idColumn] : null
-            categoryIndices.push(i)
-            categoryX.push(convertValue(Number(xVal), currentXColumn.value))
-            categoryY.push(convertValue(Number(yVal), currentYColumn.value))
-            categoryIds.push(id)  // Store ID at trace-specific index
-            // Build hover text: start from pre-computed text, add colorBy value when active
-            let hoverText = scatterData.value.text[scatterData.value.ids.indexOf(id)] || ''
-            if (colorByActive && props.colorByAttribute && props.colorByAttribute !== props.colorColumn) {
-              const colorByVal = row[props.colorByAttribute!]
-              if (colorByVal !== null && colorByVal !== undefined) {
-                hoverText += `<br>${props.colorByAttribute}: ${colorByVal}`
-              }
-            }
-            categoryText.push(hoverText)
-
-            const baseSize = scatterData.value.sizes[scatterData.value.ids.indexOf(id)] || effectiveMarkerSize.value
-            const isHovered = id && props.hoveredIds?.has(id)
-            const isSelected = id && props.selectedIds?.has(id)
-
-            // Symbol: star for hover/select
-            categorySymbols.push((isSelected || isHovered) ? hoverSelectSymbol : (getTraceMarkerSymbol(categoryIndex) || 'circle'))
-
-            // Size: 2x larger for highlighted/selected points
-            if (isSelected || isHovered) {
-              categorySizes.push(baseSize * hoverSelectSizeMultiplier)
-            } else {
-              categorySizes.push(baseSize)
-            }
-
-            // Color based on selection state
-            if (isSelected) {
-              categoryMarkerColors.push(selectedColor)
-              categoryLineColors.push('#ffffff')  // White border for max contrast
-              categoryLineWidths.push(3)
-              categoryOpacities.push(1.0)
-            } else if (isHovered) {
-              categoryMarkerColors.push(highlightColor)
-              categoryLineColors.push('#ffffff')  // White border for visibility
-              categoryLineWidths.push(2.5)
-              categoryOpacities.push(1.0)
-            } else {
-              categoryMarkerColors.push(categoryColors[category])
-              categoryLineColors.push(textColor)
-              categoryLineWidths.push(0.5)
-              categoryOpacities.push(styleManager.getDefaultOpacity())
-            }
-          }
-        }
-      })
-
-      if (categoryX.length > 0) {
-        // Sort by x when connecting lines for clean left-to-right path
-        const traceArrays: Record<string, any[]> = {
-          x: categoryX, y: categoryY, text: categoryText,
-          sizes: categorySizes, colors: categoryMarkerColors,
-          lineColors: categoryLineColors, lineWidths: categoryLineWidths,
-          opacities: categoryOpacities, symbols: categorySymbols, ids: categoryIds,
-        }
-        if (props.connectLines) sortByX(traceArrays, 'x')
-
-        const catColor = categoryColors[category]
-        const traceLine = getTraceLineStyle(categoryIndex, catColor)
-
-        traces.push({
-          x: traceArrays.x,
-          y: traceArrays.y,
-          mode: traceMode.value,
-          type: 'scatter',
-          name: formatLegendValue(category, props.colorColumn),
-          text: traceArrays.text,
-          hoverinfo: hoverInfo.value,
-          ...(traceLine ? { line: traceLine } : {}),
-          marker: {
-            color: traceArrays.colors,
-            size: traceArrays.sizes,
-            symbol: traceArrays.symbols,
-            line: {
-              color: traceArrays.lineColors,
-              width: traceArrays.lineWidths,
-            },
-            opacity: traceArrays.opacities,
-          },
-          // Store original color for legend
-          legendgroup: category,
-          // Store IDs with this trace for correct index mapping on click/hover
-          customdata: traceArrays.ids.map(id => ({ id })),
-        })
-      }
-    })
-  } else {
-    // Single trace - no categories
-    const markerColors = scatterData.value.ids.map((id, i) => {
-      if (id && props.selectedIds?.has(id)) return selectedColor
-      if (id && props.hoveredIds?.has(id)) return highlightColor
-      return scatterData.value.colors[i] || defaultColor
-    })
-
-    const markerSizes = scatterData.value.ids.map((id, i) => {
-      const baseSize = scatterData.value.sizes[i]
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize
-    })
-
-    const markerSymbols = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? hoverSelectSymbol : 'circle'
-    })
-
-    const lineWidths = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      if (isSelected) return 3
-      if (isHovered) return 2.5
-      return 0.5
-    })
-
-    const lineColors = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? '#ffffff' : textColor
-    })
-
-    const opacities = scatterData.value.ids.map((id) => {
-      const isHovered = id && props.hoveredIds?.has(id)
-      const isSelected = id && props.selectedIds?.has(id)
-      return (isSelected || isHovered) ? 1 : styleManager.getDefaultOpacity()
-    })
-
-    traces.push({
-      x: scatterData.value.x,
-      y: scatterData.value.y,
-      mode: traceMode.value,
-      type: 'scatter',
-      text: scatterData.value.text,
-      hoverinfo: hoverInfo.value,
-      ...(props.connectLines ? { line: { width: traceLineWidth.value, color: defaultColor } } : {}),
-      marker: {
-        color: markerColors,
-        size: markerSizes,
-        symbol: markerSymbols,
-        line: {
-          color: lineColors,
-          width: lineWidths,
-        },
-        opacity: opacities,
-      },
-    })
-  }
-
-  // =========================================================================
-  // SECONDARY Y-AXIS TRACES — plotted on yaxis2 (right side)
-  // Mirrors the primary color grouping but reads from yColumnRight.
-  // Uses open markers to visually distinguish from primary traces.
-  // =========================================================================
-  const hasSecondaryY = props.yColumnRight && props.yColumnRight !== ''
-  if (hasSecondaryY) {
-    const secondaryCol = props.yColumnRight!
-    const secondaryCategories = hasCategories ? categories : ['_all']
-    const secondaryCategoryColors = hasCategories ? generateCategoryColors(categories) : { _all: defaultColor }
-
-    secondaryCategories.forEach((category, categoryIndex) => {
-      const secX: number[] = []
-      const secY: number[] = []
-      const secText: string[] = []
-      const secSizes: number[] = []
-      const secMarkerColors: string[] = []
-      const secLineWidths: number[] = []
-      const secLineColors: string[] = []
-      const secOpacities: number[] = []
-      const secSymbols: string[] = []
-      const secIds: any[] = []
-
-      props.filteredData?.forEach((row) => {
-        // Filter by category if using colorColumn, otherwise include all
-        if (hasCategories && String(row[props.colorColumn!]) !== category) return
-
-        const xVal = row[currentXColumn.value]
-        const yVal = row[secondaryCol]
-        if (!isFiniteNumeric(xVal) || !isFiniteNumeric(yVal)) return
-
-        const id = props.idColumn ? row[props.idColumn] : null
-        secX.push(convertValue(Number(xVal), currentXColumn.value))
-        secY.push(convertValue(Number(yVal), secondaryCol))
-        secIds.push(id)
-
-        // Hover text
-        const xFormatted = formatValue(xVal, currentXColumn.value)
-        const yFormatted = formatValue(yVal, secondaryCol)
-        let hoverText = `${currentXColumn.value}: ${xFormatted}<br>${secondaryCol}: ${yFormatted}`
-        if (hasCategories) hoverText += `<br>${props.colorColumn}: ${row[props.colorColumn!]}`
-        if (id) hoverText += `<br>ID: ${id}`
-        secText.push(hoverText)
-
-        const baseSize = props.sizeColumn && row[props.sizeColumn] !== undefined
-          ? Math.max(5, Math.min(25, row[props.sizeColumn]))
-          : effectiveMarkerSize.value
-        const isHovered = id && props.hoveredIds?.has(id)
-        const isSelected = id && props.selectedIds?.has(id)
-
-        // Derive the default open symbol for this secondary trace
-        const primarySym = getTraceMarkerSymbol(categoryIndex)
-        const defaultSecSym = primarySym ? `${primarySym}-open` : (isScientific ? 'circle-open' : 'diamond-open')
-        secSymbols.push((isSelected || isHovered) ? hoverSelectSymbol : defaultSecSym)
-
-        secSizes.push((isSelected || isHovered) ? baseSize * hoverSelectSizeMultiplier : baseSize)
-
-        if (isSelected) {
-          secMarkerColors.push(selectedColor)
-          secLineColors.push('#ffffff')
-          secLineWidths.push(3)
-          secOpacities.push(1.0)
-        } else if (isHovered) {
-          secMarkerColors.push(highlightColor)
-          secLineColors.push('#ffffff')
-          secLineWidths.push(2.5)
-          secOpacities.push(1.0)
-        } else {
-          secMarkerColors.push(secondaryCategoryColors[category] || defaultColor)
-          secLineColors.push(textColor)
-          secLineWidths.push(0.5)
-          secOpacities.push(styleManager.getDefaultOpacity())
-        }
-      })
-
-      if (secX.length > 0) {
-        const traceArrays: Record<string, any[]> = {
-          x: secX, y: secY, text: secText,
-          sizes: secSizes, colors: secMarkerColors,
-          lineColors: secLineColors, lineWidths: secLineWidths,
-          opacities: secOpacities, symbols: secSymbols, ids: secIds,
-        }
-        if (props.connectLines) sortByX(traceArrays, 'x')
-
-        const catColor = secondaryCategoryColors[category] || defaultColor
-        const traceLine = getTraceLineStyle(categoryIndex, catColor)
-        // Use dashed line for secondary axis traces to distinguish from primary
-        const secondaryLine = traceLine
-          ? { ...traceLine, dash: isScientific ? traceLine.dash : 'dash' }
-          : (props.connectLines ? { width: traceLineWidth.value, color: catColor, dash: 'dash' } : undefined)
-
-        const legendName = hasCategories
-          ? `${formatLegendValue(category, props.colorColumn)} (right)`
-          : formatChartTitle(secondaryCol, props.tableConfig?.columns?.formats)
-
-        traces.push({
-          x: traceArrays.x,
-          y: traceArrays.y,
-          yaxis: 'y2',
-          mode: traceMode.value,
-          type: 'scatter',
-          name: legendName,
-          text: traceArrays.text,
-          hoverinfo: hoverInfo.value,
-          ...(secondaryLine ? { line: secondaryLine } : {}),
-          marker: {
-            color: traceArrays.colors,
-            size: traceArrays.sizes,
-            symbol: traceArrays.symbols,
-            line: {
-              color: traceArrays.lineColors,
-              width: traceArrays.lineWidths,
-            },
-            opacity: traceArrays.opacities,
-          },
-          legendgroup: hasCategories ? `${category}_right` : '_right',
-          customdata: traceArrays.ids.map(id => ({ id })),
-        })
-      }
-    })
-  }
-
-  // Build axis configs with intelligent tick formatting
-  // Limit number of ticks to avoid crowding, similar to histogram approach
-
-  // Calculate axis ranges from BASELINE data (all data) to keep consistent view
-  // This prevents zooming when filtering - baseline shows full range even when filtered
-  const xDataForRange = baselineScatterData.value.x.length > 0 ? baselineScatterData.value.x : scatterData.value.x
-  const yDataForRange = baselineScatterData.value.y.length > 0 ? baselineScatterData.value.y : scatterData.value.y
-  const xMin = Math.min(...xDataForRange)
-  const xMax = Math.max(...xDataForRange)
-  const yMin = Math.min(...yDataForRange)
-  const yMax = Math.max(...yDataForRange)
-  const xPadding = (xMax - xMin) * 0.05 || 1  // 5% padding, fallback to 1 if range is 0
-  const yPadding = (yMax - yMin) * 0.05 || 1
-
-  const xAxisConfig: any = {
-    title: { text: formatChartTitle(currentXColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
-    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
-    gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-    linewidth: isScientific ? 1.5 : 1,
-    showline: true,
-    zerolinecolor: gridColor,
-    automargin: true,  // Allow Plotly to expand margins for long labels
-    nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
-    tickformat: '.5~g', // Smart formatting: up to 5 significant digits, scientific at/above 100,000
-    range: [xMin - xPadding, xMax + xPadding],  // Fixed range from baseline prevents zooming
-  }
-
-  const yAxisConfig: any = {
-    title: { text: formatChartTitle(currentYColumn.value, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
-    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
-    gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,  // Black axis line in scientific
-    linewidth: isScientific ? 1.5 : 1,
-    showline: true,
-    zerolinecolor: gridColor,
-    automargin: true,  // Allow Plotly to expand margins for long labels
-    nticks: 10,        // Limit to ~10 ticks maximum to avoid crowding
-    tickformat: '.5~g', // Smart formatting: up to 5 significant digits, scientific at/above 100,000
-    range: [yMin - yPadding, yMax + yPadding],  // Fixed range from baseline prevents zooming
-  }
-
-  // Apply configured axis range overrides (from YAML xMin/xMax/xAutoTrim/yAutoTrim)
-  // These override the default baseline-derived range when specified
-  const configuredXRange = computeAxisRange({
-    values: xDataForRange,
-    min: props.xMin,
-    max: props.xMax,
-    autoTrim: props.xAutoTrim,
-    padding: 0.02,
-  })
-  if (configuredXRange) {
-    xAxisConfig.range = configuredXRange
-    xAxisConfig.autorange = false
-  }
-
-  const configuredYRange = computeAxisRange({
-    values: yDataForRange,
-    min: props.yMin,
-    max: props.yMax,
-    autoTrim: props.yAutoTrim,
-    padding: 0.02,
-  })
-  if (configuredYRange) {
-    yAxisConfig.range = configuredYRange
-    yAxisConfig.autorange = false
-  }
-
-  const showLegend = hasCategories || props.showComparison || (colorByActive && colorByType === 'categorical') || hasSecondaryY
-
-  // Legend title: use formatAxisLabel for title-case + unit (e.g., "Fixed Price [EUR]")
-  // Falls back to colorBy option label when available, or raw column name
-  const legendTitle = colorByActive && colorByType === 'categorical' && !forceColorColumnGrouping
-    ? (props.colorByAttribute ? formatChartTitle(props.colorByAttribute, props.tableConfig?.columns?.formats) : undefined)
-    : hasCategories && props.colorColumn ? formatChartTitle(props.colorColumn, props.tableConfig?.columns?.formats) : undefined
-
-  // Secondary Y-axis config (right side)
-  const yAxis2Config: any = hasSecondaryY ? {
-    title: { text: formatChartTitle(props.yColumnRight!, props.tableConfig?.columns?.formats), font: { color: textColor, size: axisTitleFontSize.value, family: fontFamily } },
-    tickfont: { color: textColor, size: axisTickFontSize.value, family: fontFamily },
-    gridcolor: 'rgba(0,0,0,0)',  // Hide secondary gridlines to avoid clutter
-    linecolor: isScientific ? textColor : gridColor,
-    linewidth: isScientific ? 1.5 : 1,
-    showline: true,
-    zerolinecolor: gridColor,
-    automargin: true,
-    nticks: 10,
-    tickformat: '.5~g',
-    overlaying: 'y',
-    side: 'right',
-  } : undefined
-
-  // Right margin: needs space for secondary Y-axis label, legend, or colorbar
-  const rightMargin = hasSecondaryY
-    ? (showLegend ? 160 : 70)
-    : (showLegend ? 100 : (colorByActive && colorByType === 'numeric' ? 80 : 15))
-
-  const layout: any = {
-    font: {
-      family: fontFamily,
-      color: textColor,
-    },
-    xaxis: xAxisConfig,
-    yaxis: yAxisConfig,
-    ...(yAxis2Config ? { yaxis2: yAxis2Config } : {}),
-    margin: { l: 60, r: rightMargin, t: 10, b: 45 },
-    autosize: true,
-    paper_bgcolor: bgColor,
-    plot_bgcolor: bgColor,
-    hovermode: 'closest',
-    showlegend: showLegend,
-    legend: showLegend ? {
-      title: legendTitle ? { text: legendTitle, font: { color: textColor, size: legendTitleFontSize.value, family: fontFamily } } : undefined,
-      x: 1.02,
-      y: 1,
-      xanchor: 'left',
-      yanchor: 'top',
-      font: { color: textColor, size: legendFontSize.value, family: fontFamily },
-      bgcolor: 'rgba(0,0,0,0)',
-      borderwidth: 0,
-    } : undefined,
-  }
-
+  // 6. Interactive-specific config
   const config = {
-    displayModeBar: false,  // Always hide modebar
+    displayModeBar: false,
     responsive: true,
   }
 
   return { traces, layout, config }
 }
 
-// LinkageObserver for attribute pair selection
 const linkageObserver: LinkageObserver = {
   onHoveredIdsChange: () => {},      // Not used in scatter
   onSelectedIdsChange: () => {},     // Not used in scatter
