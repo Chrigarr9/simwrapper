@@ -12,6 +12,9 @@ import globalStore from '@/store'
 import { debugLog } from '../../utils/debug'
 import { formatLabel } from '../../utils/labelFormatter'
 import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
+import { buildPieFigure } from '@/export/trace-builders/pie'
+import type { PieInput } from '@/export/trace-builders/pie'
+import type { ChartStyle } from '@/export/types'
 
 interface TableConfig {
   columns?: {
@@ -152,265 +155,106 @@ const pieData = computed(() => {
   return sorted.map(([label, value]) => ({ label, value }))
 })
 
-const baselinePieData = computed(() => {
-  // Only compute if comparison mode is active and we have baseline data
-  if (!props.showComparison || !props.baselineData || props.baselineData.length === 0) {
-    debugLog('[PieChartCard] No baseline data for comparison')
-    return []
+/** Interactive style for the shared trace builder (non-scientific, theme-adaptive) */
+const buildInteractiveStyle = (): ChartStyle => {
+  const styleManager = StyleManager.getInstance()
+  const bgColor = styleManager.getColor('theme.background.primary')
+  const textColor = styleManager.getColor('theme.text.primary')
+  const lineColor = styleManager.getColor('theme.border.default')
+  return {
+    axisTitleFontSize: 11,
+    axisTickFontSize: 10,
+    legendTitleFontSize: 11,
+    legendFontSize: 10,
+    lineWidth: 1.5,
+    markerSizeMultiplier: 1.0,
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    backgroundColor: bgColor,
+    textColor,
+    gridColor: lineColor,
+    barColor: '#4e79a7',
+    selectedColor: '#666',
+    isScientific: false,
   }
-
-  const column = effectiveColumn.value
-  debugLog('[PieChartCard] Computing baseline pie from', props.baselineData.length, 'rows using column:', column)
-
-  const counts = new Map<string, number>()
-  props.baselineData.forEach(row => {
-    const val = row[column]
-    if (val !== null && val !== undefined) {
-      counts.set(String(val), (counts.get(String(val)) || 0) + 1)
-    }
-  })
-
-  // Sort categories consistently for legend: numeric asc or alphabetical
-  const sortedCategoryLabels = sortLegendCategories(Array.from(counts.keys()))
-  const sorted = sortedCategoryLabels.map((label) => [label, counts.get(label) || 0] as [string, number])
-
-  return sorted.map(([label, value]) => ({ label, value }))
-})
+}
 
 const renderChart = () => {
   if (!plotContainer.value || pieData.value.length === 0) return
 
-  // Theme-aware colors from StyleManager
   const styleManager = StyleManager.getInstance()
-  const isScientific = styleManager.isScientificMode()
-  const bgColor = styleManager.getColor('theme.background.primary')
-  const textColor = styleManager.getColor('theme.text.primary')
-  const lineColor = styleManager.getColor('theme.border.default')
+  const style = buildInteractiveStyle()
 
-  // Scientific mode font configuration
-  const fontFamily = isScientific
-    ? styleManager.getScientificConfig().fontFamily
-    : undefined
-
-  // Get colors - use color map for each category, darken if selected
-  const colors = pieData.value.map(d => {
-    // Use colorMap (always populated by pieData computed), fallback to categorical palette
-    const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
-    if (selectedCategories.value.size > 0 && !selectedCategories.value.has(d.label)) {
-      // Dim unselected slices — use alpha from StyleManager
-      const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255).toString(16).padStart(2, '0')
-      return baseColor + dimAlpha
+  // Build color map with selection dimming applied
+  // The shared builder doesn't know about interactive selections,
+  // so we pre-process the color map to dim unselected slices
+  const selectionAwareColorMap = new Map<string, string>(colorMap.value)
+  if (selectedCategories.value.size > 0) {
+    const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255).toString(16).padStart(2, '0')
+    for (const [label, color] of selectionAwareColorMap) {
+      if (!selectedCategories.value.has(label)) {
+        selectionAwareColorMap.set(label, color + dimAlpha)
+      }
     }
-    return baseColor
-  })
-
-  const traces: any[] = []
-
-  // Calculate total for percentage threshold
-  const total = pieData.value.reduce((sum, d) => sum + d.value, 0)
-
-  // Determine text position per slice based on size and mode
-  // Comparison mode: NO outside labels (constrained domain causes overlap issues)
-  // Scientific mode (no comparison): outside labels for pattern readability
-  const textPositions = pieData.value.map(d => {
-    const pct = (d.value / total) * 100
-    if (props.showComparison) {
-      // Comparison mode: inside only for large slices, rely on legend for others
-      if (pct >= 20) return 'inside'
-      return 'none'  // Legend shows categories
-    }
-    if (isScientific) {
-      // Scientific mode (no comparison): outside for readability over patterns
-      if (pct >= 5) return 'outside'
-      return 'none'
-    }
-    // Standard mode
-    if (pct >= 10) return 'inside'
-    if (pct >= 3) return 'outside'
-    return 'none'
-  })
-
-  // Only show label+percent for slices that have visible text
-  const textTemplate = pieData.value.map(d => {
-    const pct = (d.value / total) * 100
-    if (props.showComparison) {
-      // Comparison mode: shorter labels for inside positioning
-      if (pct >= 20) return '%{percent}'  // Just percent, legend shows category
-      return ''
-    }
-    if (pct >= 10) return '%{label}<br>%{percent}'  // Inside: label on top, percent below
-    if (pct >= 3) return '%{label} %{percent}'  // Outside: inline
-    return ''  // Hidden
-  })
-
-  // Main pie chart (inner ring when comparison active)
-  // Scientific mode uses thicker slice outlines for publication clarity
-
-  // Build consistent pattern index based on alphabetically sorted categories (from colorMap)
-  // This ensures same category always gets same pattern regardless of filter state
-  const sortedCategories = Array.from(colorMap.value.keys())
-  const getCategoryPatternIndex = (label: string) => {
-    const idx = sortedCategories.indexOf(label)
-    return idx >= 0 ? idx : 0
   }
 
-  // Generate distinct patterns per slice in scientific mode
-  const slicePatterns = isScientific
-    ? pieData.value.map(d => styleManager.getScientificPiePattern(getCategoryPatternIndex(d.label)))
-    : undefined
-
-  const mainTrace: any = {
-    labels: pieData.value.map(d => formatLabel(d.label, props.tableConfig?.columns?.formats, effectiveColumn.value)),
-    values: pieData.value.map(d => d.value),
-    type: 'pie',
-    name: props.showComparison ? 'Filtered (inner)' : undefined,
-    // In comparison mode, hide legend from inner trace (baseline shows all categories)
-    showlegend: !props.showComparison,
-    marker: {
-      colors,
-      pattern: isScientific ? {
-        shape: slicePatterns,
-        bgcolor: colors,
-        fgcolor: pieData.value.map(() => textColor),  // Pattern lines in text color
-        size: 10,
-        solidity: 0.4
-      } : undefined,
-      line: {
-        // Selected slices get white border for contrast, others use theme border
-        color: pieData.value.map(d =>
-          selectedCategories.value.has(d.label) ? '#ffffff' : lineColor
-        ),
-        width: pieData.value.map(d =>
-          selectedCategories.value.has(d.label) ? 3 : (isScientific ? 2 : 1)
-        ),
-      },
-    },
-    textposition: textPositions,
-    texttemplate: textTemplate,
-    textfont: {
-      color: isScientific ? '#000000' : textColor,  // Pure black for scientific
-      size: 11,
-      family: fontFamily
-    },
-    outsidetextfont: { color: textColor, size: 10, family: fontFamily },
-    insidetextorientation: 'horizontal',  // Keep inside text readable
-    hovertemplate: '%{label}: %{value} (%{percent})<extra></extra>',
-    hole: props.showComparison ? 0.4 : 0.3,  // Smaller hole for inner ring
-    // Constrain to inner area when comparison active
-    domain: props.showComparison ? { x: [0.15, 0.85], y: [0.15, 0.85] } : undefined,
+  // Build PieInput from Vue component state
+  const input: PieInput = {
+    filteredData: props.filteredData,
+    baselineData: props.baselineData,
+    column: effectiveColumn.value,
+    title: undefined,  // Title is shown in card header
+    colorMap: selectionAwareColorMap,
+    showComparison: props.showComparison,
   }
-  traces.push(mainTrace)
 
-  // Baseline ring (if comparison mode) - outer ring with transparency
-  // Uses same patterns as filtered (matched by category), only opacity differs
-  if (props.showComparison && baselinePieData.value.length > 0) {
-    // Use same color map but with transparency
-    const baselineAlpha = Math.round(styleManager.getDimmedOpacity() * 255).toString(16).padStart(2, '0')
-    const baselineColors = baselinePieData.value.map(d => {
-      const baseColor = colorMap.value.get(d.label) || styleManager.getCategoricalColor(0)
-      return baseColor + baselineAlpha
-    })
+  const figure = buildPieFigure(input, style)
 
-    // In scientific mode, use consistent pattern index from colorMap (same as filtered)
-    const baselinePatterns = isScientific
-      ? baselinePieData.value.map(d => styleManager.getScientificPiePattern(getCategoryPatternIndex(d.label)))
-      : undefined
+  // --- Post-process traces for interactive-specific features ---
 
-    traces.push({
-      labels: baselinePieData.value.map(d => formatLabel(d.label, props.tableConfig?.columns?.formats, effectiveColumn.value)),
-      values: baselinePieData.value.map(d => d.value),
-      type: 'pie',
-      name: 'Baseline (outer)',
-      marker: {
-        colors: baselineColors,
-        pattern: isScientific ? {
-          shape: baselinePatterns,
-          bgcolor: baselineColors,
-          fgcolor: baselinePieData.value.map(() => textColor),
-          size: 10,
-          solidity: 0.4
-        } : undefined,
-        line: {
-          color: lineColor,
-          width: isScientific ? 2 : 1,
-        },
-      },
-      textinfo: 'none', // No text on baseline ring
-      hovertemplate: '<b>Baseline: %{label}</b><br>%{value} (%{percent})<extra></extra>',
-      hole: 0.7, // Large hole for outer ring
-      domain: { x: [0, 1], y: [0, 1] }, // Full area
-      showlegend: true,  // Show ALL categories in legend (baseline has all)
-    })
+  // 1. Apply formatLabel to display labels (shared builder uses raw labels)
+  const formats = props.tableConfig?.columns?.formats
+  const col = effectiveColumn.value
+  for (const trace of figure.traces) {
+    const t = trace as any
+    if (t.labels && Array.isArray(t.labels)) {
+      t.labels = t.labels.map((l: string) => formatLabel(l, formats, col))
+    }
+  }
+
+  // 2. Apply selection-aware line styling to main trace (trace 0)
+  // Selected slices get white border for visual contrast
+  if (selectedCategories.value.size > 0 && figure.traces.length > 0) {
+    const mainTrace = figure.traces[0] as any
+    // Recover raw labels from pieData to check selection state
+    const rawLabels = pieData.value.map(d => d.label)
+    mainTrace.marker.line = {
+      color: rawLabels.map(label =>
+        selectedCategories.value.has(label) ? '#ffffff' : style.gridColor
+      ),
+      width: rawLabels.map(label =>
+        selectedCategories.value.has(label) ? 3 : 1
+      ),
+    }
+  }
+
+  // 3. Apply formatChartTitle to legend title
+  const legendTitle = formatChartTitle(
+    effectiveColumn.value,
+    props.tableConfig?.columns?.formats,
+    {
+      labelOverride: props.colorByOptions?.find(opt => opt.attribute === effectiveColumn.value)?.label || undefined,
+      stripEmptyUnits: true,
+    }
+  )
+  if (figure.layout && (figure.layout as any).legend?.title) {
+    ;(figure.layout as any).legend.title.text = legendTitle
   }
 
   Plotly.newPlot(
     plotContainer.value,
-    traces,
-    {
-      font: {
-        family: fontFamily,
-        color: textColor,
-      },
-      title: {
-        text: '',  // Title is shown in card header
-        font: { color: textColor, family: fontFamily },
-      },
-      margin: { t: 10, b: 15, l: 15, r: 100 },  // Right margin for legend
-      autosize: true,
-      paper_bgcolor: bgColor,
-      plot_bgcolor: bgColor,
-      uniformtext: { minsize: 9, mode: 'hide' },  // Hide labels that don't fit
-      showlegend: true,
-      legend: {
-        title: {
-          text: formatChartTitle(
-            effectiveColumn.value,
-            props.tableConfig?.columns?.formats,
-            {
-              labelOverride: props.colorByOptions?.find(opt => opt.attribute === effectiveColumn.value)?.label || undefined,
-              stripEmptyUnits: true,
-            }
-          ),
-          font: { color: textColor, size: 11, family: fontFamily }
-        },
-        font: { color: textColor, size: 10, family: fontFamily },
-        bgcolor: 'transparent',
-        orientation: 'v',  // Vertical legend on the right
-        x: 1.02,
-        xanchor: 'left',
-        y: 0.5,
-        yanchor: 'middle',
-      },
-      annotations: [
-        // Center annotation showing count
-        {
-          text: props.showComparison
-            ? `<b>${props.filteredData?.length || 0}</b><br><span style="font-size:10px">of ${props.baselineData?.length || 0}</span>`
-            : `<b>${pieData.value.reduce((sum, d) => sum + d.value, 0)}</b>`,
-          x: 0.5,
-          y: 0.5,
-          xref: 'paper',
-          yref: 'paper',
-          showarrow: false,
-          font: { size: 16, color: textColor, family: fontFamily },
-        },
-        // Ring legend annotation (comparison mode only)
-        ...(props.showComparison ? [{
-          text: `<span style="font-size:9px"><b>Inner:</b> Filtered<br><b>Outer:</b> Baseline</span>`,
-          x: 1.02,
-          y: 0.05,
-          xref: 'paper',
-          yref: 'paper',
-          xanchor: 'left',
-          showarrow: false,
-          font: { size: 9, color: textColor, family: fontFamily },
-        }] : []),
-      ],
-    },
-    {
-      displayModeBar: !isScientific ? false : false,  // Always hide modebar
-      responsive: true,
-    }
+    figure.traces,
+    figure.layout,
+    figure.config || { displayModeBar: false, responsive: true },
   )
 
   // Click handler - only respond to main pie trace (trace index 0)
