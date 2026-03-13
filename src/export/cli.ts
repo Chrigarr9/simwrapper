@@ -1,7 +1,7 @@
 import { resolve, dirname, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import YAML from 'yaml'
-import Papa from 'papaparse'
+import Papa from '@simwrapper/papaparse'
 
 import { parseExportConfig, resolveExportPlan } from './configParser'
 import { CHART_BUILDERS, MAP_BUILDER, isMapType } from './trace-builders'
@@ -24,19 +24,17 @@ async function main() {
     process.exit(1)
   }
 
-  let outputDir = resolve(dirname(configPath), 'export')
+  let cliOutputDir: string | null = null
   let statesFilter: string[] | null = null
   let formatOverride: 'png' | 'svg' | null = null
   let scaleOverride: number | null = null
 
   for (let i = 1; i < args.length; i++) {
-    if (args[i] === '--output' && args[i + 1]) { outputDir = resolve(args[++i]); continue }
+    if (args[i] === '--output' && args[i + 1]) { cliOutputDir = resolve(args[++i]); continue }
     if (args[i] === '--states' && args[i + 1]) { statesFilter = args[++i].split(','); continue }
     if (args[i] === '--format' && args[i + 1]) { formatOverride = args[++i] as any; continue }
     if (args[i] === '--scale' && args[i + 1]) { scaleOverride = Number(args[++i]); continue }
   }
-
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
   // Parse config
   const yamlText = readFileSync(configPath, 'utf-8')
@@ -54,6 +52,13 @@ async function main() {
 
   const config = parseExportConfig(yamlText, dashboardYaml)
   let plan = resolveExportPlan(config)
+
+  // Resolve output directory: CLI flag > config output.directory > default 'export'
+  const configOutputDir = config.exportSection.output?.directory
+  const outputDir = cliOutputDir
+    ?? (configOutputDir ? resolve(dirname(configPath), configOutputDir) : resolve(dirname(configPath), 'export'))
+
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
   // Apply CLI overrides
   if (statesFilter) plan = plan.filter(p => statesFilter!.includes(p.stateId))
@@ -167,7 +172,24 @@ async function loadMapLayers(plotDef: any, baseDir: string): Promise<any[]> {
   for (const layerDef of (plotDef.layers || [])) {
     const geojsonPath = resolve(baseDir, layerDef.file)
     if (existsSync(geojsonPath)) {
-      const geojson = JSON.parse(readFileSync(geojsonPath, 'utf-8'))
+      let geojson = JSON.parse(readFileSync(geojsonPath, 'utf-8'))
+
+      // Apply feature filters if specified
+      if (layerDef.filter && Array.isArray(layerDef.filter) && geojson.features) {
+        geojson = {
+          ...geojson,
+          features: geojson.features.filter((feature: any) => {
+            return layerDef.filter.every((f: any) => {
+              const val = feature.properties?.[f.property]
+              if (Array.isArray(f.value)) {
+                return f.value.includes(val)
+              }
+              return val === f.value
+            })
+          }),
+        }
+      }
+
       layers.push({ ...layerDef, geojsonData: geojson })
     } else {
       console.warn(`Warning: GeoJSON file not found: ${geojsonPath}`)

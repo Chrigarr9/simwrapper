@@ -1,7 +1,10 @@
 import { JSDOM } from 'jsdom'
 import { Resvg } from '@resvg/resvg-js'
 import { readFileSync } from 'fs'
+import { createRequire } from 'module'
 import type { PlotlyFigure, ExportResult } from '../types'
+
+const require = createRequire(import.meta.url)
 
 let plotlyJsSource: string | null = null
 

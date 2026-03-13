@@ -49,7 +49,7 @@ export interface ColorByConfig {
 
 export interface SizeByConfig {
   attribute: string
-  scale: [number, number]
+  scale?: [number, number]
 }
 
 // ---------------------------------------------------------------------------
@@ -461,7 +461,7 @@ function buildSizeExpression(
   // Guard against zero-range
   const effectiveMax = min === max ? min + 1 : max
 
-  const [minSize, maxSize] = sizeBy.scale
+  const [minSize, maxSize] = sizeBy.scale ?? [1, 8]
 
   return [
     'interpolate',
@@ -541,7 +541,7 @@ export function generateBezierArc(
 // ---------------------------------------------------------------------------
 
 function resolveStyleUrl(mapStyle: string | undefined, style: ChartStyle): string {
-  if (!mapStyle) {
+  if (!mapStyle || mapStyle === 'auto') {
     // Light background → positron; dark → dark-matter
     return style.backgroundColor === '#ffffff' || !style.backgroundColor
       ? MAP_STYLES['positron'] ?? MAP_STYLES['light']

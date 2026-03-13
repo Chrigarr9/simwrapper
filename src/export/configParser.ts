@@ -14,7 +14,10 @@ export interface ParsedExportConfig {
 
 /**
  * Parse export config from YAML string.
- * Handles both inline (dashboard with export: section) and linked (separate export YAML).
+ * Handles three formats:
+ * 1. Inline: dashboard YAML with `layout` + `export:` section
+ * 2. Linked: export YAML with `dashboard:` field referencing a dashboard file
+ * 3. Standalone: export YAML with `plots` defined directly (no layout/dashboard)
  */
 export function parseExportConfig(
   yamlText: string,
@@ -22,12 +25,26 @@ export function parseExportConfig(
 ): ParsedExportConfig {
   const parsed = YAML.parse(yamlText)
 
-  // Detect mode: linked (has `dashboard` field) or inline (has `layout` + `export`)
+  // Detect mode: linked (has `dashboard` field) or inline (has `layout` + `export`) or standalone
   if (parsed.dashboard && dashboardYamlText) {
     return parseLinkedConfig(parsed as LinkedExportConfig, dashboardYamlText)
   }
 
-  return parseInlineConfig(parsed as DashboardConfig)
+  if (parsed.layout && parsed.export) {
+    return parseInlineConfig(parsed as DashboardConfig)
+  }
+
+  // Standalone: has `plots` (as dict of plot definitions) + `states` at top level
+  if (parsed.plots && parsed.states) {
+    return parseStandaloneConfig(parsed)
+  }
+
+  throw new Error(
+    'Unrecognized export YAML format. Expected one of: ' +
+    '(1) dashboard with layout+export sections, ' +
+    '(2) linked config with dashboard field, or ' +
+    '(3) standalone config with plots+states fields'
+  )
 }
 
 function parseInlineConfig(dashboard: DashboardConfig): ParsedExportConfig {
@@ -68,6 +85,40 @@ function parseLinkedConfig(
     cards,
     exportSection,
     outputNaming: exportConfig.output?.naming ?? '{state}-{plot}',
+  }
+}
+
+/**
+ * Standalone format: plots defined directly at top level (not from a dashboard layout).
+ * Format:
+ *   table: { file: ... }
+ *   defaults: { format, width, ... }
+ *   plots: { plot-name: { type, xColumn, yColumn, ... }, ... }
+ *   states: { state-name: { export: [...], filters: ... }, ... }
+ *   output: { naming, directory }
+ */
+function parseStandaloneConfig(config: any): ParsedExportConfig {
+  if (!config.table?.file) throw new Error('Standalone export YAML has no table.file')
+
+  // In standalone format, each plot in `plots` is a card definition keyed by name
+  const cards: Record<string, Record<string, any>> = {}
+  for (const [name, plotDef] of Object.entries(config.plots as Record<string, any>)) {
+    cards[name] = { ...plotDef, name }
+  }
+
+  const exportSection: ExportSection = {
+    defaults: config.defaults,
+    plots: config.plots,
+    states: config.states,
+    output: config.output,
+  }
+  validateCardReferences(cards, exportSection)
+
+  return {
+    table: config.table,
+    cards,
+    exportSection,
+    outputNaming: config.output?.naming ?? '{state}-{plot}',
   }
 }
 
