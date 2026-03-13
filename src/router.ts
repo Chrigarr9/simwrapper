@@ -48,15 +48,6 @@ const routes = [
     }),
   },
   {
-    path: BASE_URL + 'export',
-    component: () => import('@/plugins/interactive-dashboard/export/ExportPage.vue'),
-    props: (route: Route) => ({
-      configPath: route.query.config as string,
-      root: route.query.root as string,
-      subfolder: route.query.subfolder as string,
-    }),
-  },
-  {
     path: BASE_URL + '*',
     component: () => import('@/layout-manager/LayoutManager.vue'),
   },

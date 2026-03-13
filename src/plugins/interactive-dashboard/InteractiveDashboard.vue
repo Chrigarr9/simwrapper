@@ -26,13 +26,6 @@
           i.fa(:class="themeIcon")
           span.theme-label {{ currentThemeName }}
 
-        export-button(
-          :export-configs="yaml.export || []"
-          :dashboard-title="title"
-          :file-loader="loadFileForExport"
-          :subfolder="xsubfolder"
-        )
-
       .favstar
         p.favorite-icon(title="Favorite"
           :class="{'is-favorite': isFavorite}"
@@ -208,7 +201,6 @@ import DataTableCard from './components/cards/DataTableCard.vue'
 import DashboardCard from './components/DashboardCard.vue'
 import ComparisonToggle from './components/controls/ComparisonToggle.vue'
 import ExportAllButton from './components/controls/ExportAllButton.vue'
-import ExportButton from './export/ExportButton.vue'
 import ColorBySelector from './components/controls/ColorBySelector.vue'
 
 // append a prefix so the html template is legal
@@ -224,7 +216,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ExportButton, ColorBySelector }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ColorBySelector }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -817,11 +809,6 @@ export default defineComponent({
     },
 
     // Note: getCardStyle removed - card styling now handled by DashboardCard component
-
-    async loadFileForExport(path: string): Promise<Blob> {
-      const filepath = this.xsubfolder + '/' + path
-      return this.fileApi.getFileBlob(filepath)
-    },
 
     getFileSystem(name: string): FileSystemConfig {
       const svnProject: FileSystemConfig[] = this.$store.state.svnProjects.filter(
