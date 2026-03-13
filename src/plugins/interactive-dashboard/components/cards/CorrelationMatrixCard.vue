@@ -14,7 +14,8 @@ import { StyleManager } from '../../managers/StyleManager'
 import globalStore from '@/store'
 import { computeCorrelationGrid } from '../../utils/statistics'
 import type { CorrelationMatrixResult } from '../../utils/statistics'
-import { formatChartTitle } from '../../utils/chartFormatting'
+import { buildCorrelationFigure, type CorrelationInput } from '@/export/trace-builders/correlation'
+import type { ChartStyle } from '@/export/types'
 
 interface Props {
   title?: string
@@ -75,12 +76,6 @@ function isCellVisible(rowIdx: number, colIdx: number): boolean {
   return rowIdx >= colIdx
 }
 
-function getDisplayMatrix(matrix: number[][]): number[][] {
-  return matrix.map((row, rowIdx) =>
-    row.map((value, colIdx) => (isCellVisible(rowIdx, colIdx) ? value : Number.NaN))
-  )
-}
-
 // Computed properties
 const sampleSize = computed(() => {
   if (!correlationData.value) return 0
@@ -98,13 +93,6 @@ const sampleSize = computed(() => {
     }
   }
   return minN === Infinity ? 0 : minN
-})
-
-const shouldShowValues = computed(() => {
-  if (props.showValues === 'always') return true
-  if (props.showValues === 'never') return false
-  // Auto mode: hide if more than 20 attributes
-  return Math.max(resolvedLeftAttributes.value.length, resolvedBottomAttributes.value.length) <= 20
 })
 
 // Calculate correlations from filtered data
@@ -197,129 +185,69 @@ function getDashboardThemeColors(): { bgColor: string; textColor: string } {
   }
 }
 
-// Render Plotly heatmap
-function renderChart() {
-  if (!plotContainer.value || !correlationData.value) return
-
-  // Theme colors from live CSS variables (fallback to StyleManager)
+// Build interactive ChartStyle from dashboard theme
+function getInteractiveStyle(): ChartStyle {
   const styleManager = StyleManager.getInstance()
   const isScientific = styleManager.isScientificMode()
   const { bgColor, textColor } = getDashboardThemeColors()
 
-  // Scientific mode font configuration
   const fontFamily = isScientific
     ? styleManager.getScientificConfig().fontFamily
-    : undefined
+    : 'Arial, Helvetica, sans-serif'
 
+  return {
+    axisTitleFontSize: 11,
+    axisTickFontSize: 10,
+    legendTitleFontSize: 11,
+    legendFontSize: 10,
+    lineWidth: 1.5,
+    markerSizeMultiplier: 1.0,
+    fontFamily,
+    backgroundColor: bgColor,
+    textColor,
+    gridColor: '#e0e0e0',
+    barColor: '#4e79a7',
+    selectedColor: '#666',
+    isScientific,
+  }
+}
+
+// Render Plotly heatmap using shared trace builder
+function renderChart() {
+  if (!plotContainer.value || !correlationData.value) return
+
+  const style = getInteractiveStyle()
+
+  // Build figure via shared trace builder
+  const input: CorrelationInput = {
+    filteredData: props.filteredData,
+    attributes: props.attributes,
+    leftAttributes: resolvedLeftAttributes.value,
+    bottomAttributes: resolvedBottomAttributes.value,
+    matrixPart: props.matrixPart,
+    showValues: props.showValues,
+    pValueThreshold: props.pValueThreshold,
+  }
+
+  const figure = buildCorrelationFigure(input, style)
+
+  // Augment the trace with interactive hover data (p-values, sample sizes)
+  // The shared builder doesn't include these since they are interactive-only
+  if (figure.traces.length > 0) {
+    const trace = figure.traces[0] as any
+    trace.hovertemplate = buildHoverTemplate()
+    trace.customdata = buildCustomData()
+  }
+
+  // Retrieve original attribute names for click handler
   const matrix = correlationData.value.matrix
-  const displayMatrix = getDisplayMatrix(matrix)
   const rowAttributes = correlationData.value.rowAttributes || resolvedLeftAttributes.value
   const columnAttributes = correlationData.value.columnAttributes || resolvedBottomAttributes.value
-  const rowCount = matrix.length
-  const colCount = rowCount > 0 ? matrix[0].length : 0
 
-  // Build annotations if showing values
-  const annotations: any[] = []
-  if (shouldShowValues.value) {
-    // Use compact format when matrix is cramped (many attributes)
-    const useCompactFormat = Math.max(rowCount, colCount) > 6
-
-    for (let i = 0; i < rowCount; i++) {
-      for (let j = 0; j < colCount; j++) {
-        if (!isCellVisible(i, j)) continue
-
-        const r = matrix[i][j]
-        if (!Number.isFinite(r)) continue
-
-        // Format correlation value
-        let text: string
-        if (Math.abs(r) === 1) {
-          // Perfect correlation: show as "1" or "-1"
-          text = r === 1 ? '1' : '-1'
-        } else if (useCompactFormat) {
-          // Compact format: remove leading zero (0.45 -> .45, -0.45 -> -.45)
-          const formatted = r.toFixed(2)
-          text = formatted.replace(/^(-?)0\./, '$1.')
-        } else {
-          // Full format
-          text = r.toFixed(2)
-        }
-
-        // Text color: white on dark cells, black on light cells
-        const textColorAnnotation = Math.abs(r) > 0.5 ? '#ffffff' : '#000000'
-
-        annotations.push({
-          x: formatChartTitle(columnAttributes[j], undefined, { stripEmptyUnits: true }),
-          y: formatChartTitle(rowAttributes[i], undefined, { stripEmptyUnits: true }),
-          text: text,
-          showarrow: false,
-          font: {
-            color: textColorAnnotation,
-            size: 10,
-            family: fontFamily,
-          }
-        })
-      }
-    }
-  }
-
-  // Plotly heatmap trace
-  const trace = {
-    z: displayMatrix,
-    x: columnAttributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
-    y: rowAttributes.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true })),
-    type: 'heatmap',
-    colorscale: [
-      [0, '#3b4cc0'],  // Blue for -1 (negative)
-      [0.5, '#f7f7f7'],  // White for 0
-      [1, '#b40426']   // Red for +1 (positive)
-    ],
-    zmid: 0,
-    zmin: -1,
-    zmax: 1,
-    hovertemplate: buildHoverTemplate(),
-    customdata: buildCustomData(),
-    showscale: true,
-    colorbar: {
-      title: { text: 'r', font: { color: textColor, family: fontFamily } },
-      tickfont: { color: textColor, family: fontFamily },
-    }
-  }
-
-  // Layout with adaptive margins based on label lengths
-  const allAxisLabels = [...rowAttributes, ...columnAttributes]
-  const maxLabelLength = allAxisLabels.length > 0
-    ? Math.max(...allAxisLabels.map(a => formatChartTitle(a, undefined, { stripEmptyUnits: true }).length))
-    : 0
-  // Scale margins based on longest label: base 80px + 5px per char over 10
-  const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLabelLength - 10) * 5)
-
-  const layout = {
-    font: {
-      family: fontFamily,
-      color: textColor,
-    },
-    xaxis: {
-      tickfont: { color: textColor, size: 10, family: fontFamily },
-      tickangle: -45,
-      side: 'bottom',
-      automargin: true,  // Allow Plotly to expand margins for long labels
-    },
-    yaxis: {
-      tickfont: { color: textColor, size: 10, family: fontFamily },
-      autorange: 'reversed',  // Top-to-bottom matches matrix convention
-      automargin: true,  // Allow Plotly to expand margins for long labels
-    },
-    margin: { l: dynamicMargin, r: 60, t: 20, b: dynamicMargin },
-    paper_bgcolor: bgColor,
-    plot_bgcolor: bgColor,
-    annotations: annotations,
-  }
-
-  Plotly.newPlot(plotContainer.value, [trace], layout, {
-    displayModeBar: false,
+  Plotly.newPlot(plotContainer.value, figure.traces, figure.layout, {
+    ...figure.config,
     responsive: true,
-  })
+  } as any)
 
   // Click handler for cell selection
   plotContainer.value.on('plotly_click', (data: any) => {
