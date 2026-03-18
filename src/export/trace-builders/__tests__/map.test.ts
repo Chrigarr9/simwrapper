@@ -595,6 +595,53 @@ describe('buildMapRenderConfig', () => {
       expect(result.legend!.minColor).toBeDefined()
       expect(result.legend!.maxColor).toBeDefined()
     })
+
+    it('uses explicit minColor and maxColor for numeric colorBy', () => {
+      const input: MapInput = {
+        layers: [
+          {
+            name: 'zones',
+            type: 'polygon',
+            geojsonData: numericFeatures,
+            colorBy: {
+              attribute: 'population',
+              type: 'numeric',
+              minColor: '#d1d5db',
+              maxColor: '#b91c1c',
+            } as any,
+          },
+        ],
+      }
+      const result = buildMapRenderConfig(input, LIGHT_STYLE)
+      const fillColor = result.layers[0].paint['fill-color']
+
+      expect(fillColor[4]).toBe('#d1d5db')
+      expect(fillColor[6]).toBe('#b91c1c')
+      expect(result.legend!.minColor).toBe('#d1d5db')
+      expect(result.legend!.maxColor).toBe('#b91c1c')
+    })
+
+    it('applies numeric colorBy to polygon outlines as well as fills', () => {
+      const input: MapInput = {
+        layers: [
+          {
+            name: 'zones',
+            type: 'polygon',
+            geojsonData: numericFeatures,
+            fillOpacity: 0,
+            colorBy: {
+              attribute: 'population',
+              type: 'numeric',
+            },
+          },
+        ],
+      }
+      const result = buildMapRenderConfig(input, LIGHT_STYLE)
+      const fillColor = result.layers[0].paint['fill-color']
+      const outlineColor = result.layers[1].paint['line-color']
+
+      expect(outlineColor).toEqual(fillColor)
+    })
   })
 
   describe('multiple layers', () => {

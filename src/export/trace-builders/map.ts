@@ -45,6 +45,8 @@ export interface ColorByConfig {
   type: 'categorical' | 'numeric'
   colors?: Record<string, string>
   scale?: [number, number]
+  minColor?: string
+  maxColor?: string
 }
 
 export interface SizeByConfig {
@@ -149,12 +151,14 @@ function translatePolygonLayer(input: MapLayerInput): TranslationResult {
   }
   const layers: MapExportLayer[] = []
   let legend: LegendData | undefined
+  let colorExpression: any
 
   // Fill layer
   const fillPaint: Record<string, any> = {}
 
   if (input.colorBy) {
     const { expression, legendData } = buildColorExpression(input)
+    colorExpression = expression
     fillPaint['fill-color'] = expression
     legend = legendData
   } else {
@@ -171,7 +175,7 @@ function translatePolygonLayer(input: MapLayerInput): TranslationResult {
 
   // Outline (line) layer
   const linePaint: Record<string, any> = {
-    'line-color': input.lineColor ?? '#333333',
+    'line-color': input.lineColor ?? colorExpression ?? '#333333',
     'line-width': input.lineWidth ?? 1,
   }
 
@@ -413,15 +417,18 @@ function buildNumericColorExpression(
     max = min + 1
   }
 
+  const minColor = colorBy.minColor ?? NUMERIC_COLOR_RAMP[0]
+  const maxColor = colorBy.maxColor ?? NUMERIC_COLOR_RAMP[1]
+
   // MapLibre interpolate expression
   const expression = [
     'interpolate',
     ['linear'],
     ['get', colorBy.attribute],
     min,
-    NUMERIC_COLOR_RAMP[0],
+    minColor,
     max,
-    NUMERIC_COLOR_RAMP[1],
+    maxColor,
   ]
 
   const legendData: LegendData = {
@@ -429,8 +436,8 @@ function buildNumericColorExpression(
     title: colorBy.attribute,
     minValue: min,
     maxValue: max,
-    minColor: NUMERIC_COLOR_RAMP[0],
-    maxColor: NUMERIC_COLOR_RAMP[1],
+    minColor,
+    maxColor,
   }
 
   return { expression, legendData }
