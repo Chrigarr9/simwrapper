@@ -1,6 +1,6 @@
 <template>
   <div class="map-card">
-    <!-- Map Controls (geometry type and color-by selectors) -->
+    <!-- Map Controls (geometry type selector only - color-by moved to dashboard header) -->
     <div v-if="hasMapControls" class="map-controls">
       <div v-if="mapControlsConfig?.geometryType" class="control-item">
         <label class="control-label">Geometry</label>
@@ -10,17 +10,15 @@
           </option>
         </select>
       </div>
-      <div v-if="mapControlsConfig?.colorBy && colorByOptions.length > 0" class="control-item">
-        <label class="control-label">Color by</label>
-        <select class="control-select" :value="colorByAttribute" @change="onColorByChange">
-          <option v-for="opt in colorByOptions" :key="opt.attribute" :value="opt.attribute">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
     </div>
 
-    <div :id="mapId" class="map-container"></div>
+    <div
+      :id="mapId"
+      class="map-container"
+      :class="{ 'scientific-mode': isScientificMode }"
+      data-exportable-map="true"
+      :data-legend-json="exportMode && legendData ? JSON.stringify(legendData) : undefined"
+    ></div>
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
       <div>Loading map...</div>
@@ -45,21 +43,37 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { PolygonLayer, LineLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers'
+import { PolygonLayer, PathLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers'
 import type { Position } from '@deck.gl/core'
 import { FileSystemConfig } from '@/Globals'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 import globalStore from '@/store'
 import ColorLegend from './ColorLegend.vue'
 import { debugLog } from '../../utils/debug'
+import { toTitleCase } from '../../utils/labelFormatter'
+import { formatChartTitle, sortLegendCategories } from '../../utils/chartFormatting'
+import { StyleManager } from '../../managers/StyleManager'
+import { computeAllLayerRoles } from '../../managers/LayerColoringManager'
+import type { LayerColoringRole, LayerStrategy, ColorByRole } from '../../types/layerColoring'
+
+// Debug flag for one-time logging
+declare global {
+  interface Window {
+    _colorByDebugLogged?: boolean
+  }
+}
 
 // Types
 interface LayerConfig {
   name: string
   file: string
-  type: 'polygon' | 'line' | 'arc' | 'scatterplot'
+  type: 'polygon' | 'fill' | 'line' | 'arc' | 'scatterplot'
   visible?: boolean
   zIndex?: number
+
+  // Geometry type filter - layer only visible when this matches the selected geometryType
+  // Used by the geometry type selector (origin/destination/od/all)
+  geometryType?: string
 
   // Polygon styling
   fillColor?: string
@@ -113,7 +127,25 @@ interface LayerConfig {
     onHover?: 'highlight' | 'none'
     onSelect?: 'filter' | 'highlight' | 'none'
     hideOthersOnSelect?: boolean  // When true, hide non-filtered features completely instead of dimming
+    renderOnlyWhenLinked?: boolean  // When true, render features only if linked IDs are hovered/selected
   }
+
+  // Explicit layer coloring role override (from YAML layer config)
+  // When set, overrides auto-detection in LayerColoringManager
+  // 'primary': Layer receives full colorBy data coloring
+  // 'secondary': Layer receives subdued coloring (future use)
+  // 'neutral': Layer receives theme-neutral styling (skips colorBy)
+  // 'auto': Defer to automatic role detection based on layer relationships
+  colorByRole?: ColorByRole
+}
+
+type AggregationMethod = 'first' | 'mean' | 'sum' | 'min' | 'max'
+
+interface ColorByOption {
+  attribute: string
+  label: string
+  type: string
+  aggregation?: AggregationMethod
 }
 
 interface Props {
@@ -153,9 +185,15 @@ interface Props {
   showComparison?: boolean
   baselineData?: any[]
 
+  // Export mode (headless image capture)
+  exportMode?: boolean
+
   // Map control selections (from dashboard)
   geometryType?: string
   colorByAttribute?: string
+
+  // Layer coloring strategy (from YAML map.colorBy.layerStrategy)
+  layerStrategy?: LayerStrategy
 
   // Map controls configuration (from YAML)
   mapControlsConfig?: {
@@ -163,7 +201,14 @@ interface Props {
     colorBy?: boolean
   }
   geometryTypeOptions?: Array<{ value: string; label: string }>
-  colorByOptions?: Array<{ attribute: string; label: string; type: string }>
+  colorByOptions?: Array<ColorByOption>
+
+  // If true, hover/select all layers under the cursor (multi-level picking)
+  multiLevelSelection?: boolean
+
+  // ViewSync: linked viewport across maps in the same group
+  viewSyncGroup?: string
+  externalViewport?: { center: [number, number]; zoom: number; bearing?: number; pitch?: number } | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -175,26 +220,32 @@ const props = withDefaults(defineProps<Props>(), {
   filteredData: () => [],
   hoveredIds: () => new Set(),
   selectedIds: () => new Set(),
+  exportMode: false,
   geometryType: 'all',
   colorByAttribute: '',
+  layerStrategy: 'auto',
   geometryTypeOptions: () => [],
   colorByOptions: () => [],
+  multiLevelSelection: false,
 })
 
-// Emits
+// Emits (color-by moved to dashboard level)
 const emit = defineEmits<{
   filter: [filterId: string, column: string, values: Set<any>]
   hover: [ids: Set<any>]
   select: [ids: Set<any>]
   'update:geometry-type': [value: string]
-  'update:color-by-attribute': [value: string]
+  isLoaded: []
+  'map-move': [viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }]
 }>()
 
 // Component state
 const mapId = ref(`map-${Math.random().toString(36).substring(7)}`)
 const map = ref<maplibregl.Map | null>(null)
+const isApplyingExternalViewport = ref(false)
 const deckOverlay = ref<MapboxOverlay | null>(null)
 const isLoading = ref(true)
+const hasEmittedLoaded = ref(false)
 
 // Layer data storage
 const layerData = ref<Map<string, any[]>>(new Map())
@@ -203,12 +254,18 @@ const layerData = ref<Map<string, any[]>>(new Map())
 const hoveredFeatureIds = ref<Set<any>>(new Set())
 const selectedFeatureIds = ref<Set<any>>(new Set())
 
+// Computed layer roles for adaptive coloring (from LayerColoringManager)
+const layerRoles = ref<Map<string, LayerColoringRole>>(new Map())
+
 // Dark mode access from global store (Critical Fix #2)
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
-// Map controls computed
+// Scientific mode for publication-ready exports
+const isScientificMode = computed(() => StyleManager.getInstance().isScientificMode())
+
+// Map controls computed (color-by moved to dashboard header)
 const hasMapControls = computed(() => {
-  return !!props.mapControlsConfig?.geometryType || !!props.mapControlsConfig?.colorBy
+  return !!props.mapControlsConfig?.geometryType
 })
 
 // Event handlers for map controls
@@ -216,12 +273,6 @@ function onGeometryTypeChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
   debugLog('[MapCard] Geometry type changed to:', value)
   emit('update:geometry-type', value)
-}
-
-function onColorByChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value
-  debugLog('[MapCard] Color by changed to:', value)
-  emit('update:color-by-attribute', value)
 }
 
 // File API access
@@ -244,11 +295,24 @@ const fileApi = computed(() => {
 // ============================================================================
 
 onMounted(async () => {
-  await initMap()
-  await loadLayerData()
-  initDeckOverlay()
-  updateLayers()
-  fitBounds()
+  try {
+    await initMap()
+    await loadLayerData()
+    initDeckOverlay()
+    updateLayers()
+
+    // Only auto-fit bounds if no explicit center/zoom was provided in config
+    if (!props.center || !props.zoom) {
+      fitBounds()
+    }
+
+    // Ensure the first rendered frame includes deck layers before export capture
+    await waitForMapRenderSettled()
+    emitLoadedOnce()
+  } catch (error) {
+    console.error('[MapCard] Failed during mounted initialization:', error)
+    emitLoadedOnce()
+  }
 })
 
 onUnmounted(() => {
@@ -259,19 +323,26 @@ onUnmounted(() => {
 watch(() => props.filteredData, () => {
   debugLog('[MapCard] filteredData changed, updating layers')
   updateLayers()
-}, { deep: true })
+})
 
-watch(() => props.hoveredIds, () => {
-  debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
-  updateLayers()
-}, { deep: true })
+watch(
+  [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
+  () => {
+    debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
+    updateLayers()
+  }
+)
 
-watch(() => props.selectedIds, () => {
-  debugLog('[MapCard] selectedIds changed:', props.selectedIds)
-  updateLayers()
-}, { deep: true })
+watch(
+  [() => props.selectedIds, () => props.selectedIds?.size ?? 0],
+  () => {
+    debugLog('[MapCard] selectedIds changed:', props.selectedIds)
+    updateLayers()
+  }
+)
 
 // Watch for layers prop changes (triggered by geometry type changes in parent)
+// KEEP deep: true - layers is a config array whose contents change but reference may not
 watch(() => props.layers, () => {
   debugLog('[MapCard] layers prop changed, reloading layer data')
   loadLayerData().then(() => updateLayers())
@@ -281,6 +352,25 @@ watch(() => props.layers, () => {
 watch(() => props.colorByAttribute, (newVal, oldVal) => {
   debugLog('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
   updateLayers()
+})
+
+// Watch for layerStrategy changes to recompute roles and update layers
+watch(() => props.layerStrategy, (newVal, oldVal) => {
+  debugLog('[MapCard] layerStrategy changed:', oldVal, '->', newVal)
+  updateLayers()
+})
+
+// ViewSync: apply external viewport from other maps in the same group
+watch(() => props.externalViewport, (viewport) => {
+  if (!viewport || !map.value) return
+  isApplyingExternalViewport.value = true
+  map.value.jumpTo({
+    center: viewport.center,
+    zoom: viewport.zoom,
+    bearing: viewport.bearing ?? 0,
+    pitch: viewport.pitch ?? 0,
+  })
+  setTimeout(() => { isApplyingExternalViewport.value = false }, 100)
 })
 
 // ============================================================================
@@ -302,7 +392,8 @@ async function initMap(): Promise<void> {
       container: mapId.value,
       style: mapStyle,
       center: props.center || [13.4, 52.52],
-      zoom: props.zoom || 10,
+      zoom: Number(props.zoom) || 10,
+      canvasContextAttributes: props.exportMode ? { preserveDrawingBuffer: true } : undefined,
     })
 
     // Wait for map to load
@@ -314,11 +405,50 @@ async function initMap(): Promise<void> {
     })
 
     debugLog('[MapCard] MapLibre initialized')
+
+    // ViewSync: emit map-move when user pans/zooms
+    map.value!.on('moveend', () => {
+      if (props.viewSyncGroup && map.value && !isApplyingExternalViewport.value) {
+        emit('map-move', {
+          center: [map.value.getCenter().lng, map.value.getCenter().lat],
+          zoom: map.value.getZoom(),
+          bearing: map.value.getBearing(),
+          pitch: map.value.getPitch(),
+        })
+      }
+    })
   } catch (error) {
     console.error('[MapCard] Failed to initialize map:', error)
     isLoading.value = false
     throw error
   }
+}
+
+function emitLoadedOnce(): void {
+  if (hasEmittedLoaded.value) return
+  hasEmittedLoaded.value = true
+  emit('isLoaded')
+}
+
+async function waitForMapRenderSettled(timeoutMs: number = 5000): Promise<void> {
+  if (!map.value) return
+
+  await new Promise<void>(resolve => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+
+    const timer = setTimeout(finish, timeoutMs)
+    map.value!.once('idle', () => {
+      clearTimeout(timer)
+      finish()
+    })
+  })
+
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 }
 
 function getMapStyle(): string {
@@ -349,6 +479,17 @@ watch(isDarkMode, (newVal) => {
         map.value.addControl(deckOverlay.value as any)
       }
     })
+  }
+})
+
+// Watch for colorScheme changes to update scientific mode styling
+watch(() => globalStore.state.colorScheme, () => {
+  // Scientific mode styling is handled via CSS class binding (isScientificMode computed)
+  // This watcher ensures re-evaluation when colorScheme changes
+  debugLog('[MapCard] colorScheme changed, scientific mode:', isScientificMode.value)
+  // Force layer update in case scientific mode affects layer styling
+  if (map.value) {
+    updateLayers()
   }
 })
 
@@ -478,6 +619,9 @@ function applyPropertyFilters(features: any[], filterConfig: any): any[] {
   return features.filter((feature) => {
     return filters.every((filter) => {
       const propertyValue = feature.properties?.[filter.property]
+      if (Array.isArray(filter.value)) {
+        return filter.value.includes(propertyValue)
+      }
       return propertyValue === filter.value
     })
   })
@@ -488,9 +632,44 @@ function getLayerData(layerName: string): any[] {
   return layerData.value.get(layerName) || []
 }
 
+function getRenderableFeatures(layerConfig: LayerConfig): any[] {
+  const features = getLayerData(layerConfig.name)
+  if (!layerConfig.linkage?.renderOnlyWhenLinked) {
+    return features
+  }
+
+  const hasHovered = !!(props.hoveredIds && props.hoveredIds.size > 0)
+  const hasSelected = !!(props.selectedIds && props.selectedIds.size > 0)
+
+  if (!hasHovered && !hasSelected) {
+    return []
+  }
+
+  return features.filter((feature) => {
+    const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
+    return setHasLoose(props.hoveredIds, featureId) || setHasLoose(props.selectedIds, featureId)
+  })
+}
+
 // Helper to check if layer is visible
 function isLayerVisible(layerConfig: LayerConfig): boolean {
-  return layerConfig.visible !== false
+  // Check basic visibility flag
+  if (layerConfig.visible === false) {
+    return false
+  }
+
+  // Check geometry type filter (from geometry type selector)
+  // If layer has a geometryType and it doesn't match the selected type, hide it
+  if (layerConfig.geometryType && props.geometryType) {
+    // 'all' shows all layers regardless of their geometryType
+    if (props.geometryType === 'all') {
+      return true
+    }
+    // Otherwise, layer's geometryType must match the selected type
+    return layerConfig.geometryType === props.geometryType
+  }
+
+  return true
 }
 
 // ============================================================================
@@ -509,6 +688,7 @@ function initDeckOverlay() {
   }
 
   deckOverlay.value = new MapboxOverlay({
+    interleaved: true,
     layers: [],
     getTooltip: ({ object }: any) => getTooltipContent(object),
   })
@@ -521,6 +701,58 @@ function initDeckOverlay() {
 // TASK 7: Advanced Tooltip System with Template Substitution
 // ============================================================================
 
+function getColorByOption(attribute: string): ColorByOption | undefined {
+  return props.colorByOptions.find(opt => opt.attribute === attribute)
+}
+
+function getMatchingRowsForFeature(feature: any, layerConfig: LayerConfig): any[] {
+  if (!layerConfig.linkage || !props.filteredData) return []
+
+  const rawFeatureId = feature.properties?.[layerConfig.linkage.geoProperty]
+  const tableColumn = layerConfig.linkage.tableColumn
+
+  return props.filteredData.filter((row: any) => {
+    const rowId = row[tableColumn]
+    return rowId == rawFeatureId || String(rowId) === String(rawFeatureId)
+  })
+}
+
+function aggregateNumericValues(values: number[], method: AggregationMethod): number | undefined {
+  if (values.length === 0) return undefined
+
+  switch (method) {
+    case 'sum':
+      return values.reduce((acc, v) => acc + v, 0)
+    case 'min':
+      return Math.min(...values)
+    case 'max':
+      return Math.max(...values)
+    case 'first':
+      return values[0]
+    case 'mean':
+    default:
+      return values.reduce((acc, v) => acc + v, 0) / values.length
+  }
+}
+
+function getAggregatedAttributeValue(feature: any, layerConfig: LayerConfig, attribute: string): any {
+  const rows = getMatchingRowsForFeature(feature, layerConfig)
+  if (rows.length === 0) return undefined
+
+  const option = getColorByOption(attribute)
+  const rawValues = rows.map((row: any) => row[attribute]).filter((v: any) => v !== undefined && v !== null)
+  if (rawValues.length === 0) return undefined
+
+  const numericValues = rawValues.filter((v: any) => typeof v === 'number') as number[]
+  if (numericValues.length === rawValues.length) {
+    const defaultAggregation: AggregationMethod = attribute.toLowerCase().includes('count') ? 'sum' : 'mean'
+    const method = option?.aggregation || defaultAggregation
+    return aggregateNumericValues(numericValues, method)
+  }
+
+  return rawValues[0]
+}
+
 // Enhanced tooltip content generator
 function getTooltipContent(object: any): any {
   if (!object || !props.tooltip?.enabled) {
@@ -529,9 +761,29 @@ function getTooltipContent(object: any): any {
 
   const properties = object.properties || {}
 
+  // Look up colorBy attribute value from central table if applicable
+  let colorByValue: { label: string; value: any } | null = null
+  if (props.colorByAttribute && props.filteredData?.length > 0) {
+    // Find the matching layer config to get linkage info
+    const layerConfig = props.layers.find(l => l.linkage)
+    if (layerConfig?.linkage) {
+      const aggregatedValue = getAggregatedAttributeValue(object, layerConfig, props.colorByAttribute)
+
+      if (aggregatedValue !== undefined) {
+        // Get the label from colorByOptions
+        const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+        const label = attrConfig?.label || props.colorByAttribute
+        colorByValue = {
+          label,
+          value: aggregatedValue
+        }
+      }
+    }
+  }
+
   // Use custom template if provided
   if (props.tooltip.template) {
-    const html = renderTooltipTemplate(props.tooltip.template, properties)
+    const html = renderTooltipTemplate(props.tooltip.template, properties, colorByValue)
     return {
       html,
       style: getTooltipStyle(),
@@ -539,7 +791,7 @@ function getTooltipContent(object: any): any {
   }
 
   // Auto-generate tooltip from all properties
-  const html = renderDefaultTooltip(properties)
+  const html = renderDefaultTooltip(properties, colorByValue)
   return {
     html,
     style: getTooltipStyle(),
@@ -547,7 +799,11 @@ function getTooltipContent(object: any): any {
 }
 
 // Render tooltip from template string
-function renderTooltipTemplate(template: string, properties: Record<string, any>): string {
+function renderTooltipTemplate(
+  template: string,
+  properties: Record<string, any>,
+  colorByValue: { label: string; value: any } | null = null
+): string {
   let html = template
 
   // Replace {properties.xxx} placeholders
@@ -560,17 +816,47 @@ function renderTooltipTemplate(template: string, properties: Record<string, any>
     return formatTooltipValue(value)
   })
 
-  // Wrap in container
-  return `<div class="mapcard-tooltip">${html}</div>`
+  // Add colorBy value if available (as highlighted header)
+  let colorByHtml = ''
+  if (colorByValue) {
+    const formattedValue = formatTooltipValue(colorByValue.value)
+    colorByHtml = `
+      <div class="tooltip-row tooltip-highlight">
+        <span class="tooltip-key">${colorByValue.label}:</span>
+        <span class="tooltip-value">${formattedValue}</span>
+      </div>
+      <hr class="tooltip-divider" />
+    `
+  }
+
+  // Wrap in container with colorBy at top
+  return `<div class="mapcard-tooltip">${colorByHtml}${html}</div>`
 }
 
 // Render default tooltip showing all properties
-function renderDefaultTooltip(properties: Record<string, any>): string {
-  if (Object.keys(properties).length === 0) {
+function renderDefaultTooltip(
+  properties: Record<string, any>,
+  colorByValue: { label: string; value: any } | null = null
+): string {
+  if (Object.keys(properties).length === 0 && !colorByValue) {
     return '<div class="mapcard-tooltip"><em>No data</em></div>'
   }
 
   let html = '<div class="mapcard-tooltip">'
+
+  // Add colorBy value first (highlighted)
+  if (colorByValue) {
+    const formattedValue = formatTooltipValue(colorByValue.value)
+    html += `
+      <div class="tooltip-row tooltip-highlight">
+        <span class="tooltip-key">${colorByValue.label}:</span>
+        <span class="tooltip-value">${formattedValue}</span>
+      </div>
+    `
+    if (Object.keys(properties).length > 0) {
+      html += '<hr class="tooltip-divider" />'
+    }
+  }
 
   // Limit to first 10 properties to avoid huge tooltips
   const entries = Object.entries(properties).slice(0, 10)
@@ -579,7 +865,7 @@ function renderDefaultTooltip(properties: Record<string, any>): string {
     // Skip internal properties
     if (key.startsWith('_')) return
 
-    const formattedKey = formatPropertyName(key)
+    const formattedKey = toTitleCase(key)
     const formattedValue = formatTooltipValue(value)
 
     html += `
@@ -599,28 +885,16 @@ function renderDefaultTooltip(properties: Record<string, any>): string {
   return html
 }
 
-// Format property name for display (e.g., "main_mode" -> "Main Mode")
-function formatPropertyName(name: string): string {
-  return name
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
 // Format property value for display
 function formatTooltipValue(value: any): string {
   if (value === null || value === undefined) {
     return '<em>N/A</em>'
   }
 
-  // Number formatting
+  // Number formatting - use StyleManager for consistent decimals
   if (typeof value === 'number') {
-    // Check if it's likely a large coordinate or timestamp
-    if (Math.abs(value) > 10000) {
-      return value.toFixed(0)
-    }
-    // Regular numbers - 2 decimal places
-    return value.toFixed(2)
+    const styleManager = StyleManager.getInstance()
+    return styleManager.formatNumber(value)
   }
 
   // Boolean
@@ -634,9 +908,10 @@ function formatTooltipValue(value: any): string {
 
 // Get tooltip style based on theme
 function getTooltipStyle(): Record<string, string> {
+  const styleManager = StyleManager.getInstance()
   return {
-    backgroundColor: isDarkMode.value ? '#1f2937' : 'white',
-    color: isDarkMode.value ? '#e5e7eb' : '#111827',
+    backgroundColor: styleManager.getColor('theme.background.secondary'),
+    color: styleManager.getColor('theme.text.primary'),
     fontSize: '12px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     lineHeight: '1.5',
@@ -696,7 +971,8 @@ function sortLayersByZIndex(layers: any[]): any[] {
 
 function updateLayers() {
   if (!deckOverlay.value) {
-    console.warn('[MapCard] Cannot update layers: overlay not initialized')
+    // Expected during initial render - overlay may not be ready yet
+    debugLog('[MapCard] Cannot update layers: overlay not initialized')
     return
   }
 
@@ -705,6 +981,23 @@ function updateLayers() {
     return
   }
 
+  // Filter to visible layers only BEFORE computing roles
+  // This is critical: role computation must only consider currently visible layers
+  // Otherwise, hidden arcs would cause all visible polygons to become neutral
+  const visibleLayers = props.layers.filter(layer => isLayerVisible(layer))
+
+  // Log visibility filtering
+  debugLog('[MapCard] geometryType selected:', props.geometryType)
+  debugLog('[MapCard] All layers:', props.layers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  debugLog('[MapCard] Visible layers:', visibleLayers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
+  debugLog('[MapCard] layerStrategy:', props.layerStrategy)
+  debugLog('[MapCard] colorByAttribute:', props.colorByAttribute)
+
+  // Compute layer roles using LayerColoringManager
+  // This determines which layers get colorBy coloring vs neutral styling
+  layerRoles.value = computeAllLayerRoles(visibleLayers, props.layerStrategy)
+  debugLog('[MapCard] Computed layer roles for', visibleLayers.length, 'visible layers:', [...layerRoles.value.entries()])
+
   const layers: any[] = []
 
   props.layers.forEach((layerConfig) => {
@@ -712,9 +1005,9 @@ function updateLayers() {
       return
     }
 
-    const features = getLayerData(layerConfig.name)
+    const features = getRenderableFeatures(layerConfig)
     if (features.length === 0) {
-      console.warn(`[MapCard] No data for layer "${layerConfig.name}"`)
+      debugLog(`[MapCard] No renderable features for layer "${layerConfig.name}"`)
       return
     }
 
@@ -748,6 +1041,9 @@ function updateLayers() {
         layers.push(layer)
         const arcTips = createArcArrowTips(layerConfig, features)
         if (arcTips) layers.push(arcTips)
+        // Add circular markers for self-loops (same origin/destination)
+        const selfLoopMarkers = createSelfLoopMarkers(layerConfig, features)
+        if (selfLoopMarkers) layers.push(selfLoopMarkers)
         return
 
       case 'scatterplot':
@@ -765,18 +1061,51 @@ function updateLayers() {
     }
   })
 
+  // Create highlight overlay layers for hovered/selected features
+  // These render LAST to ensure they're always on top of normal features
+  const hasHighlightedFeatures = (props.hoveredIds && props.hoveredIds.size > 0) ||
+                                  (props.selectedIds && props.selectedIds.size > 0)
+
+  if (hasHighlightedFeatures) {
+    props.layers.forEach((layerConfig) => {
+      if (!isLayerVisible(layerConfig)) return
+
+      const features = getRenderableFeatures(layerConfig)
+      if (features.length === 0) return
+
+      const highlightLayer = createHighlightOverlayLayer(layerConfig, features)
+      if (highlightLayer) {
+        layers.push(highlightLayer)
+      }
+    })
+  }
+
   // Sort layers by zIndex (if specified) or by original order
   const sortedLayers = sortLayersByZIndex(layers)
 
   // Update deck overlay
   deckOverlay.value.setProps({ layers: sortedLayers })
-  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison})`)
+  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison}, highlights: ${hasHighlightedFeatures})`)
   debugLog(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
 }
 
 // TASK 12: Create baseline layer (gray, dimmed) for comparison mode
+// Comparison baseline - intentionally neutral gray regardless of theme
 function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
-  const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // 30% gray
+  const baselineColor: [number, number, number, number] = [180, 180, 180, 80] // Neutral gray for comparison
+
+  const getPathCoordinates = (feature: any): Position[] => {
+    const coords = feature?.geometry?.coordinates
+    if (!Array.isArray(coords) || coords.length === 0) return []
+
+    // LineString: [[lon,lat], ...]
+    if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+      return coords as Position[]
+    }
+
+    // MultiLineString: [[[lon,lat], ...], ...] -> flatten parts into one path
+    return (coords as Position[][]).flat()
+  }
 
   switch (layerConfig.type) {
     case 'polygon':
@@ -805,30 +1134,29 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
       })
 
     case 'line':
-      return new LineLayer({
+      return new PathLayer({
         id: `baseline-line-${layerConfig.name}`,
         data: features,
         pickable: false,
+        widthUnits: 'pixels',
+        widthMinPixels: 1,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => {
-          const coords = d.geometry.coordinates
-          return coords[coords.length - 1] as Position
-        },
+        getPath: (d: any) => getPathCoordinates(d),
 
         getWidth: 1,
         getColor: baselineColor,
       })
 
     case 'arc':
+      // Filter out self-loops for baseline - they don't render well as zero-length arcs
       return new ArcLayer({
         id: `baseline-arc-${layerConfig.name}`,
-        data: features,
+        data: features.filter(f => !isSelfLoop(f)),
         pickable: false,
         greatCircle: false,
 
-        getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-        getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+        getSourcePosition: (d: any) => getArcSourcePosition(d),
+        getTargetPosition: (d: any) => getArcTargetPosition(d),
 
         getWidth: 2,
         getSourceColor: baselineColor,
@@ -851,6 +1179,149 @@ function createBaselineLayer(layerConfig: LayerConfig, features: any[]): any {
         getFillColor: baselineColor,
         getLineColor: [160, 160, 160, 100],
         lineWidthMinPixels: 1,
+      })
+
+    default:
+      return null
+  }
+}
+
+// Create highlight overlay layer for hovered/selected features
+// These layers render ON TOP of normal layers for guaranteed visibility
+function createHighlightOverlayLayer(layerConfig: LayerConfig, features: any[]): any | null {
+  if (!layerConfig.linkage) return null
+
+  // Filter to only hovered or selected features
+  const highlightedFeatures = features.filter(feature => {
+    const featureId = getFeatureId(feature, layerConfig)
+    const isHovered = setHasLoose(props.hoveredIds, featureId)
+    const isSelected = setHasLoose(props.selectedIds, featureId)
+    return isHovered || isSelected
+  })
+
+  if (highlightedFeatures.length === 0) return null
+
+  debugLog(`[MapCard] Creating highlight overlay for "${layerConfig.name}" with ${highlightedFeatures.length} features`)
+
+  switch (layerConfig.type) {
+    case 'polygon':
+    case 'fill':
+      return new PolygonLayer({
+        id: `highlight-polygon-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false, // Main layer handles picking
+        stroked: true,
+        filled: true,
+        wireframe: true,
+        lineWidthMinPixels: 3, // Thicker border for visibility
+
+        getPolygon: (d: any) => {
+          const coords = d.geometry.coordinates
+          if (d.geometry.type === 'Polygon') return coords[0]
+          if (d.geometry.type === 'MultiPolygon') return coords[0][0]
+          return []
+        },
+
+        getFillColor: (d: any) => getFeatureFillColor(d, layerConfig),
+        getLineColor: (d: any) => getFeatureLineColor(d, layerConfig),
+        getLineWidth: (d: any) => getFeatureLineWidth(d, layerConfig) * 1.5,
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
+
+        updateTriggers: {
+          getFillColor: [props.hoveredIds, props.selectedIds],
+          getLineColor: [props.hoveredIds, props.selectedIds],
+          getLineWidth: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'line':
+      return new PathLayer({
+        id: `highlight-line-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false,
+        widthUnits: 'pixels',
+        widthMinPixels: 1,
+
+        getPath: (d: any) => {
+          const coords = d?.geometry?.coordinates
+          if (!Array.isArray(coords) || coords.length === 0) return []
+          if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') return coords as Position[]
+          return (coords as Position[][]).flat()
+        },
+
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig) * 1.5, // Thicker for visibility
+        getColor: (d: any) => getFeatureColor(d, layerConfig),
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
+
+        updateTriggers: {
+          getWidth: [props.hoveredIds, props.selectedIds],
+          getColor: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'arc':
+      // Filter out self-loops - they're handled by createSelfLoopMarkers
+      return new ArcLayer({
+        id: `highlight-arc-${layerConfig.name}`,
+        data: highlightedFeatures.filter(f => !isSelfLoop(f)),
+        pickable: false,
+        greatCircle: false,
+
+        getSourcePosition: (d: any) => getArcSourcePosition(d),
+        getTargetPosition: (d: any) => getArcTargetPosition(d),
+
+        getWidth: (d: any) => getFeatureWidth(d, layerConfig), // Same width, just on top
+        getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
+        getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
+
+        getTilt: () => layerConfig.arcTilt || 25,
+        getHeight: () => (layerConfig.arcHeight || 0.2) + 0.05, // Slightly higher to appear on top
+
+        // Disable depth test so highlight always renders on top regardless of 3D position
+        parameters: {
+          depthTest: false,
+        },
+
+        updateTriggers: {
+          getWidth: [props.hoveredIds, props.selectedIds],
+          getSourceColor: [props.hoveredIds, props.selectedIds],
+          getTargetColor: [props.hoveredIds, props.selectedIds],
+        },
+      })
+
+    case 'scatterplot':
+    case 'circle':
+    case 'point':
+      return new ScatterplotLayer({
+        id: `highlight-scatterplot-${layerConfig.name}`,
+        data: highlightedFeatures,
+        pickable: false,
+        radiusMinPixels: 4,
+        radiusMaxPixels: 25,
+
+        getPosition: (d: any) => d.geometry.coordinates as Position,
+        getRadius: (d: any) => getFeatureRadius(d, layerConfig) * 1.5, // 50% larger
+        getFillColor: (d: any) => getFeatureColor(d, layerConfig),
+        getLineColor: [255, 255, 255, 255], // White outline for visibility
+        lineWidthMinPixels: 3,
+
+        // Disable depth test so highlight always renders on top
+        parameters: {
+          depthTest: false,
+        },
+
+        updateTriggers: {
+          getRadius: [props.hoveredIds, props.selectedIds],
+          getFillColor: [props.hoveredIds, props.selectedIds],
+        },
       })
 
     default:
@@ -890,8 +1361,8 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
-        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
         getLineWidth: [props.hoveredIds, props.selectedIds],
       },
     })
@@ -901,20 +1372,25 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
   }
 }
 
-// LineLayer Factory
-function createLineLayer(layerConfig: LayerConfig, features: any[]): LineLayer | null {
+// PathLayer Factory for line geometries
+function createLineLayer(layerConfig: LayerConfig, features: any[]): PathLayer | null {
   try {
     const sortedFeatures = sortFeaturesByState(features, layerConfig)
 
-    return new LineLayer({
+    return new PathLayer({
       id: `line-${layerConfig.name}`,
       data: sortedFeatures,
       pickable: true,
+      widthUnits: 'pixels',
+      widthMinPixels: 1,
 
-      getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-      getTargetPosition: (d: any) => {
+      getPath: (d: any) => {
         const coords = d.geometry.coordinates
-        return coords[coords.length - 1] as Position
+        if (!Array.isArray(coords) || coords.length === 0) return []
+        if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+          return coords as Position[]
+        }
+        return (coords as Position[][]).flat()
       },
 
       getWidth: (d: any) => getFeatureWidth(d, layerConfig),
@@ -925,7 +1401,7 @@ function createLineLayer(layerConfig: LayerConfig, features: any[]): LineLayer |
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -946,7 +1422,13 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
 
       getPosition: (d: any) => {
         const coords = d.geometry.coordinates
-        return coords[coords.length - 1] as Position
+        // LineString -> last coordinate; MultiLineString -> last coordinate of last part
+        if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+          return coords[coords.length - 1] as Position
+        }
+        const parts = coords as Position[][]
+        const lastPart = parts[parts.length - 1] || []
+        return (lastPart[lastPart.length - 1] || [0, 0]) as Position
       },
 
       // Match parent line width as radius (scaled down to 80%)
@@ -964,7 +1446,7 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -973,34 +1455,65 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
   }
 }
 
+// Helper to detect if arc is a self-loop (same origin and destination)
+function isSelfLoop(feature: any): boolean {
+  const coords = feature.geometry?.coordinates
+  if (!coords || coords.length < 2) return false
+  const [src, tgt] = coords
+  // Check if source and target are the same (within small tolerance)
+  return Math.abs(src[0] - tgt[0]) < 0.0001 && Math.abs(src[1] - tgt[1]) < 0.0001
+}
+
+function getArcSourcePosition(feature: any): Position {
+  const coords = feature?.geometry?.coordinates
+  if (Array.isArray(coords) && coords.length > 0 && Array.isArray(coords[0])) {
+    return coords[0] as Position
+  }
+  return [0, 0]
+}
+
+function getArcTargetPosition(feature: any): Position {
+  const coords = feature?.geometry?.coordinates
+  if (Array.isArray(coords) && coords.length > 0 && Array.isArray(coords[coords.length - 1])) {
+    return coords[coords.length - 1] as Position
+  }
+  return [0, 0]
+}
+
 // ArcLayer Factory
 function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | null {
   try {
     const sortedFeatures = sortFeaturesByState(features, layerConfig)
+    // Filter out self-loops - they're rendered as circular markers instead
+    const arcFeatures = sortedFeatures.filter(f => !isSelfLoop(f))
+
+    // Get arc layer defaults from StyleManager (single source of truth)
+    const arcDefaults = StyleManager.getInstance().getArcLayerStyle()
 
     return new ArcLayer({
       id: `arc-${layerConfig.name}`,
-      data: sortedFeatures,
+      data: arcFeatures,
       pickable: true,
       greatCircle: false,
 
-      getSourcePosition: (d: any) => d.geometry.coordinates[0] as Position,
-      getTargetPosition: (d: any) => d.geometry.coordinates[1] as Position,
+      getSourcePosition: (d: any) => getArcSourcePosition(d),
+      getTargetPosition: (d: any) => getArcTargetPosition(d),
 
       getWidth: (d: any) => getFeatureWidth(d, layerConfig),
       getSourceColor: (d: any) => getFeatureColor(d, layerConfig),
       getTargetColor: (d: any) => getFeatureColor(d, layerConfig),
 
-      getTilt: () => layerConfig.arcTilt || 25,
-      getHeight: () => layerConfig.arcHeight || 0.2,
+      // Use StyleManager defaults, allow YAML override
+      getTilt: () => layerConfig.arcTilt ?? arcDefaults.arcTilt,
+      getHeight: () => layerConfig.arcHeight ?? arcDefaults.arcHeight,
 
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
       updateTriggers: {
         getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
-        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute],
+        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1009,12 +1522,55 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
   }
 }
 
+// Self-loop markers - circular rings indicating flows within the same cluster
+function createSelfLoopMarkers(layerConfig: LayerConfig, features: any[]): ScatterplotLayer | null {
+  const selfLoops = features.filter(f => isSelfLoop(f))
+  if (selfLoops.length === 0) return null
+
+  try {
+    return new ScatterplotLayer({
+      id: `self-loops-${layerConfig.name}`,
+      data: selfLoops,
+      pickable: true,
+      stroked: true,
+      filled: false,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 40,
+
+      getPosition: (d: any) => d.geometry.coordinates[0] as Position,
+      getRadius: (d: any) => {
+        // Scale radius based on flow width for consistency
+        const width = getFeatureWidth(d, layerConfig)
+        return Math.max(10, width * 4)
+      },
+      getLineColor: (d: any) => getFeatureColor(d, layerConfig),
+      getLineWidth: (d: any) => Math.max(2, getFeatureWidth(d, layerConfig)),
+      lineWidthUnits: 'pixels',
+
+      onClick: (info: any) => handleClick(info),
+      onHover: (info: any) => handleHover(info),
+
+      updateTriggers: {
+        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
+      },
+    })
+  } catch (error) {
+    console.error(`[MapCard] Failed to create self-loop markers:`, error)
+    return null
+  }
+}
+
 // Automatic arrow tips for ArcLayer
 function createArcArrowTips(layerConfig: LayerConfig, features: any[]): ScatterplotLayer | null {
   try {
+    // Filter out self-loops - they're shown as circular markers instead
+    const arcFeatures = features.filter(f => !isSelfLoop(f))
+
     return new ScatterplotLayer({
       id: `arc-tips-${layerConfig.name}`,
-      data: features,
+      data: arcFeatures,
       pickable: true,
       radiusMinPixels: 2,
       radiusMaxPixels: 6,
@@ -1034,7 +1590,7 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1069,7 +1625,7 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
 
       updateTriggers: {
         getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.radiusBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute],
+        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1087,73 +1643,121 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
     return features
   }
 
+  // Check if there are active filters
+  const totalFeatures = layerData.value.get(layerConfig.name)?.length || 0
+  const hasActiveFilters = props.filteredData.length < totalFeatures
+
   return [...features].sort((a, b) => {
-    const aId = a.properties?.[layerConfig.linkage!.geoProperty]
-    const bId = b.properties?.[layerConfig.linkage!.geoProperty]
+    const aId = getFeatureId(a, layerConfig)
+    const bId = getFeatureId(b, layerConfig)
 
     // Use loose comparison for type mismatches (string "45" vs number 45)
     const aSelected = setHasLoose(props.selectedIds, aId)
     const bSelected = setHasLoose(props.selectedIds, bId)
     const aHovered = setHasLoose(props.hoveredIds, aId)
     const bHovered = setHasLoose(props.hoveredIds, bId)
+    const aFiltered = isFeatureFiltered(a, layerConfig)
+    const bFiltered = isFeatureFiltered(b, layerConfig)
 
-    // Priority: hovered on top, then selected, then normal
+    // Priority: hovered > selected > filtered > non-filtered
     // Higher return value = rendered later = on top
     if (aHovered && !bHovered) return 1
     if (!aHovered && bHovered) return -1
     if (aSelected && !bSelected) return 1
     if (!aSelected && bSelected) return -1
+    // Filtered items on top of non-filtered when filters are active
+    if (hasActiveFilters) {
+      if (aFiltered && !bFiltered) return 1
+      if (!aFiltered && bFiltered) return -1
+    }
 
     return 0
   })
 }
 
 function getFeatureFillColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
 
   // Use loose comparison for type mismatches (string "45" vs number 45)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
+
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
+
+  // Get the configured fill opacity from StyleManager (single source of truth)
+  // Neutral-role layers (cluster boundaries shown alongside arcs) use OD boundary style
+  // which has fillOpacity: 0 — making them outline-only with no fill
+  const role = layerRoles.value.get(layerConfig.name)
+  const boundaryDefaults = role?.role === 'neutral'
+    ? styleManager.getODBoundaryLayerStyle()
+    : styleManager.getBoundaryLayerStyle()
+  const configuredOpacity = layerConfig.fillOpacity ?? boundaryDefaults.fillOpacity
+  const isOutlineOnly = configuredOpacity === 0
+
+  // For outline-only layers (fillOpacity: 0), always return transparent fill
+  // This ensures OD cluster boundaries stay outline-only even during filtering
+  if (isOutlineOnly) {
+    return [0, 0, 0, 0]
+  }
 
   if (isSelected) {
-    return [59, 130, 246, 120]
+    // Selected items: blue fill with higher alpha for visibility
+    return styleManager.getInteractionColorRGBA('selected', 180)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 100]
+    return styleManager.getInteractionColorRGBA('hover', 100)
   }
 
+  // Dim non-filtered items when there are chart filters active
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
     }
-    return [180, 180, 180, 80]
+    // Dimmed color - use base color but with reduced opacity from StyleManager
+    const baseColor = getBaseColor(feature, layerConfig)
+    const dimmed: [number, number, number] = [
+      Math.round((baseColor[0] + 180) / 2),
+      Math.round((baseColor[1] + 180) / 2),
+      Math.round((baseColor[2] + 180) / 2),
+    ]
+    return [dimmed[0], dimmed[1], dimmed[2], filterStyle.nonFilteredAlpha]
   }
 
-  if (layerConfig.fillColor) {
-    const rgb = hexToRgb(layerConfig.fillColor)
-    const opacity = Math.round((layerConfig.fillOpacity || 0.5) * 255)
-    return [rgb[0], rgb[1], rgb[2], opacity]
+  // Dim non-selected features when there's an active selection
+  // This creates visual hierarchy: selected features pop, everything else fades
+  if (hasActiveSelection && !isSelected && !isHovered) {
+    const baseColor = getBaseColor(feature, layerConfig)
+    const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255)
+    return [baseColor[0], baseColor[1], baseColor[2], dimAlpha]
   }
 
-  return [156, 163, 175, 60]
+  // Use getBaseColor for colorBy support (dashboard-level or per-layer)
+  const baseColor = getBaseColor(feature, layerConfig)
+  const opacity = Math.round(configuredOpacity * 255)
+  return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
 function getFeatureLineColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
+  const styleManager = StyleManager.getInstance()
 
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
   if (isSelected) {
-    return [59, 130, 246, 255]
+    // Selected items: thicker blue outline for clear indication
+    return styleManager.getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 255]
+    return styleManager.getInteractionColorRGBA('hover', 255)
   }
 
   if (layerConfig.lineColor) {
@@ -1194,8 +1798,10 @@ function getAttributeBasedWidth(
   const normalized = (attributeValue - minValue) / (maxValue - minValue)
   const clamped = Math.max(0, Math.min(1, normalized))
 
-  // Scale to configured range
-  const [minWidth, maxWidth] = widthBy.scale
+  // Scale to configured range (use StyleManager defaults if not specified)
+  const arcDefaults = StyleManager.getInstance().getArcLayerStyle()
+  const defaultScale = layerConfig.type === 'arc' ? arcDefaults.widthScale : [2, 10]
+  const [minWidth, maxWidth] = widthBy.scale ?? defaultScale
   const scaledWidth = minWidth + clamped * (maxWidth - minWidth)
 
   return scaledWidth
@@ -1235,54 +1841,72 @@ function getAttributeBasedRadius(
 }
 
 function getFeatureLineWidth(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
 
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
 
-  if (isSelected) return 4
-  if (isHovered) return 3
+  // Selected items get thicker outline to stand out clearly
+  if (isSelected) return 6
+  if (isHovered) return 4
 
   return layerConfig.lineWidth || 2
 }
 
 // Get feature width with attribute-based sizing support
 function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
+
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
+  const arcDefaults = styleManager.getArcLayerStyle()
+  const defaultWidth = layerConfig.type === 'arc' ? arcDefaults.widthScale[0] : 2
 
   // Base width (static or attribute-based)
   let baseWidth: number
   if (layerConfig.widthBy) {
-    // Attribute-based sizing
-    const staticBase = layerConfig.width || 2
+    // Attribute-based sizing - use StyleManager scale defaults if not specified
+    const staticBase = layerConfig.width ?? defaultWidth
     baseWidth = getAttributeBasedWidth(feature, layerConfig, staticBase)
   } else {
     // Static sizing
-    baseWidth = layerConfig.width || 2
+    baseWidth = layerConfig.width ?? defaultWidth
   }
 
   // State-based scaling
   if (isHovered) return baseWidth * 3
-  if (isSelected) return baseWidth * 2
+  if (isSelected) return baseWidth * 2.5
+  // Dim non-filtered items when there are chart filters active
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make invisible (0 width)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
-    return 1 // Always 1px when dimmed
+    return filterStyle.nonFilteredWidthPx // Use StyleManager config
+  }
+  // Filtered items get slight width boost when filters are active
+  if (hasActiveFilters && isFiltered) {
+    return baseWidth * filterStyle.filteredWidthMultiplier
+  }
+  // Reduce width for non-selected features when there's a selection
+  if (hasActiveSelection) {
+    return baseWidth * 0.5 // 50% width when dimmed
   }
   return baseWidth
 }
 
 // Get feature radius with attribute-based sizing support
 function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
 
   // Base radius (static or attribute-based)
   let baseRadius: number
@@ -1297,158 +1921,166 @@ function getFeatureRadius(feature: any, layerConfig: LayerConfig): number {
 
   // State-based scaling
   if (isHovered) return baseRadius * 1.5
-  if (isSelected) return baseRadius * 1.2
+  if (isSelected) return baseRadius * 1.3
+  // Dim non-filtered items when there are chart filters active
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make invisible (0 radius)
     if (layerConfig.linkage?.hideOthersOnSelect) return 0
     return baseRadius * 0.5 // Smaller when dimmed
   }
+  // Reduce radius for non-selected features when there's a selection
+  if (hasActiveSelection) {
+    return baseRadius * 0.7 // 70% radius when dimmed
+  }
   return baseRadius
 }
 
 function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, number, number, number] {
-  const featureId = feature.properties?.[layerConfig.linkage?.geoProperty || 'id']
+  const featureId = getFeatureId(feature, layerConfig) ?? feature.properties?.id
   const isSelected = setHasLoose(props.selectedIds, featureId)
   const isHovered = setHasLoose(props.hoveredIds, featureId)
   const isFiltered = isFeatureFiltered(feature, layerConfig)
   const hasActiveFilters = props.filteredData.length < (layerData.value.get(layerConfig.name)?.length || 0)
+  const hasActiveSelection = props.selectedIds && props.selectedIds.size > 0
+
+  // Get styling configuration from StyleManager
+  const styleManager = StyleManager.getInstance()
+  const filterStyle = styleManager.getFilterStyle()
 
   if (isSelected) {
-    return [59, 130, 246, 255]
+    return styleManager.getInteractionColorRGBA('selected', 255)
   }
 
   if (isHovered) {
-    return [251, 146, 60, 255]
+    return styleManager.getInteractionColorRGBA('hover', 255)
   }
 
+  // Dim non-filtered items when there are chart filters active
+  // Make filtered items stand out by making non-filtered very dim
   if (hasActiveFilters && !isFiltered) {
     // If hideOthersOnSelect is true, make fully transparent (hidden)
     if (layerConfig.linkage?.hideOthersOnSelect) {
       return [0, 0, 0, 0]
     }
+    // Use a neutral gray with very low opacity from StyleManager config
+    // This makes the filtered items pop while non-filtered fade into background
+    return [128, 128, 128, filterStyle.nonFilteredAlpha]
+  }
+
+  // Dim non-selected features when there's an active selection
+  if (hasActiveSelection && !isSelected && !isHovered) {
     const baseColor = getBaseColor(feature, layerConfig)
-    const dimmed: [number, number, number] = [
-      Math.round((baseColor[0] + 180) / 2),
-      Math.round((baseColor[1] + 180) / 2),
-      Math.round((baseColor[2] + 180) / 2),
-    ]
-    return [dimmed[0], dimmed[1], dimmed[2], 60]
+    const dimAlpha = Math.round(styleManager.getDimmedOpacity() * 255)
+    return [baseColor[0], baseColor[1], baseColor[2], dimAlpha]
   }
 
   const baseColor = getBaseColor(feature, layerConfig)
-  const opacity = Math.round((layerConfig.opacity || 1.0) * 255)
+  // Use StyleManager defaults for opacity if not specified
+  let defaultOpacity = 1.0
+  if (layerConfig.type === 'arc') {
+    defaultOpacity = styleManager.getArcLayerStyle().opacity
+  } else if (layerConfig.type === 'fill' || layerConfig.type === 'polygon') {
+    defaultOpacity = styleManager.getBoundaryLayerStyle().fillOpacity
+  }
+  const opacity = Math.round((layerConfig.opacity ?? defaultOpacity) * 255)
   return [baseColor[0], baseColor[1], baseColor[2], opacity]
 }
 
 // ============================================================================
-// TASK 8: Dynamic Color Management System
+// TASK 8: Dynamic Color Management System (using StyleManager)
 // ============================================================================
 
-// Default categorical color schemes
-const DEFAULT_CATEGORICAL_COLORS: Record<string, Record<string, string>> = {
-  mode: {
-    car: '#e74c3c',
-    pt: '#3498db',
-    bike: '#2ecc71',
-    walk: '#f39c12',
-    drt: '#9b59b6',
-    ride: '#1abc9c',
-    default: '#95a5a6',
-  },
-  activity: {
-    home: '#4477ff',
-    work: '#ff4477',
-    education: '#44ff77',
-    shopping: '#ff7744',
-    leisure: '#aa44ff',
-    other: '#777777',
-  },
-}
+// Cached color map for current colorBy attribute
+// Rebuilt when colorByAttribute changes for consistent categorical colors
+const categoricalColorMapCache = ref<Map<string, string>>(new Map())
+const lastColorByAttribute = ref<string>('')
 
-// Get categorical color for a value
+/**
+ * Get categorical color for a value using StyleManager
+ * For consistent colors, values are sorted alphabetically and assigned from palette
+ */
 function getCategoricalColor(
   value: any,
   colorMap?: Record<string, string>,
   attribute?: string
 ): [number, number, number] {
+  const styleManager = StyleManager.getInstance()
+
   // Use custom color map if provided
   if (colorMap && colorMap[value]) {
     return hexToRgb(colorMap[value])
   }
 
-  // Try default schemes based on attribute name
+  // Try mode/activity colors from StyleManager
   if (attribute) {
-    const schemeName = attribute.toLowerCase().includes('mode') ? 'mode' :
-                      attribute.toLowerCase().includes('activity') ? 'activity' : null
-
-    if (schemeName && DEFAULT_CATEGORICAL_COLORS[schemeName]) {
-      const scheme = DEFAULT_CATEGORICAL_COLORS[schemeName]
-      if (scheme[value]) {
-        return hexToRgb(scheme[value])
+    const attrLower = attribute.toLowerCase()
+    if (attrLower.includes('mode')) {
+      const modeColor = styleManager.getColor(`mode.${String(value).toLowerCase()}`)
+      if (modeColor !== '#808080') { // Not the fallback color
+        return hexToRgb(modeColor)
       }
-      if (scheme.default) {
-        return hexToRgb(scheme.default)
+    }
+    if (attrLower.includes('activity')) {
+      const activityColor = styleManager.getColor(`activity.${String(value).toLowerCase()}`)
+      if (activityColor !== '#808080') { // Not the fallback color
+        return hexToRgb(activityColor)
       }
     }
   }
 
-  // Fallback: generate color from hash
-  return generateColorFromHash(String(value))
-}
+  // Build/use cached color map for consistent categorical colors
+  // This ensures same value always gets same color based on sorted order
+  if (attribute && props.filteredData && props.filteredData.length > 0) {
+    // Rebuild cache if attribute changed
+    if (lastColorByAttribute.value !== attribute) {
+      const uniqueValues = new Set<string>()
+      props.filteredData.forEach((row: any) => {
+        const val = row[attribute]
+        if (val !== null && val !== undefined) {
+          uniqueValues.add(String(val))
+        }
+      })
+      const sortedValues = sortLegendCategories(Array.from(uniqueValues))
+      categoricalColorMapCache.value = styleManager.buildCategoricalColorMap(sortedValues)
+      lastColorByAttribute.value = attribute
+    }
 
-// Generate color from string hash (for dynamic categories)
-function generateColorFromHash(value: string): [number, number, number] {
-  // Simple hash function
-  let hash = 0
-  for (let i = 0; i < value.length; i++) {
-    hash = value.charCodeAt(i) + ((hash << 5) - hash)
-    hash = hash & hash // Convert to 32-bit integer
+    const cachedColor = categoricalColorMapCache.value.get(String(value))
+    if (cachedColor) {
+      return hexToRgb(cachedColor)
+    }
   }
 
-  // Generate RGB from hash
-  const r = (hash & 0xff0000) >> 16
-  const g = (hash & 0x00ff00) >> 8
-  const b = hash & 0x0000ff
-
-  // Ensure colors are not too dark
-  return [
-    Math.max(r, 80),
-    Math.max(g, 80),
-    Math.max(b, 80),
-  ]
+  // Fallback: use StyleManager categorical palette with hash-based index
+  const hash = String(value)
+    .split('')
+    .reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0)
+  const hex = styleManager.getCategoricalColor(Math.abs(hash))
+  return hexToRgb(hex)
 }
 
-// Get numeric color using Viridis gradient
+/**
+ * Get numeric color using StyleManager's viridis sequential scale
+ */
 function getNumericColor(
   value: number,
   scale?: [number, number],
   minValue?: number,
   maxValue?: number
 ): [number, number, number] {
+  const styleManager = StyleManager.getInstance()
+
   // Determine scale
-  let min = scale ? scale[0] : minValue || 0
-  let max = scale ? scale[1] : maxValue || 100
+  const min = scale ? scale[0] : minValue || 0
+  const max = scale ? scale[1] : maxValue || 100
 
   // Normalize value to 0-1
   let t = (value - min) / (max - min)
   t = Math.max(0, Math.min(1, t)) // Clamp to [0, 1]
 
-  // Viridis color approximation
-  return viridisColorRGB(t)
-}
-
-// Viridis gradient (polynomial approximation)
-function viridisColorRGB(t: number): [number, number, number] {
-  // Clamp t to [0, 1]
-  t = Math.max(0, Math.min(1, t))
-
-  // Polynomial approximation for Viridis
-  // Purple → Blue → Green → Yellow
-  const r = Math.max(0, Math.min(255, Math.round(255 * (0.267004 + t * (2.077963 * t - 2.141950)))))
-  const g = Math.max(0, Math.min(255, Math.round(255 * (0.004874 + t * (1.385520 - 0.790116 * t)))))
-  const b = Math.max(0, Math.min(255, Math.round(255 * (0.329415 + t * (1.100124 - 1.470975 * t)))))
-
-  return [r, g, b]
+  // Use StyleManager's viridis scale
+  const rgba = styleManager.getSequentialColorRGBA('viridis', t)
+  return [rgba[0], rgba[1], rgba[2]]
 }
 
 // Calculate min/max for numeric attribute from data
@@ -1472,25 +2104,50 @@ function calculateNumericRange(features: any[], attribute: string): [number, num
   return [min, max]
 }
 
-// Enhanced getBaseColor with dynamic coloring support
+// Enhanced getBaseColor with dynamic coloring support and role-aware logic
 function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, number] {
+  // Priority 0: Check layer role - neutral layers skip colorBy entirely
+  // This enables adaptive coloring where only primary layers show data colors
+  const role = layerRoles.value.get(layerConfig.name)
+  if (role?.role === 'neutral') {
+    // Return neutral theme color - subtle boundary without data coloring
+    const styleManager = StyleManager.getInstance()
+    return hexToRgb(styleManager.getColor('theme.border.default'))
+  }
+
   // Priority 1: Use dashboard-level colorByAttribute if set (from "Color by" selector)
   // This allows the global selector to override per-layer static colors
-  if (props.colorByAttribute && feature.properties?.[props.colorByAttribute] !== undefined) {
-    const attributeValue = feature.properties[props.colorByAttribute]
+  // Only applies to primary/secondary layers (neutral already handled above)
+  if (props.colorByAttribute) {
+    // Try to get attribute value from feature properties first
+    let attributeValue = feature.properties?.[props.colorByAttribute]
 
-    // Look up the attribute config from colorByOptions to determine type
-    const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
-    const attrType = attrConfig?.type || 'categorical'
+    // If not found in feature, look up from central data table via linkage
+    // This handles the case where GeoJSON has limited properties and full data is in CSV
+    if (attributeValue === undefined && layerConfig.linkage && props.filteredData) {
+      attributeValue = getAggregatedAttributeValue(feature, layerConfig, props.colorByAttribute)
+    }
 
-    if (attrType === 'numeric') {
-      // Numeric coloring - calculate range from layer data
-      const features = getLayerData(layerConfig.name)
-      const scale = calculateNumericRange(features, props.colorByAttribute)
-      return getNumericColor(attributeValue, scale)
-    } else {
-      // Categorical coloring
-      return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+    // If we found an attribute value, apply coloring
+    if (attributeValue !== undefined) {
+      // Look up the attribute config from colorByOptions to determine type
+      const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+      const attrType = attrConfig?.type || 'categorical'
+
+      if (attrType === 'numeric') {
+        // Numeric coloring - calculate range from central table data
+        const allValues = props.filteredData
+          .map((row: any) => row[props.colorByAttribute])
+          .filter((v: any) => typeof v === 'number')
+        if (allValues.length === 0) return [128, 128, 128]
+        const min = Math.min(...allValues)
+        const max = Math.max(...allValues)
+        const scale: [number, number] = [min, max]
+        return getNumericColor(attributeValue, scale)
+      } else {
+        // Categorical coloring
+        return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+      }
     }
   }
 
@@ -1531,7 +2188,16 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
     return hexToRgb(layerConfig.fillColor)
   }
 
-  // Default blue
+  // Priority 4: Layer-type defaults from StyleManager
+  const styleManager = StyleManager.getInstance()
+  if (layerConfig.type === 'arc') {
+    return hexToRgb(styleManager.getArcLayerStyle().color)
+  }
+  if (layerConfig.type === 'fill' || layerConfig.type === 'polygon') {
+    return hexToRgb(styleManager.getBoundaryLayerStyle().fillColor)
+  }
+
+  // Final fallback: default blue
   return [52, 152, 219]
 }
 
@@ -1546,10 +2212,53 @@ function setHasLoose(set: Set<any>, value: any): boolean {
   return false
 }
 
+/**
+ * Get the feature ID to use for data joins with the central table.
+ *
+ * Handles ID mismatch between GeoJSON and CSV:
+ * - GeoJSON OD flows have: cluster_type='od', cluster_id='0'
+ * - CSV has: unique_id='od_0'
+ *
+ * This function constructs the compound ID when needed by combining
+ * cluster_type and cluster_id.
+ *
+ * @param feature - GeoJSON feature
+ * @param layerConfig - Layer configuration with linkage info
+ * @returns The feature ID suitable for joining with the table
+ */
+function getFeatureId(feature: any, layerConfig: LayerConfig): any {
+  if (!layerConfig.linkage) return undefined
+
+  let featureId = feature.properties?.[layerConfig.linkage.geoProperty]
+
+  // Handle ID mismatch: GeoJSON may have simple cluster_id (e.g., '0')
+  // while CSV has compound unique_id (e.g., 'od_0')
+  // Only construct compound IDs when tableColumn expects them (e.g., 'unique_id')
+  // If tableColumn is the same as geoProperty (e.g., both 'cluster_id'), use simple ID
+  const tableColumn = layerConfig.linkage.tableColumn
+  const geoProperty = layerConfig.linkage.geoProperty
+
+  // Only construct compound IDs if tableColumn differs from geoProperty
+  // This indicates we need to transform the ID (e.g., geoProperty='cluster_id', tableColumn='unique_id')
+  if (tableColumn !== geoProperty) {
+    const clusterType = feature.properties?.cluster_type
+    if (clusterType && featureId !== undefined) {
+      const featureIdStr = String(featureId)
+      // Check if featureId already has the prefix (e.g., 'origin_1' already contains 'origin')
+      if (!featureIdStr.startsWith(clusterType + '_') && !featureIdStr.includes('_')) {
+        // Construct compound ID: 'od' + '_' + '0' = 'od_0'
+        featureId = `${clusterType}_${featureIdStr}`
+      }
+    }
+  }
+
+  return featureId
+}
+
 function isFeatureFiltered(feature: any, layerConfig: LayerConfig): boolean {
   if (!layerConfig.linkage) return true
 
-  const featureId = feature.properties?.[layerConfig.linkage.geoProperty]
+  const featureId = getFeatureId(feature, layerConfig)
   const tableColumn = layerConfig.linkage.tableColumn
 
   // Use loose comparison to handle type mismatches (string "45" vs number 45)
@@ -1593,15 +2302,17 @@ function handleClick(info: any) {
     return
   }
 
+  // Use getFeatureId to construct compound IDs for proper table matching
   const featureIds = picked
-    .map((p) => p.object?.properties?.[layerConfig.linkage!.geoProperty])
+    .map((p) => getFeatureId(p.object, layerConfig))
     .filter((id) => id !== undefined && id !== null)
 
   // Debug: log what we're getting from the GeoJSON
   if (picked.length > 0) {
     const firstFeature = picked[0].object
     debugLog('[MapCard] Click - geoProperty:', layerConfig.linkage!.geoProperty,
-      'extracted IDs:', featureIds,
+      'raw cluster_id:', firstFeature?.properties?.[layerConfig.linkage!.geoProperty],
+      'constructed IDs:', featureIds,
       'first feature properties:', firstFeature?.properties)
   }
 
@@ -1644,8 +2355,9 @@ function handleHover(info: any) {
 
   const picked = pickMultipleFeatures(info, layerConfig)
 
+  // Use getFeatureId to construct compound IDs for proper matching
   const featureIds = picked
-    .map((p) => p.object?.properties?.[layerConfig.linkage!.geoProperty])
+    .map((p) => getFeatureId(p.object, layerConfig))
     .filter((id) => id !== undefined && id !== null)
 
   if (featureIds.length > 0) {
@@ -1666,18 +2378,68 @@ function pickMultipleFeatures(info: any, layerConfig: LayerConfig): any[] {
   }
 
   try {
+    const pickRadius = 1
+    if (!props.multiLevelSelection) {
+      const picked = (deckOverlay.value as any).pickObject({
+        x: info.x,
+        y: info.y,
+        radius: pickRadius,
+        layerIds: [layerId],
+      })
+
+      return picked ? [picked] : []
+    }
+
+    const layerIds = getPickableLayerIds()
+    const pickIds = layerIds.length > 0 ? layerIds : [layerId]
+
     const picked = (deckOverlay.value as any).pickMultipleObjects({
       x: info.x,
       y: info.y,
-      radius: 2,
-      layerIds: [layerId],
+      radius: pickRadius,
+      layerIds: pickIds,
     })
 
     return picked || []
   } catch (error) {
-    console.warn('[MapCard] pickMultipleObjects failed:', error)
+    console.warn('[MapCard] picking failed:', error)
     return info.object ? [info] : []
   }
+}
+
+function getPickableLayerIds(): string[] {
+  if (!props.layers) return []
+
+  const ids: string[] = []
+  props.layers.forEach((layerConfig) => {
+    if (!isLayerVisible(layerConfig)) return
+    if (!layerConfig.linkage) return
+
+    switch (layerConfig.type) {
+      case 'polygon':
+      case 'fill':
+        ids.push(`polygon-${layerConfig.name}`)
+        break
+      case 'line':
+        ids.push(`line-${layerConfig.name}`)
+        ids.push(`line-destinations-${layerConfig.name}`)
+        break
+      case 'arc':
+        ids.push(`arc-${layerConfig.name}`)
+        ids.push(`self-loops-${layerConfig.name}`)
+        ids.push(`arc-tips-${layerConfig.name}`)
+        break
+      case 'scatterplot':
+      case 'circle':
+      case 'point':
+        ids.push(`scatterplot-${layerConfig.name}`)
+        break
+      default:
+        break
+    }
+  })
+
+  return ids
 }
 
 function findLayerConfigById(layerId: string | undefined): LayerConfig | null {
@@ -1708,7 +2470,71 @@ const legendData = computed(() => {
     return null
   }
 
-  // Find the first layer with colorBy configuration
+  // Priority 1: Use dashboard-level colorByAttribute (from "Color by" selector)
+  // This is the primary way colors are applied via map.colorBy.attributes
+  if (props.colorByAttribute && props.colorByOptions?.length > 0) {
+    const attrConfig = props.colorByOptions.find(opt => opt.attribute === props.colorByAttribute)
+    if (attrConfig) {
+      // Use central table data (props.filteredData) for attribute values
+      // This handles the case where attributes are in CSV, not GeoJSON
+      if (props.filteredData && props.filteredData.length > 0) {
+        if (attrConfig.type === 'numeric') {
+          const allValues = props.filteredData
+            .map((row: any) => row[props.colorByAttribute])
+            .filter((v: any) => typeof v === 'number')
+          const min = allValues.length > 0 ? Math.min(...allValues) : 0
+          const max = allValues.length > 0 ? Math.max(...allValues) : 1
+          return {
+            type: 'numeric' as const,
+            title: formatChartTitle(props.colorByAttribute, undefined, { labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute) }),
+            minValue: min,
+            maxValue: max,
+          }
+        } else {
+          // Categorical - get unique values from central table
+          // Strip "[-]" from label for categorical data (no meaningful unit)
+          return {
+            type: 'categorical' as const,
+            title: formatChartTitle(props.colorByAttribute, undefined, {
+              labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
+              stripEmptyUnits: true,
+            }),
+            items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
+          }
+        }
+      }
+
+      // Fallback: try to get from GeoJSON features (original behavior)
+      const primaryLayer = props.layers.find(layer => {
+        const role = layerRoles.value.get(layer.name)
+        return role?.role === 'primary' || !role  // Include layers without roles (defaults to primary)
+      }) || props.layers[0]
+
+      if (attrConfig.type === 'numeric') {
+        const features = getLayerData(primaryLayer.name)
+        const [min, max] = calculateNumericRange(features, props.colorByAttribute)
+        return {
+          type: 'numeric' as const,
+          title: formatChartTitle(props.colorByAttribute, undefined, { labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute) }),
+          minValue: min,
+          maxValue: max,
+        }
+      } else {
+        // Categorical
+        // Strip "[-]" from label for categorical data (no meaningful unit)
+        return {
+          type: 'categorical' as const,
+          title: formatChartTitle(props.colorByAttribute, undefined, {
+            labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
+            stripEmptyUnits: true,
+          }),
+          items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
+        }
+      }
+    }
+  }
+
+  // Priority 2: Find the first layer with per-layer colorBy configuration
   const colorByLayer = props.layers.find((layer) => layer.colorBy)
 
   if (!colorByLayer || !colorByLayer.colorBy) {
@@ -1723,7 +2549,10 @@ const legendData = computed(() => {
   if (colorBy.type === 'categorical') {
     return {
       type: 'categorical' as const,
-      title: formatPropertyName(colorBy.attribute),
+      title: formatChartTitle(colorBy.attribute, undefined, {
+        labelOverride: toTitleCase(colorBy.attribute),
+        stripEmptyUnits: true,
+      }),
       items: buildCategoricalLegendItems(colorByLayer, colorBy),
     }
   } else if (colorBy.type === 'numeric') {
@@ -1732,7 +2561,7 @@ const legendData = computed(() => {
 
     return {
       type: 'numeric' as const,
-      title: formatPropertyName(colorBy.attribute),
+      title: formatChartTitle(colorBy.attribute, undefined, { labelOverride: toTitleCase(colorBy.attribute) }),
       minValue: min,
       maxValue: max,
     }
@@ -1748,12 +2577,13 @@ function buildCategoricalLegendItems(
 ): { label: string; color: string }[] {
   const items: { label: string; color: string }[] = []
 
-  // If custom colors provided, use those
+  // If custom colors provided, use those (sorted alphabetically)
   if (colorBy.colors) {
-    Object.entries(colorBy.colors).forEach(([value, color]) => {
+    const sortedKeys = sortLegendCategories(Object.keys(colorBy.colors))
+    sortedKeys.forEach((value) => {
       items.push({
-        label: String(value),
-        color: String(color),
+        label: toTitleCase(String(value)),
+        color: String(colorBy.colors[value]),
       })
     })
     return items
@@ -1770,12 +2600,83 @@ function buildCategoricalLegendItems(
     }
   })
 
-  uniqueValues.forEach((value) => {
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
+
+  sortedValues.forEach((value) => {
     const rgb = getCategoricalColor(value, colorBy.colors, colorBy.attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
-      label: String(value),
+      label: toTitleCase(value),
+      color: hexColor,
+    })
+  })
+
+  return items
+}
+
+// Build categorical legend items from dashboard-level colorByAttribute
+function buildCategoricalLegendItemsFromAttribute(
+  layerConfig: LayerConfig,
+  attribute: string
+): { label: string; color: string }[] {
+  const items: { label: string; color: string }[] = []
+  const features = getLayerData(layerConfig.name)
+
+  // Collect unique values from features
+  const uniqueValues = new Set<any>()
+  features.forEach((feature) => {
+    const value = feature.properties?.[attribute]
+    if (value !== undefined && value !== null) {
+      uniqueValues.add(value)
+    }
+  })
+
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
+
+  sortedValues.forEach((value) => {
+    const rgb = getCategoricalColor(value, undefined, attribute)
+    const hexColor = rgbToHex(rgb)
+
+    items.push({
+      label: toTitleCase(value),
+      color: hexColor,
+    })
+  })
+
+  return items
+}
+
+// Build categorical legend items from central table data (props.filteredData)
+function buildCategoricalLegendItemsFromTable(
+  attribute: string
+): { label: string; color: string }[] {
+  const items: { label: string; color: string }[] = []
+
+  if (!props.filteredData || props.filteredData.length === 0) {
+    return items
+  }
+
+  // Collect unique values from table rows
+  const uniqueValues = new Set<any>()
+  props.filteredData.forEach((row: any) => {
+    const value = row[attribute]
+    if (value !== undefined && value !== null) {
+      uniqueValues.add(value)
+    }
+  })
+
+  // Sort values alphabetically for consistent color assignment
+  const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
+
+  sortedValues.forEach((value) => {
+    const rgb = getCategoricalColor(value, undefined, attribute)
+    const hexColor = rgbToHex(rgb)
+
+    items.push({
+      label: toTitleCase(value),
       color: hexColor,
     })
   })
@@ -1817,12 +2718,12 @@ function rgbToHex(rgb: [number, number, number]): string {
 }
 
 // Watch for data changes to trigger layer updates
+// Shallow watching is sufficient - LinkableCardWrapper creates new array/Set references on change
 watch(
-  [() => props.filteredData, () => props.hoveredIds, () => props.selectedIds],
+  [() => props.filteredData, () => props.hoveredIds, () => props.hoveredIds?.size ?? 0, () => props.selectedIds, () => props.selectedIds?.size ?? 0],
   () => {
     updateLayers()
-  },
-  { deep: true }
+  }
 )
 
 // Watch for comparison mode changes
@@ -1857,6 +2758,7 @@ function cleanup() {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background-color: var(--dashboard-bg-secondary, var(--bgCardFrame));
 }
 
 .map-controls {
@@ -1864,8 +2766,8 @@ function cleanup() {
   align-items: center;
   gap: 1rem;
   padding: 0.5rem 0.75rem;
-  background: var(--bgPanel, #f8f9fa);
-  border-bottom: 1px solid var(--borderColor, #e5e7eb);
+  background: var(--dashboard-bg-secondary, var(--bgPanel, #f8f9fa));
+  border-bottom: 1px solid var(--dashboard-border-default, var(--borderColor, #e5e7eb));
 }
 
 .control-item {
@@ -1877,28 +2779,28 @@ function cleanup() {
 .control-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--text, #374151);
+  color: var(--dashboard-text-primary, var(--text, #374151));
   opacity: 0.8;
 }
 
 .control-select {
   padding: 0.3rem 0.5rem;
   font-size: 0.8rem;
-  border: 1px solid var(--borderColor, #d1d5db);
+  border: 1px solid var(--dashboard-border-default, var(--borderColor, #d1d5db));
   border-radius: 4px;
-  background: var(--bgCream, white);
-  color: var(--text, #374151);
+  background: var(--dashboard-bg-primary, var(--bgCream, white));
+  color: var(--dashboard-text-primary, var(--text, #374151));
   cursor: pointer;
   min-width: 100px;
 }
 
 .control-select:hover {
-  border-color: var(--link, #3b82f6);
+  border-color: var(--dashboard-interaction-selected, var(--link, #3b82f6));
 }
 
 .control-select:focus {
   outline: none;
-  border-color: var(--link, #3b82f6);
+  border-color: var(--dashboard-interaction-selected, var(--link, #3b82f6));
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
@@ -1908,13 +2810,27 @@ function cleanup() {
   position: relative;
 }
 
+/* Scientific mode: hide interactive controls for clean export */
+.map-container.scientific-mode :deep(.maplibregl-ctrl-group) {
+  display: none !important;
+}
+
+.map-container.scientific-mode :deep(.maplibregl-ctrl-attrib) {
+  display: none !important;
+}
+
+.map-container.scientific-mode :deep(.maplibregl-ctrl-fullscreen) {
+  display: none !important;
+}
+
 .loading-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--dashboard-bg-primary, rgba(255, 255, 255, 0.9));
+  color: var(--dashboard-text-primary, #374151);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1926,8 +2842,8 @@ function cleanup() {
 .spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
+  border: 4px solid var(--dashboard-border-default, #e5e7eb);
+  border-top-color: var(--dashboard-interaction-selected, #3b82f6);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1955,5 +2871,23 @@ function cleanup() {
 
 :global(.tooltip-value) {
   flex: 1;
+}
+
+:global(.tooltip-highlight) {
+  background-color: color-mix(in srgb, var(--dashboard-interaction-selected) 15%, transparent);
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem 0.25rem -0.5rem;
+  border-radius: 4px;
+}
+
+:global(.tooltip-highlight .tooltip-value) {
+  font-weight: 700;
+  color: var(--dashboard-interaction-selected);
+}
+
+:global(.tooltip-divider) {
+  border: none;
+  border-top: 1px solid var(--dashboard-border-default);
+  margin: 0.5rem 0;
 }
 </style>

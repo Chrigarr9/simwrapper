@@ -2,6 +2,8 @@
   <div class="linkable-card-wrapper">
     <slot
       :filtered-data="filteredData"
+      :baseline-data="baselineData"
+      :show-comparison="showComparison"
       :hovered-ids="hoveredIds"
       :selected-ids="selectedIds"
       :handle-filter="handleFilter"
@@ -12,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { FilterManager, FilterObserver } from '../../managers/FilterManager'
 import type { LinkageManager, LinkageObserver } from '../../managers/LinkageManager'
 import type { DataTableManager } from '../../managers/DataTableManager'
@@ -22,14 +24,43 @@ interface Props {
   card: any
   filterManager: FilterManager
   linkageManager: LinkageManager
-  dataTableManager: DataTableManager
+  dataTableManager?: DataTableManager | null  // Optional: null when no table config
+  showComparison?: boolean  // Whether comparison mode is active
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showComparison: false,
+})
 
 const hoveredIds = ref<Set<any>>(new Set())
 const selectedIds = ref<Set<any>>(new Set())
 const filteredData = ref<any[]>([])
+
+const usesVisualSample = computed(() => !!props.card?.useVisualSample)
+
+function toBool(value: any): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'true' || normalized === '1' || normalized === 'yes'
+  }
+  return false
+}
+
+function applyVisualSampleFilter(data: any[]): any[] {
+  if (!usesVisualSample.value) return data
+  return data.filter((row: any) => toBool(row?.is_visual_sampled))
+}
+
+// Baseline data: all data from data table manager (unfiltered)
+const baselineData = computed(() => {
+  if (!props.dataTableManager) {
+    return []
+  }
+  const allData = props.dataTableManager.getData()
+  return applyVisualSampleFilter(allData)
+})
 
 const filterObserver: FilterObserver = {
   onFilterChange: (filters) => {
@@ -40,10 +71,13 @@ const filterObserver: FilterObserver = {
 
 const linkageObserver: LinkageObserver = {
   onHoveredIdsChange: (ids: Set<any>) => {
-    hoveredIds.value = ids
+    // Create a new Set to ensure Vue's reactivity detects the change
+    hoveredIds.value = new Set(ids)
   },
   onSelectedIdsChange: (ids: Set<any>) => {
-    selectedIds.value = ids
+    debugLog('[LinkableCardWrapper] onSelectedIdsChange for card:', props.card.title || props.card.type, 'ids size:', ids.size)
+    // Create a new Set to ensure Vue's reactivity detects the change
+    selectedIds.value = new Set(ids)
   },
 }
 
@@ -51,30 +85,12 @@ const handleFilter = (filterId: string, column: string, values: Set<any>, filter
   // Determine the filter type (default to 'categorical')
   const type = (filterType as 'categorical' | 'binned') || 'categorical'
 
-  // Check if this filter should use toggle behavior (for map cards with layer linkage)
-  let useToggle = props.card.linkage?.behavior === 'toggle'
-  if (!useToggle && props.card.layers) {
-    const hasLayerLinkage = props.card.layers.some((layer: any) => layer.linkage)
-    if (hasLayerLinkage) {
-      useToggle = true
-    }
-  }
-
-  if (useToggle) {
-    // Toggle filter values - if all values are already in the filter, remove them
-    const currentFilter = props.filterManager.getFilters().get(filterId)
-    if (currentFilter) {
-      const allValuesSelected = Array.from(values).every(v => currentFilter.values.has(v))
-      if (allValuesSelected) {
-        // Remove these values from the filter
-        const newValues = new Set(currentFilter.values)
-        values.forEach(v => newValues.delete(v))
-        debugLog('[LinkableCardWrapper] Toggle filter OFF:', filterId, column, 'remaining:', newValues)
-        props.filterManager.setFilter(filterId, column, newValues, type, binSize)
-        return
-      }
-    }
-  }
+  // Cards (HistogramCard, PieChartCard, etc.) manage their own selection state internally
+  // and emit the complete set of what should be selected. We simply pass this through
+  // to the FilterManager - no additional toggle logic needed here.
+  //
+  // The card's emitted values represent the TRUTH of what should be filtered.
+  // If values is empty, FilterManager.setFilter will remove the filter entirely.
 
   debugLog('[LinkableCardWrapper] Filter event:', filterId, column, values, 'type:', type, 'binSize:', binSize)
   props.filterManager.setFilter(filterId, column, values, type, binSize)
@@ -98,7 +114,7 @@ const handleSelect = (ids: Set<any>) => {
     }
   }
 
-  debugLog('[LinkableCardWrapper] Select event:', ids, 'behavior:', behavior)
+  debugLog('[LinkableCardWrapper] Select event for card:', props.card.title || props.card.type, 'ids size:', ids.size, 'behavior:', behavior)
 
   if (behavior === 'toggle') {
     props.linkageManager.toggleSelectedIds(ids)
@@ -108,12 +124,39 @@ const handleSelect = (ids: Set<any>) => {
 }
 
 const updateFilteredData = () => {
+  // If no dataTableManager, pass empty array (no central data to filter)
+  // Cards can still render their own content (loaded from their own files)
+  if (!props.dataTableManager) {
+    filteredData.value = []
+    return
+  }
   const allData = props.dataTableManager.getData()
-  const filtered = props.filterManager.applyFilters(allData)
+  const idColumn = props.dataTableManager.getIdColumn()
+  // Use centralized cached filtering instead of per-card applyFilters.
+  // All N wrappers now share the SAME cached array reference from getFilteredData(),
+  // so filter computation happens exactly once per filter change.
+  let filtered = props.filterManager.getFilteredData(allData, idColumn)
+
+  // Apply per-card fixed filter (e.g., fixedFilter: {anchor_zone_policy: "force"})
+  const fixedFilter = props.card?.fixedFilter
+  if (fixedFilter && typeof fixedFilter === 'object') {
+    filtered = filtered.filter((row: any) => {
+      for (const [col, val] of Object.entries(fixedFilter as Record<string, any>)) {
+        if (String(row[col]) !== String(val)) return false
+      }
+      return true
+    })
+  }
+
   debugLog('[LinkableCardWrapper] updateFilteredData for', props.card.title || props.card.type,
     '- all:', allData.length, 'filtered:', filtered.length)
-  filteredData.value = filtered
+  filteredData.value = applyVisualSampleFilter(filtered)
 }
+
+// Watch showComparison prop changes (uses debugLog for controlled output)
+watch(() => props.showComparison, (newVal, oldVal) => {
+  debugLog('[LinkableCardWrapper] showComparison changed:', oldVal, '->', newVal, 'for card:', props.card.title || props.card.type)
+}, { immediate: true })
 
 onMounted(() => {
   props.filterManager.addObserver(filterObserver)

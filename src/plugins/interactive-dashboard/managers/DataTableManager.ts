@@ -19,6 +19,7 @@ export class DataTableManager {
   private data: DataRow[] = []
   private config: TableConfig
   private idColumn: string
+  private sortedCategoricalValuesCache: Map<string, string[]> = new Map()
 
   constructor(config: TableConfig) {
     this.config = config
@@ -59,6 +60,8 @@ export class DataTableManager {
    */
   setData(data: DataRow[]): void {
     this.data = data
+    // Clear cache when data changes
+    this.sortedCategoricalValuesCache.clear()
   }
 
   /**
@@ -94,5 +97,36 @@ export class DataTableManager {
    */
   getIdColumn(): string {
     return this.idColumn
+  }
+
+  /**
+   * Get sorted unique categorical values for a column
+   * Results are cached for performance and cleared when data changes
+   *
+   * @param column - Column name to get unique values from
+   * @returns Alphabetically sorted array of unique string values
+   */
+  getSortedCategoricalValues(column: string): string[] {
+    // Check cache first
+    if (this.sortedCategoricalValuesCache.has(column)) {
+      return this.sortedCategoricalValuesCache.get(column)!
+    }
+
+    // Compute sorted unique values
+    const uniqueValues = new Set<string>()
+    this.data.forEach(row => {
+      const value = row[column]
+      if (value !== null && value !== undefined) {
+        uniqueValues.add(String(value))
+      }
+    })
+
+    const sortedValues = Array.from(uniqueValues).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    )
+
+    // Cache and return
+    this.sortedCategoricalValuesCache.set(column, sortedValues)
+    return sortedValues
   }
 }

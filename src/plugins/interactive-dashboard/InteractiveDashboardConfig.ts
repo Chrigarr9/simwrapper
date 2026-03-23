@@ -8,6 +8,7 @@ export interface ColumnFormat {
   unit?: string  // Display unit (e.g., 'km', 'h', 'min', 's', 'm')
   decimals?: number  // Number of decimal places for numeric types
   convertFrom?: 'seconds' | 'meters'  // Source unit for automatic conversion
+  titleCase?: boolean  // Whether to apply title-case formatting to string values (default: true)
 }
 
 /**
@@ -80,9 +81,11 @@ export interface ScatterCardConfig extends CardConfig {
   type: 'scatter-plot'
   xColumn: string  // Column for X axis
   yColumn: string  // Column for Y axis
+  yColumnRight?: string  // Optional second Y column plotted on a right-side secondary axis
   colorColumn?: string  // Optional column for point colors (categorical)
   sizeColumn?: string  // Optional column for point sizes (numeric)
   markerSize?: number  // Default marker size (default: 8)
+  connectLines?: boolean  // Connect same-color points with lines sorted by x-axis
 }
 
 /**
@@ -93,6 +96,7 @@ export interface MapCardConfig extends CardConfig {
   center?: [number, number]  // Map center [lon, lat]
   zoom?: number  // Initial zoom level
   layers?: MapLayerConfig[]  // Map layers
+  multiLevelSelection?: boolean  // If true, hover/select all layers under cursor
 }
 
 /**

@@ -8,6 +8,24 @@
       .dtitles.flex1
         h2 {{ title }}
         p {{ description }}
+
+      .header-controls
+        //- Color by selector (only shown if colorBy attributes are configured)
+        color-by-selector(
+          v-if="colorByOptions.length > 0"
+          :model-value="colorByAttribute"
+          :options="colorByOptions"
+          @update:model-value="colorByAttribute = $event"
+        )
+
+        //- Theme toggle showing current mode
+        button.theme-toggle(
+          @click="toggleTheme"
+          :title="'Theme: ' + currentThemeName + ' (click to cycle)'"
+        )
+          i.fa(:class="themeIcon")
+          span.theme-label {{ currentThemeName }}
+
       .favstar
         p.favorite-icon(title="Favorite"
           :class="{'is-favorite': isFavorite}"
@@ -28,211 +46,112 @@
       :style="{'flex': rowFlexWeights[i] || 1}"
     )
 
-      //- each card here
-      .dash-card-frame(v-for="card,j in row.cards" :key="`${i}/${j}`"
-        :style="getCardStyle(card)"
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow}"
+      //- each card here - wrapped with DashboardCard for consistent chrome
+      DashboardCard(
+        v-for="card, j in row.cards"
+        :key="`${i}/${j}/${cardRenderKey}`"
+        :card="card"
+        :is-fullscreen="fullScreenCardId === card.id"
+        :another-card-fullscreen="!!fullScreenCardId && fullScreenCardId !== card.id"
+        :is-panel-narrow="isPanelNarrow"
+        :is-full-screen-dashboard="isFullScreenDashboard"
+        :total-cards-in-row="row.cards.length"
+        :total-rows="rows.length"
+        @toggle-fullscreen="toggleZoom(card)"
+        @clear-errors="card.errors = []"
+        @card-resize="handleCardResize"
       )
-
-        //- card header/title
-        .dash-card-headers(v-if="card.title + card.description" :class="{'fullscreen': !!fullScreenCardId}")
-          .header-labels(:style="{paddingLeft: card.type=='text' ? '4px' : ''}")
-            h3 {{ card.title }}
-            p(v-if="card.description") {{ card.description }}
-
-          //- zoom button
-          .header-buttons
-            button.button.is-small.is-white(
-              v-if="card.info"
-              @click="handleToggleInfoClick(card)"
-              :title="infoToggle[card.id] ? 'Hide Info':'Show Info'"
-            )
-              i.fa.fa-info-circle
-
-            button.button.is-small.is-white(
-              @click="toggleZoom(card)"
-              :title="fullScreenCardId ? 'Restore':'Enlarge'"
-            )
-              i.fa.fa-expand
-
-        //- info contents
-        .info(v-show="infoToggle[card.id]")
-          p
-          p {{ card.info }}
-
-        //- card contents
-        .spinner-box(v-if="getCardComponent(card)"
-          :id="card.id"
-          :class="{'is-loaded': card.isLoaded}"
+        //- All cards use LinkableCardWrapper - handles both linkage and non-linkage cases
+        //- Cards that don't use filteredData/hoveredIds/selectedIds simply ignore them
+        //- dataTableManager is optional - cards render even without centralized data table
+        linkable-card-wrapper(v-if="getCardComponent(card) && filterManager && linkageManager"
+          :card="card"
+          :filter-manager="filterManager"
+          :linkage-manager="linkageManager"
+          :data-table-manager="dataTableManager"
+          :show-comparison="effectiveShowComparison"
         )
-          //- NEW: Wrap cards that have linkage (only if managers are initialized)
-          //- Also wrap map cards that have layers with linkage
-          //- Data-table cards always have linkage
-          linkable-card-wrapper(v-if="(card.linkage || hasLayerLinkage(card) || card.type === 'data-table') && filterManager && linkageManager && dataTableManager"
-            :card="card"
-            :filter-manager="filterManager"
-            :linkage-manager="linkageManager"
-            :data-table-manager="dataTableManager"
-          )
-            template(v-slot="{ filteredData, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
-              component.dash-card(v-if="card.visible"
-                :is="getCardComponent(card)"
-                :class="{'is-data-table': card.type === 'data-table'}"
-                :fileSystemConfig="fileSystemConfig"
-                :subfolder="row.subtabFolder || xsubfolder"
-                :files="fileList"
-                :yaml="(card.props && card.props.configFile) || ''"
-                :config="card.props"
-                :datamanager="datamanager"
-                :split="split"
-                :style="{opacity: opacity[card.id]}"
-                :cardId="card.id"
-                :cardTitle="card.title"
-                :allConfigFiles="allConfigFiles"
-                :column="card.column"
-                :bin-size="card.binSize"
-                :title="card.title"
-                :x-column="card.xColumn"
-                :y-column="card.yColumn"
-                :color-column="card.colorColumn"
-                :size-column="card.sizeColumn"
-                :marker-size="card.markerSize"
-                :id-column="yaml.table?.idColumn"
-                :filtered-data="filteredData"
-                :hovered-ids="hoveredIds"
-                :selected-ids="selectedIds"
-                :linkage="card.linkage"
-                :layers="getCardLayers(card)"
-                :center="card.center"
-                :zoom="card.zoom"
-                :map-style="card.mapStyle"
-                :legend="card.legend"
-                :tooltip="card.tooltip"
-                :geometry-type="geometryType"
-                :color-by-attribute="colorByAttribute"
-                :map-controls-config="yaml.map?.controls"
-                :geometry-type-options="geometryTypeOptions"
-                :color-by-options="colorByOptions"
-                :table-config="yaml.table"
-                :data-table-manager="dataTableManager"
-                :filter-manager="filterManager"
-                :linkage-manager="linkageManager"
-                @update:geometry-type="geometryType = $event"
-                @update:color-by-attribute="colorByAttribute = $event"
-                @filter="handleFilter"
-                @hover="handleHover"
-                @select="handleSelect"
-                @isLoaded="handleCardIsLoaded(card)"
-                @dimension-resizer="setDimensionResizer"
-                @titles="setCardTitles(card, $event)"
-                @error="setCardError(card, $event)"
-              )
-
-          //- Standard rendering for cards without linkage
-          component.dash-card(v-else-if="card.visible"
-            :is="getCardComponent(card)"
-            :fileSystemConfig="fileSystemConfig"
-            :subfolder="row.subtabFolder || xsubfolder"
-            :files="fileList"
-            :yaml="(card.props && card.props.configFile) || ''"
-            :config="card.props"
-            :datamanager="datamanager"
-            :split="split"
-            :style="{opacity: opacity[card.id]}"
-            :cardId="card.id"
-            :cardTitle="card.title"
-            :allConfigFiles="allConfigFiles"
-            :column="card.column"
-            :bin-size="card.binSize"
-            :title="card.title"
-            :x-column="card.xColumn"
-            :y-column="card.yColumn"
-            :color-column="card.colorColumn"
-            :size-column="card.sizeColumn"
-            :marker-size="card.markerSize"
-            :id-column="yaml.table?.idColumn"
-            :layers="getCardLayers(card)"
-            :center="card.center"
-            :zoom="card.zoom"
-            :map-style="card.mapStyle"
-            :legend="card.legend"
-            :tooltip="card.tooltip"
-            :geometry-type="geometryType"
-            :color-by-attribute="colorByAttribute"
-            :map-controls-config="yaml.map?.controls"
-            :geometry-type-options="geometryTypeOptions"
-            :color-by-options="colorByOptions"
-            @update:geometry-type="geometryType = $event"
-            @update:color-by-attribute="colorByAttribute = $event"
-            @isLoaded="handleCardIsLoaded(card)"
-            @dimension-resizer="setDimensionResizer"
-            @titles="setCardTitles(card, $event)"
-            @error="setCardError(card, $event)"
-          )
-          .error-text(v-if="card.errors.length")
-            span.clear-error(@click="card.errors=[]") &times;
-            p(v-for="err,i in card.errors" :key="i") {{ err }}
-
-    //- Data Table (if visible in config AND not placed in layout) - styled as a dashboard card
-    //- When table.position === 'layout', the table is rendered via a data-table card in the layout
-    .dash-row(v-if="yaml.table && yaml.table.visible && yaml.table.position !== 'layout' && dataTableManager" :style="tableFullScreen ? tableFullScreenStyle : {}")
-      .dash-card-frame.table-card-frame(
-        :class="{wiide, 'is-panel-narrow': isPanelNarrow, 'is-fullscreen': tableFullScreen}"
-      )
-        //- card header/title
-        .dash-card-headers
-          .header-labels
-            h3 {{ yaml.table.name || 'Data Table' }}
-            p(v-if="yaml.table.description") {{ yaml.table.description }}
-          .header-buttons
-            //- Auto-scroll toggle
-            label.scroll-toggle(title="Auto-scroll to hovered row")
-              input(type="checkbox" v-model="enableScrollOnHover")
-              span.scroll-label Scroll
-
-            //- Filter reset button
-            button.button.is-small.is-white(
-              v-if="filterManager && filterManager.hasActiveFilters()"
-              @click="handleClearAllFilters"
-              title="Clear all filters"
+          template(v-slot="{ filteredData, baselineData, showComparison, hoveredIds, selectedIds, handleFilter, handleHover, handleSelect }")
+            component.dash-card(v-if="card.visible"
+              :is="getCardComponent(card)"
+              :class="{'is-data-table': card.type === 'data-table'}"
+              :fileSystemConfig="fileSystemConfig"
+              :subfolder="row.subtabFolder || xsubfolder"
+              :files="fileList"
+              :yaml="(card.props && card.props.configFile) || ''"
+              :config="card.props"
+              :datamanager="datamanager"
+              :split="split"
+              :style="{opacity: opacity[card.id]}"
+              :cardId="card.id"
+              :cardTitle="card.title"
+              :allConfigFiles="allConfigFiles"
+              :column="card.column"
+              :bin-size="card.binSize"
+              :x-min="card.xMin"
+              :x-max="card.xMax"
+              :y-min="card.yMin"
+              :y-max="card.yMax"
+              :auto-trim="card.autoTrim"
+              :x-auto-trim="card.xAutoTrim"
+              :y-auto-trim="card.yAutoTrim"
+              :title="card.title"
+              :x-column="card.xColumn"
+              :y-column="card.yColumn"
+              :y-column-right="card.yColumnRight"
+              :color-column="card.colorColumn"
+              :size-column="card.sizeColumn"
+              :marker-size="card.markerSize"
+              :connect-lines="card.connectLines"
+              :show-tooltip="card.showTooltip"
+              :id-column="card.idColumn || yaml.table?.idColumn"
+              :attributes="card.attributes"
+              :left-attributes="card.leftAttributes"
+              :bottom-attributes="card.bottomAttributes"
+              :matrix-part="card.matrixPart"
+              :show-values="card.showValues"
+              :p-value-threshold="card.pValueThreshold"
+              :listen-to-attribute-pair-selection="card.listenToAttributePairSelection"
+              :filtered-data="filteredData"
+              :baseline-data="baselineData"
+              :show-comparison="showComparison"
+              :hovered-ids="hoveredIds"
+              :selected-ids="selectedIds"
+              :linkage="card.linkage"
+              :layers="getCardLayers(card)"
+              :center="card.center ? [Number(card.center[0]), Number(card.center[1])] : undefined"
+              :zoom="card.zoom ? Number(card.zoom) : undefined"
+              :map-style="card.mapStyle"
+              :view-sync-group="card.viewSync"
+              :external-viewport="card.viewSync ? getExternalViewport(card) : undefined"
+              :legend="card.legend"
+              :tooltip="card.tooltip"
+              :multi-level-selection="card.multiLevelSelection"
+              :geometry-type="geometryType"
+              :color-by-attribute="(card.type === 'map' || card.type === 'timeline' || card.colorBy) ? colorByAttribute : ''"
+              :map-controls-config="yaml.map?.controls"
+              :geometry-type-options="geometryTypeOptions"
+              :color-by-options="colorByOptions"
+              :layer-strategy="layerStrategy"
+              :table-config="yaml.table"
+              :data-table-manager="dataTableManager"
+              :filter-manager="filterManager"
+              :linkage-manager="linkageManager"
+              @update:geometry-type="geometryType = $event"
+              @update:color-by-attribute="colorByAttribute = $event"
+              @filter="handleFilter"
+              @hover="handleHover"
+              @select="handleSelect"
+              @update:show-comparison="handleShowComparisonUpdate"
+              @attribute-pair-selected="handleAttributePairSelected"
+              @isLoaded="handleCardIsLoaded(card)"
+              @map-move="card.viewSync && handleMapMove(card.id, card.viewSync, $event)"
+              @dimension-resizer="setDimensionResizer"
+              @titles="setCardTitles(card, $event)"
+              @error="setCardError(card, $event)"
             )
-              i.fa.fa-times-circle
-              span.reset-label  Reset
 
-            //- Fullscreen toggle
-            button.button.is-small.is-white(
-              @click="toggleTableFullScreen"
-              :title="tableFullScreen ? 'Restore' : 'Enlarge'"
-            )
-              i.fa(:class="tableFullScreen ? 'fa-compress' : 'fa-expand'")
-
-        //- table contents
-        .table-wrapper(ref="tableWrapper")
-          table.data-table
-            thead
-              tr
-                th(
-                  v-for="col in visibleColumns"
-                  :key="col"
-                  @click="sortByColumn(col)"
-                  :class="{ sortable: true, sorted: sortColumn === col }"
-                )
-                  .header-cell
-                    span {{ col }}
-                    span.sort-icon(v-if="sortColumn === col") {{ sortDirection === 'asc' ? '↑' : '↓' }}
-            tbody
-              tr(
-                v-for="(row, idx) in sortedDisplayData"
-                :key="getRowId(row)"
-                :data-row-id="getRowId(row)"
-                :class="getRowClasses(row)"
-                @mouseenter="handleTableRowHover(row)"
-                @mouseleave="handleTableRowLeave"
-                @click="handleTableRowClick(row)"
-              )
-                td(v-for="col in visibleColumns" :key="col") {{ formatCellValue(row[col], col) }}
-
-    //- NEW: Sub-Dashboards Section (shown when parent has selection)
+    //- Sub-Dashboards Section (shown when parent has selection)
     .sub-dashboards-section(v-if="yaml.subDashboards?.length && parentSelectedValue && !embedded")
       sub-dashboard(
         v-for="(subConfig, idx) in yaml.subDashboards"
@@ -250,21 +169,6 @@
         :initial-collapsed="false"
       )
 
-    //- Legacy: Linked Tables Section (simpler table+map pairs)
-    .linked-tables-section(v-if="linkedTableManagers.length > 0 && tableSelectedIds.size > 0 && !yaml.subDashboards?.length")
-      linked-table-card(
-        v-for="(manager, idx) in linkedTableManagers"
-        :key="idx"
-        :title="getLinkedTableConfig(idx).name || 'Linked Table'"
-        :table-manager="manager"
-        :id-column="manager.getIdColumn()"
-        :columns="getLinkedTableConfig(idx).columns"
-        :map-config="getLinkedTableConfig(idx).map"
-        :file-system-config="fileSystemConfig"
-        :subfolder="xsubfolder"
-        :initial-collapsed="false"
-      )
-
 </template>
 
 <script lang="ts">
@@ -276,7 +180,7 @@ import YAML from 'yaml'
 import globalStore from '@/store'
 import { sleep } from '@/js/util'
 
-import { FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
+import { ColorScheme, FavoriteLocation, FileSystemConfig, Status, YamlConfigs } from '@/Globals'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 
 import TopSheet from '@/components/TopSheet/TopSheet.vue'
@@ -289,12 +193,15 @@ import DashboardDataManager from '@/js/DashboardDataManager'
 import { FilterManager } from './managers/FilterManager'
 import { LinkageManager } from './managers/LinkageManager'
 import { DataTableManager } from './managers/DataTableManager'
-import { LinkedTableManager } from './managers/LinkedTableManager'
+import { StyleManager, initializeTheme } from './managers/StyleManager'
 import { debugLog } from './utils/debug'
 import LinkableCardWrapper from './components/cards/LinkableCardWrapper.vue'
-import LinkedTableCard from './components/cards/LinkedTableCard.vue'
 import SubDashboard from './components/cards/SubDashboard.vue'
 import DataTableCard from './components/cards/DataTableCard.vue'
+import DashboardCard from './components/DashboardCard.vue'
+import ComparisonToggle from './components/controls/ComparisonToggle.vue'
+import ExportAllButton from './components/controls/ExportAllButton.vue'
+import ColorBySelector from './components/controls/ColorBySelector.vue'
 
 // append a prefix so the html template is legal
 const namedCharts = {} as any
@@ -309,7 +216,7 @@ chartTypes.forEach((key: any) => {
 
 export default defineComponent({
   name: 'InteractiveDashboard',
-  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, LinkedTableCard, SubDashboard }, namedCharts),
+  components: Object.assign({ TopSheet, LinkableCardWrapper, DataTableCard, SubDashboard, DashboardCard, ComparisonToggle, ExportAllButton, ColorBySelector }, namedCharts),
   props: {
     root: { type: String, required: true },
     xsubfolder: { type: String, required: true },
@@ -337,7 +244,7 @@ export default defineComponent({
       fileSystemConfig: {} as FileSystemConfig,
       fullScreenCardId: '',
       resizers: {} as { [id: string]: any },
-      infoToggle: {} as { [id: string]: boolean },
+      // Note: infoToggle removed - now managed locally by DashboardCard component
       isDestroying: false,
       isFullScreenDashboard: false,
       isResizing: false,
@@ -355,7 +262,6 @@ export default defineComponent({
       filterManager: null as FilterManager | null,
       linkageManager: null as LinkageManager | null,
       dataTableManager: null as DataTableManager | null,
-      linkedTableManagers: [] as LinkedTableManager[],
       // NEW: Sub-dashboard data (pre-loaded for SubDashboard components)
       subDashboardData: {} as Record<string, any[]>,
       // Selected value from parent table (used to filter sub-dashboards)
@@ -369,10 +275,17 @@ export default defineComponent({
       sortDirection: 'asc' as 'asc' | 'desc',
       enableScrollOnHover: true,
       isHoverFromTable: false,
-      tableFullScreen: false,
       // Map controls
       geometryType: 'all' as string,  // 'origin', 'destination', 'all', or custom values
       colorByAttribute: '' as string,  // Will be initialized from YAML default
+      // Layer coloring strategy (from YAML map.colorBy.layerStrategy)
+      layerStrategy: 'auto' as 'auto' | 'explicit' | 'all',
+      // Key for forcing card re-renders after table fullscreen (fixes layout issues)
+      cardRenderKey: 0,
+      // Comparison mode state
+      showComparison: true,
+      // ViewSync: latest viewport per sync group (groupId -> viewport + sourceCardId)
+      viewSyncViewports: {} as Record<string, { center: [number, number]; zoom: number; bearing: number; pitch: number; sourceCardId: string }>,
     }
   },
 
@@ -399,7 +312,21 @@ export default defineComponent({
       )
       return indexOfPathInFavorites > -1
     },
-    
+
+    // Theme toggle computed properties
+    currentThemeName(): string {
+      const scheme = this.$store.state.colorScheme
+      if (scheme === ColorScheme.ScientificMode) return 'Scientific'
+      if (scheme === ColorScheme.LightMode) return 'Light'
+      return 'Dark'
+    },
+    themeIcon(): string {
+      const scheme = this.$store.state.colorScheme
+      if (scheme === ColorScheme.ScientificMode) return 'fa-flask'
+      if (scheme === ColorScheme.LightMode) return 'fa-sun'
+      return 'fa-moon'
+    },
+
     // NEW: Table data computed properties
     displayData(): any[] {
       if (!this.dataTableManager) return []
@@ -475,20 +402,6 @@ export default defineComponent({
       return allColumns.filter(col => !hiddenColumns.includes(col))
     },
 
-    tableFullScreenStyle(): any {
-      return {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        right: '0',
-        bottom: '0',
-        zIndex: '9999',
-        margin: '0',
-        padding: '1rem',
-        backgroundColor: 'var(--bgBold)',
-      }
-    },
-
     // Map control options from YAML
     geometryTypeOptions(): Array<{ value: string; label: string }> {
       return this.yaml.map?.geometryTypes || [
@@ -498,9 +411,30 @@ export default defineComponent({
       ]
     },
 
-    colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric' }> {
-      return this.yaml.map?.colorBy?.attributes || []
+    colorByOptions(): Array<{ attribute: string; label: string; type: 'categorical' | 'numeric'; aggregation?: 'first' | 'mean' | 'sum' | 'min' | 'max' }> {
+      // Prioritize top-level colorBy, fall back to map.colorBy for backward compatibility
+      return this.yaml.colorBy?.attributes || this.yaml.map?.colorBy?.attributes || []
     },
+
+    // Check if any filters are active
+    // Access filterVersion to make this reactive to filter changes
+    hasActiveFilters(): boolean {
+      const _version = this.filterVersion
+      return this.filterManager ? this.filterManager.hasActiveFilters() : false
+    },
+
+    // Check if any selections are active (from scatter plots, maps, etc.)
+    // Use threshold of 2: single selection = highlight only, 2+ = comparison mode
+    hasActiveSelections(): boolean {
+      const SELECTION_FILTER_THRESHOLD = 2
+      return this.tableSelectedIds && this.tableSelectedIds.size >= SELECTION_FILTER_THRESHOLD
+    },
+
+    // Effective show comparison: true if comparison toggle is on AND (filters OR selections are active)
+    effectiveShowComparison(): boolean {
+      return this.showComparison && (this.hasActiveFilters || this.hasActiveSelections)
+    },
+
   },
 
   watch: {
@@ -532,6 +466,19 @@ export default defineComponent({
   },
 
   methods: {
+    // Theme toggle - cycles through Dark -> Light -> Scientific -> Dark
+    toggleTheme() {
+      this.$store.commit('rotateColors')
+    },
+
+    // Handle comparison mode toggle from DataTableCard
+    handleShowComparisonUpdate(value: boolean) {
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - value:', value, 'current:', this.showComparison)
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - hasActiveFilters:', this.hasActiveFilters)
+      this.showComparison = value
+      debugLog('[InteractiveDashboard] handleShowComparisonUpdate - after update:', this.showComparison, 'effectiveShowComparison:', this.effectiveShowComparison)
+    },
+
     // NEW: Format table cell values based on column config
     formatCellValue(value: any, column: string): string {
       if (value === null || value === undefined) return ''
@@ -566,12 +513,9 @@ export default defineComponent({
       return String(value)
     },
 
-    // Check if a card has any layers with linkage defined
-    hasLayerLinkage(card: any): boolean {
-      return card.layers?.some((layer: any) => layer.linkage) || false
-    },
-
     // Get layers for a card, filtering by geometry type if applicable
+    // NOTE: colorBy is NOT applied here - MapCard handles colorBy based on computed layer roles
+    // from LayerColoringManager. This ensures neutral layers skip colorBy coloring.
     getCardLayers(card: any): any[] {
       if (!card.layers) return []
 
@@ -584,24 +528,9 @@ export default defineComponent({
         if (!layer.geometryType) return true
         // If layer specifies geometryType, only include if it matches current selection
         return layer.geometryType === this.geometryType
-      }).map((layer: any) => {
-        // Apply colorBy attribute from selector if configured and attribute is selected
-        // BUT only if the layer doesn't already have a color or colorBy property defined
-        // This allows layers (like flow arcs) to keep their own static colors
-        if (this.colorByAttribute && this.yaml.map?.controls?.colorBy && !layer.color && !layer.colorBy) {
-          const colorByConfig = this.colorByOptions.find((opt: any) => opt.attribute === this.colorByAttribute)
-          if (colorByConfig) {
-            return {
-              ...layer,
-              colorBy: {
-                attribute: this.colorByAttribute,
-                type: colorByConfig.type || 'categorical',
-              },
-            }
-          }
-        }
-        return layer
       })
+      // Note: Previous implementation applied colorBy here, but that's now handled
+      // in MapCard.vue's getBaseColor() using LayerColoringManager for role-aware coloring
     },
 
     // Table row interaction methods
@@ -657,7 +586,7 @@ export default defineComponent({
 
     // Get row CSS classes
     getRowClasses(row: any): Record<string, boolean> {
-      const hasFilters = this.filterManager && this.filterManager.hasActiveFilters()
+      const hasFilters = !!(this.filterManager && this.filterManager.hasActiveFilters())
       return {
         'is-hovered': this.isRowHovered(row),
         'is-selected': this.isRowSelected(row),
@@ -678,19 +607,13 @@ export default defineComponent({
       }
     },
 
-    // Toggle table fullscreen
-    toggleTableFullScreen() {
-      this.tableFullScreen = !this.tableFullScreen
-    },
-
     handleTableRowClick(row: any) {
       const rowId = this.getRowId(row)
-      console.log('[InteractiveDashboard] Row clicked, rowId:', rowId, 'row:', row)
-      
+
       if (this.linkageManager) {
         this.linkageManager.toggleSelectedIds(new Set([rowId]))
       }
-      
+
       // NEW: Update parent selected value for sub-dashboards
       // If clicking the same row again, deselect it
       if (this.parentSelectedValue === String(rowId)) {
@@ -698,21 +621,7 @@ export default defineComponent({
       } else {
         this.parentSelectedValue = String(rowId)
       }
-      console.log('[InteractiveDashboard] Parent selection updated:', this.parentSelectedValue)
-      console.log('[InteractiveDashboard] subDashboards count:', this.yaml.subDashboards?.length || 0)
-      console.log('[InteractiveDashboard] subDashboardData:', Object.keys(this.subDashboardData))
       debugLog('[InteractiveDashboard] Parent selection:', this.parentSelectedValue)
-      
-      // Legacy: Update linked tables when parent selection changes
-      this.handleParentTableSelect(this.tableSelectedIds)
-    },
-
-    // NEW: Get linked table config from YAML by index
-    getLinkedTableConfig(index: number): any {
-      if (!this.yaml.linkedTables || index >= this.yaml.linkedTables.length) {
-        return {}
-      }
-      return this.yaml.linkedTables[index]
     },
 
     handleClearAllFilters() {
@@ -721,6 +630,15 @@ export default defineComponent({
       }
       if (this.linkageManager) {
         this.linkageManager.setSelectedIds(new Set())
+      }
+    },
+
+    handleAttributePairSelected(attrX: string, attrY: string) {
+      debugLog('[InteractiveDashboard] handleAttributePairSelected:', attrX, attrY)
+      if (this.linkageManager) {
+        this.linkageManager.setSelectedAttributePair(attrX, attrY)
+      } else {
+        console.warn('[InteractiveDashboard] linkageManager is null!')
       }
     },
 
@@ -790,9 +708,7 @@ export default defineComponent({
       this.isResizing = false
     },
 
-    handleToggleInfoClick(card: any) {
-      this.infoToggle[card.id] = !this.infoToggle[card.id]
-    },
+    // Note: handleToggleInfoClick removed - info toggle now managed locally by DashboardCard
 
     async getFiles() {
       const folderContents = await this.fileApi.getDirectory(this.xsubfolder)
@@ -837,7 +753,33 @@ export default defineComponent({
       this.updateDimensions(options.id)
     },
 
+    /**
+     * Handle card resize events from DashboardCard component
+     * This is called when the card's container resizes (via ResizeObserver)
+     */
+    handleMapMove(cardId: string, groupId: string, viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }) {
+      this.viewSyncViewports = {
+        ...this.viewSyncViewports,
+        [groupId]: { ...viewport, sourceCardId: cardId },
+      }
+    },
+
+    getExternalViewport(card: any) {
+      if (!card.viewSync) return null
+      const vp = this.viewSyncViewports[card.viewSync]
+      if (!vp || vp.sourceCardId === card.id) return null
+      return vp
+    },
+
+    handleCardResize(cardId: string, dimensions: { width: number; height: number }) {
+      // If a card has registered a resizer, call it with the new dimensions
+      if (this.resizers[cardId]) {
+        this.resizers[cardId](dimensions)
+      }
+    },
+
     async toggleZoom(card: any) {
+      const wasFullscreen = !!this.fullScreenCardId
       if (this.fullScreenCardId) {
         this.fullScreenCardId = ''
       } else {
@@ -848,6 +790,12 @@ export default defineComponent({
       await this.$nextTick()
       // tell plotly to resize everything
       this.updateDimensions(card.id)
+
+      // When exiting fullscreen, dispatch resize event so ALL cards resize properly
+      // This is needed for charts like Plotly that listen for resize events
+      if (wasFullscreen) {
+        window.dispatchEvent(new Event('resize'))
+      }
     },
 
     updateDimensions(cardId: string) {
@@ -860,48 +808,7 @@ export default defineComponent({
       if (!this.isResizing) globalStore.commit('resize')
     },
 
-    getCardStyle(card: any) {
-      // figure out height. If card has registered a resizer with changeDimensions(),
-      // then it needs a default height (300)
-
-      // markdown does not want a default height
-      const defaultHeight = card.type === 'text' ? undefined : 300
-
-      const height = card.height ? card.height * 60 : defaultHeight
-      const flex = card.width || 1
-
-      let style: any = { flex: flex }
-
-      if (card.backgroundColor || card.background) {
-        style.backgroundColor = card.backgroundColor || card.background
-      }
-
-      if (height && !this.isFullScreenDashboard) {
-        style.minHeight = `${height}px`
-        style.maxHeight = `${height}px`
-        style.height = `${height}px`
-      }
-
-      // if there is only a single card on this panel, shrink its margin
-      if (this.rows.length == 1 && this.rows[0].cards.length == 1) {
-        style.margin = '0.25rem 0.25rem'
-      }
-
-      // but no actually, if it's full screen then do this.
-      if (this.fullScreenCardId) {
-        if (this.fullScreenCardId !== card.id) {
-          style.display = 'none'
-        } else {
-          style = {
-            position: 'absolute',
-            inset: '0 0 0 0',
-            margin: '6px 0px', // '18px 1rem 0.5rem 1rem',
-          }
-        }
-      }
-
-      return style
-    },
+    // Note: getCardStyle removed - card styling now handled by DashboardCard component
 
     getFileSystem(name: string): FileSystemConfig {
       const svnProject: FileSystemConfig[] = this.$store.state.svnProjects.filter(
@@ -952,15 +859,13 @@ export default defineComponent({
     },
 
     async setupDashboard() {
-      const instanceId = Math.random().toString(36).substring(7)
-      console.log(`[InteractiveDashboard:${instanceId}] setupDashboard starting, embedded: ${this.embedded}`)
-      
+      debugLog('[InteractiveDashboard] setupDashboard starting, embedded:', this.embedded)
+
       // Do we have config already or do we need to fetch it from the yaml file?
       if (this.embedded && this.embeddedYaml) {
         // NEW: Embedded mode - use provided YAML config directly
         this.yaml = this.embeddedYaml
-        console.log(`[InteractiveDashboard:${instanceId}] Embedded mode with YAML:`, this.yaml.header?.title || 'Sub-Dashboard')
-        console.log(`[InteractiveDashboard:${instanceId}] Embedded YAML full:`, JSON.stringify(this.yaml, null, 2))
+        debugLog('[InteractiveDashboard] Embedded mode with YAML:', this.yaml.header?.title || 'Sub-Dashboard')
       } else if (this.config) {
         this.yaml = this.config
       } else if (this.gist) {
@@ -975,15 +880,28 @@ export default defineComponent({
       await this.initializeCoordinationLayer()
 
       // Initialize map control defaults from YAML
-      if (this.yaml.map?.colorBy?.default) {
+      // Prioritize top-level colorBy, fall back to map.colorBy for backward compatibility
+      if (this.yaml.colorBy?.attributes?.length > 0) {
+        // Top-level colorBy takes priority - default to first attribute
+        this.colorByAttribute = this.yaml.colorBy.attributes[0].attribute
+      } else if (this.yaml.map?.colorBy?.default) {
+        // Fall back to map.colorBy.default
         this.colorByAttribute = this.yaml.map.colorBy.default
       } else if (this.yaml.map?.colorBy?.attributes?.length > 0) {
+        // Fall back to first map.colorBy attribute
         this.colorByAttribute = this.yaml.map.colorBy.attributes[0].attribute
       }
       if (this.yaml.map?.geometryTypes?.length > 0) {
         // Default to first geometry type if 'all' is not in the options
         const hasAll = this.yaml.map.geometryTypes.some((gt: any) => gt.value === 'all')
         this.geometryType = hasAll ? 'all' : this.yaml.map.geometryTypes[0].value
+      }
+      // Initialize layer strategy from YAML (default: 'auto')
+      if (this.yaml.map?.colorBy?.layerStrategy) {
+        const strategy = this.yaml.map.colorBy.layerStrategy
+        if (strategy === 'auto' || strategy === 'explicit' || strategy === 'all') {
+          this.layerStrategy = strategy
+        }
       }
 
       // set header
@@ -1091,16 +1009,16 @@ export default defineComponent({
 
     selectTabLayout() {
       // Choose subtab or full layout
-      console.log('[InteractiveDashboard] selectTabLayout called')
-      console.log('[InteractiveDashboard] subtabs:', this.subtabs.length, 'activeTab:', this.activeTab)
-      console.log('[InteractiveDashboard] yaml.layout:', this.yaml.layout)
+      debugLog('[InteractiveDashboard] selectTabLayout called')
+      debugLog('[InteractiveDashboard] subtabs:', this.subtabs.length, 'activeTab:', this.activeTab)
+      debugLog('[InteractiveDashboard] yaml.layout:', this.yaml.layout)
 
       if (this.subtabs.length && this.activeTab > -1) {
         const subtab = this.subtabs[this.activeTab]
-        console.log('[InteractiveDashboard] Using subtab layout:', subtab.title)
+        debugLog('[InteractiveDashboard] Using subtab layout:', subtab.title)
         this.setupRows(subtab.layout, subtab.subtabFolder)
       } else if (this.yaml.layout) {
-        console.log('[InteractiveDashboard] Using main layout')
+        debugLog('[InteractiveDashboard] Using main layout')
         this.setupRows(this.yaml.layout)
       } else {
         console.error('[InteractiveDashboard] No layout found in YAML!')
@@ -1112,10 +1030,10 @@ export default defineComponent({
     },
 
     setupRows(layout: any, subtabFolder?: string) {
-      console.log('[InteractiveDashboard] setupRows called with layout:', layout)
-      console.log('[InteractiveDashboard] layout keys:', layout ? Object.keys(layout) : 'null')
-      console.log('[InteractiveDashboard] embedded mode:', this.embedded, 'title:', this.yaml?.header?.title)
-      console.log('[InteractiveDashboard] current rows before setup:', this.rows.length)
+      debugLog('[InteractiveDashboard] setupRows called with layout:', layout)
+      debugLog('[InteractiveDashboard] layout keys:', layout ? Object.keys(layout) : 'null')
+      debugLog('[InteractiveDashboard] embedded mode:', this.embedded, 'title:', this.yaml?.header?.title)
+      debugLog('[InteractiveDashboard] current rows before setup:', this.rows.length)
       let numCard = 1
 
       for (const rowId of Object.keys(layout)) {
@@ -1128,7 +1046,7 @@ export default defineComponent({
 
         cards.forEach(card => {
           card.id = `card-id-${numCard}`
-          card.isLoaded = false
+          Vue.set(card, 'isLoaded', false)
           card.number = numCard
 
           // hoist flex weight if card has "height" and we are full-screen
@@ -1150,7 +1068,7 @@ export default defineComponent({
 
           // Vue 2 is weird about new properties: use Vue.set() instead
           Vue.set(this.opacity, card.id, 0.5)
-          Vue.set(this.infoToggle, card.id, false)
+          // Note: Info toggle is now managed locally by DashboardCard component
           Vue.set(card, 'errors', [] as string[])
           Vue.set(card, 'visible', false)
 
@@ -1259,6 +1177,40 @@ export default defineComponent({
 
     // NEW: Initialize coordination managers and load centralized data
     async initializeCoordinationLayer() {
+      /**
+       * Initialize dashboard theme (injects CSS variables into :root).
+       * This must happen before dashboard content renders to ensure
+       * --dashboard-* CSS variables are available to all child components.
+       *
+       * CSS variables injected:
+       * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
+       * - --dashboard-text-primary, --dashboard-text-secondary
+       * - --dashboard-border-default, --dashboard-border-subtle
+       * - --dashboard-interaction-hover, --dashboard-interaction-selected
+       * - --dashboard-cluster-origin, --dashboard-cluster-destination
+       * - --dashboard-chart-bar, --dashboard-chart-bar-selected, --dashboard-chart-grid
+       * - --dashboard-categorical-0 through --dashboard-categorical-14
+       *
+       * Theme state is synced with Vuex store (globalStore.state.colorScheme).
+       */
+      initializeTheme()
+
+      /**
+       * Dashboard YAML color configuration:
+       *
+       * colors:
+       *   clusters:
+       *     origin: "#2563eb"       # Hex color for origin clusters
+       *     destination: "#dc2626"  # Hex color for destination clusters
+       *
+       * If not specified, colorblind-safe defaults are used.
+       */
+      if (this.yaml?.colors?.clusters) {
+        const { origin, destination } = this.yaml.colors.clusters
+        StyleManager.getInstance().setClusterColors({ origin, destination })
+        debugLog('[InteractiveDashboard] Applied YAML cluster colors:', { origin, destination })
+      }
+
       this.filterManager = new FilterManager()
       this.linkageManager = new LinkageManager()
 
@@ -1277,16 +1229,36 @@ export default defineComponent({
         },
         onSelectedIdsChange: (ids: Set<any>) => {
           this.tableSelectedIds = new Set(ids)
-          
+
+          // Selection-to-filter promotion with threshold
+          // Single selection = highlight only, 2+ selections = comparison mode
+          const SELECTION_FILTER_THRESHOLD = 2
+          const idColumn = this.yaml.table?.idColumn || 'id'
+
+          if (ids.size >= SELECTION_FILTER_THRESHOLD) {
+            // 2+ selections: create filter for comparison mode
+            this.filterManager!.setFilter(
+              'selection-filter',  // Unique filter ID for selection-based filtering
+              idColumn,
+              new Set(ids),
+              'categorical'
+            )
+            debugLog('[InteractiveDashboard] Selection-filter created with', ids.size, 'items')
+          } else {
+            // 0-1 selections: remove filter (highlight only, no comparison mode)
+            this.filterManager!.clearFilter('selection-filter')
+            debugLog('[InteractiveDashboard] Selection-filter cleared (below threshold)')
+          }
+
           // UPDATE: Also set parentSelectedValue for sub-dashboards
           // When a single row is selected, use it as the parent filter value
           if (ids.size === 1) {
             const selectedId = Array.from(ids)[0]
             this.parentSelectedValue = String(selectedId)
-            console.log('[InteractiveDashboard] parentSelectedValue updated from linkage:', this.parentSelectedValue)
+            debugLog('[InteractiveDashboard] parentSelectedValue updated from linkage:', this.parentSelectedValue)
           } else if (ids.size === 0) {
             this.parentSelectedValue = null
-            console.log('[InteractiveDashboard] parentSelectedValue cleared (no selection)')
+            debugLog('[InteractiveDashboard] parentSelectedValue cleared (no selection)')
           }
           // If multiple rows selected, keep the first one for sub-dashboard filtering
           // (or could clear it - depending on UX preference)
@@ -1294,8 +1266,10 @@ export default defineComponent({
       })
 
       // Check if table config exists in YAML
+      // If no table config, dashboard runs in "standard mode" - cards render without centralized data
+      // FilterManager and LinkageManager are already initialized above
       if (!this.yaml.table) {
-        console.warn('[InteractiveDashboard] No table configuration found in YAML')
+        debugLog('[InteractiveDashboard] No table configuration - running in standard dashboard mode')
         return
       }
 
@@ -1320,9 +1294,9 @@ export default defineComponent({
             
             // Apply parent filter if in embedded mode
             if (this.embedded && this.parentFilterColumn && this.parentFilterValue) {
-              console.log('[InteractiveDashboard] Embedded mode: filtering by', this.parentFilterColumn, '=', this.parentFilterValue)
+              debugLog('[InteractiveDashboard] Embedded mode: filtering by', this.parentFilterColumn, '=', this.parentFilterValue)
               data = data.filter((row: any) => String(row[this.parentFilterColumn]) === String(this.parentFilterValue))
-              console.log('[InteractiveDashboard] Filtered data count:', data.length)
+              debugLog('[InteractiveDashboard] Filtered data count:', data.length)
             }
             
             this.dataTableManager.setData(data)
@@ -1338,25 +1312,29 @@ export default defineComponent({
         }
       }
 
-      // NEW: Initialize linked tables if configured
-      await this.initializeLinkedTables()
+      // Build column index for O(1) filter lookups on loaded data
+      if (this.filterManager && this.dataTableManager) {
+        const data = this.dataTableManager.getData()
+        if (data.length > 0) {
+          this.filterManager.buildIndex(data)
+          debugLog('[InteractiveDashboard] Built filter index for', data.length, 'rows')
+        }
+      }
 
-      // NEW: Initialize sub-dashboards if configured
+      // Initialize sub-dashboards if configured
       await this.initializeSubDashboards()
     },
 
     // NEW: Initialize sub-dashboards - resolve file references and load their data
     async initializeSubDashboards() {
-      console.log('[InteractiveDashboard] initializeSubDashboards called')
-      console.log('[InteractiveDashboard] yaml.subDashboards:', this.yaml.subDashboards)
-      
+      debugLog('[InteractiveDashboard] initializeSubDashboards called')
+
       if (!this.yaml.subDashboards || !Array.isArray(this.yaml.subDashboards)) {
-        console.log('[InteractiveDashboard] No subDashboards configuration found')
         debugLog('[InteractiveDashboard] No subDashboards configuration found')
         return
       }
-      
-      console.log('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
+
+      debugLog('[InteractiveDashboard] Found', this.yaml.subDashboards.length, 'subDashboards')
 
       // First pass: resolve file references
       const resolvedSubDashboards: any[] = []
@@ -1381,13 +1359,12 @@ export default defineComponent({
       
       // Replace with resolved configs
       this.yaml.subDashboards = resolvedSubDashboards
-      console.log('[InteractiveDashboard] Resolved', resolvedSubDashboards.length, 'subDashboards')
+      debugLog('[InteractiveDashboard] Resolved', resolvedSubDashboards.length, 'subDashboards')
 
       // Second pass: load data for each sub-dashboard
       for (const subConfig of this.yaml.subDashboards) {
         const dataset = subConfig.table?.dataset
-        console.log('[InteractiveDashboard] Processing subDashboard:', subConfig.title, 'dataset:', dataset)
-        
+
         if (!dataset) {
           console.warn('[InteractiveDashboard] SubDashboard missing table.dataset:', subConfig.title)
           continue
@@ -1395,16 +1372,13 @@ export default defineComponent({
 
         // Skip if already loaded (multiple sub-dashboards might share the same dataset)
         if (this.subDashboardData[dataset]) {
-          console.log('[InteractiveDashboard] Dataset already loaded:', dataset)
           debugLog('[InteractiveDashboard] Dataset already loaded:', dataset)
           continue
         }
 
         try {
-          console.log('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
           debugLog('[InteractiveDashboard] Loading sub-dashboard dataset:', dataset)
           const filePath = `${this.xsubfolder}/${dataset}`
-          console.log('[InteractiveDashboard] Full file path:', filePath)
           const text = await this.fileApi.getFileText(filePath)
           
           // Parse CSV
@@ -1427,29 +1401,28 @@ export default defineComponent({
           }
           
           this.subDashboardData[dataset] = data
-          console.log('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
           debugLog('[InteractiveDashboard] Sub-dashboard dataset loaded:', dataset, data.length, 'rows')
         } catch (e) {
           console.error('[InteractiveDashboard] Failed to load sub-dashboard dataset:', dataset, e)
           this.subDashboardData[dataset] = []
         }
       }
-      
-      console.log('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
+
+      debugLog('[InteractiveDashboard] Final subDashboardData keys:', Object.keys(this.subDashboardData))
     },
 
     // NEW: Load sub-dashboard config from external YAML file
     async loadSubDashboardFile(filename: string, overrides: any): Promise<any> {
-      console.log('[InteractiveDashboard] Loading sub-dashboard file:', filename)
-      
+      debugLog('[InteractiveDashboard] Loading sub-dashboard file:', filename)
+
       try {
         // Load the YAML file (relative to current dashboard folder)
         const filePath = `${this.xsubfolder}/${filename}`
         const yamlText = await this.fileApi.getFileText(filePath)
         const fileConfig = YAML.parse(yamlText)
-        
-        console.log('[InteractiveDashboard] Loaded sub-dashboard file:', filename, 'title:', fileConfig.header?.title || fileConfig.title)
-        
+
+        debugLog('[InteractiveDashboard] Loaded sub-dashboard file:', filename, 'title:', fileConfig.header?.title || fileConfig.title)
+
         // Build the sub-dashboard config from the file
         // Use header.title or header.tab as the title, or fall back to filename
         const baseConfig = {
@@ -1458,14 +1431,14 @@ export default defineComponent({
           layout: fileConfig.layout,
           map: fileConfig.map,
         }
-        
+
         // Deep merge with overrides (overrides take precedence)
         const mergedConfig = this.deepMerge(baseConfig, overrides)
-        
+
         // Remove the 'file' property from the merged config
         delete mergedConfig.file
-        
-        console.log('[InteractiveDashboard] Merged sub-dashboard config:', mergedConfig.title)
+
+        debugLog('[InteractiveDashboard] Merged sub-dashboard config:', mergedConfig.title)
         return mergedConfig
       } catch (e) {
         console.error('[InteractiveDashboard] Failed to load sub-dashboard file:', filename, e)
@@ -1516,45 +1489,6 @@ export default defineComponent({
       return result
     },
 
-    // NEW: Initialize secondary linked tables
-    async initializeLinkedTables() {
-      if (!this.yaml.linkedTables || !Array.isArray(this.yaml.linkedTables)) {
-        debugLog('[InteractiveDashboard] No linkedTables configuration found')
-        return
-      }
-
-      const parentIdColumn = this.yaml.table?.idColumn || 'id'
-
-      for (const linkedConfig of this.yaml.linkedTables) {
-        try {
-          const config = {
-            name: linkedConfig.name || linkedConfig.dataset,
-            dataset: linkedConfig.dataset,
-            idColumn: linkedConfig.idColumn || 'id',
-            linkColumn: linkedConfig.linkColumn || parentIdColumn,
-            visible: linkedConfig.visible !== false,
-            columns: linkedConfig.columns || {},
-          }
-
-          debugLog('[InteractiveDashboard] Initializing LinkedTableManager:', config.name)
-          const manager = new LinkedTableManager(config)
-          await manager.loadData(this.fileApi, this.xsubfolder)
-          
-          this.linkedTableManagers.push(manager)
-          debugLog('[InteractiveDashboard] Linked table loaded:', config.name, manager.getAllData().length, 'rows')
-        } catch (e) {
-          console.error('[InteractiveDashboard] Failed to load linked table:', linkedConfig.name, e)
-        }
-      }
-    },
-
-    // NEW: Handle parent table selection to filter linked tables
-    handleParentTableSelect(selectedIds: Set<any>) {
-      debugLog('[InteractiveDashboard] Parent selection changed:', selectedIds.size, 'ids')
-      this.linkedTableManagers.forEach(manager => {
-        manager.setParentSelection(selectedIds)
-      })
-    },
   },
   async mounted() {
     window.addEventListener('resize', this.resizeAllCards)
@@ -1590,17 +1524,32 @@ export default defineComponent({
     this.narrowPanelObserver?.disconnect()
     window.removeEventListener('resize', this.resizeAllCards)
 
-    // NEW: Clean up managers
+    // Clean up managers
     this.filterManager = null
     this.linkageManager = null
     this.dataTableManager = null
-    this.linkedTableManagers = []
   },
 })
 </script>
 
 <style scoped lang="scss">
 @import '@/styles.scss';
+
+/*
+ * Interactive Dashboard theme colors via CSS variables
+ * Managed by StyleManager - see managers/StyleManager.ts
+ *
+ * Variables used:
+ * - --dashboard-bg-primary, --dashboard-bg-secondary, --dashboard-bg-tertiary
+ * - --dashboard-text-primary, --dashboard-text-secondary
+ * - --dashboard-border-default, --dashboard-border-subtle
+ * - --dashboard-interaction-hover (#fbbf24), --dashboard-interaction-selected (#3b82f6)
+ * - --dashboard-cluster-origin, --dashboard-cluster-destination
+ * - --dashboard-chart-*, --dashboard-categorical-*
+ *
+ * Fallback pattern: var(--dashboard-X, var(--app-X, #fallback))
+ * This ensures graceful degradation when StyleManager hasn't initialized.
+ */
 
 .dashboard {
   margin: 0 0;
@@ -1639,6 +1588,43 @@ export default defineComponent({
   }
 }
 
+// Header controls (Export All button, etc.)
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: 16px;
+}
+
+// Theme toggle button
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--dashboard-border-default, #475569);
+  border-radius: 4px;
+  background-color: var(--dashboard-bg-secondary, #334155);
+  color: var(--dashboard-text-primary, #e2e8f0);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+
+  &:hover {
+    background-color: var(--dashboard-bg-tertiary, #475569);
+    border-color: var(--dashboard-interaction-selected, #3b82f6);
+  }
+
+  i {
+    font-size: 0.9rem;
+  }
+
+  .theme-label {
+    min-width: 60px;
+    text-align: left;
+  }
+}
+
 // Map controls (cluster type, color-by selectors)
 .map-controls {
   display: flex;
@@ -1646,7 +1632,7 @@ export default defineComponent({
   gap: 1rem;
   margin: 0 0 1rem 0;
   padding: 0.75rem 1rem;
-  background: var(--bgCardFrame);
+  background: var(--dashboard-bg-secondary, var(--bgCardFrame));
   border-radius: 6px;
 }
 
@@ -1675,90 +1661,13 @@ export default defineComponent({
 
 // --end--
 
-.dash-card-frame {
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-rows: auto auto 1fr;
-  margin: 0 $cardSpacing $cardSpacing 0;
-  background-color: var(--bgCardFrame);
-  padding: 2px 3px 3px 3px;
-  border-radius: 4px;
-  overflow: hidden;
-
-  .dash-card-headers {
-    display: flex;
-    flex-direction: row;
-    line-height: 1.2rem;
-    padding: 3px 3px 2px 3px;
-    p {
-      margin-bottom: 0.1rem;
-    }
-  }
-
-  .dash-card-headers.fullscreen {
-    padding-top: 0;
-  }
-
-  .header-buttons {
-    display: flex;
-    flex-direction: row;
-    margin-left: auto;
-
-    button {
-      background-color: #00000000;
-      color: var(--link);
-      opacity: 0.5;
-    }
-    button:hover {
-      background-color: #ffffff20;
-      opacity: 1;
-    }
-  }
-
-  h3 {
-    grid-row: 1 / 2;
-    font-size: 1.1rem;
-    line-height: 1.5rem;
-    margin-bottom: 0.5rem;
-    color: var(--link);
-  }
-
-  // if there is a description, fix the margins
-  p {
-    grid-row: 2 / 3;
-    margin-top: -0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .spinner-box {
-    grid-row: 3 / 4;
-    position: relative;
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    background: url('../assets/simwrapper-logo/SW_logo_icon_anim.gif');
-    background-size: 8rem;
-    background-repeat: no-repeat;
-    background-position: center center;
-  }
-
-  .spinner-box.is-loaded {
-    background: none;
-  }
-}
-
-// .dash-card-frame.wiide {
-//   // margin-right: 2rem;
-// }
+// Note: .dash-card-frame styles moved to DashboardCard.vue component
 
 .dash-card {
   transition: opacity 0.5s;
   overflow-x: hidden;
   overflow-y: hidden;
   border-radius: 2px;
-  height: 100%;
-  width: 100%;
 }
 
 // Allow data-table cards to contain their scrollable content
@@ -1782,9 +1691,7 @@ export default defineComponent({
   flex-direction: column;
 }
 
-.dash-card-frame.is-panel-narrow {
-  margin: 0rem 0.5rem 1rem 0;
-}
+// Note: .dash-card-frame.is-panel-narrow moved to DashboardCard.vue component
 
 ul.tab-row {
   padding: 0 0;
@@ -1805,40 +1712,7 @@ li.is-not-active b a {
   color: var(--text);
 }
 
-.error-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: var(--bgError);
-  color: #800;
-  border: 1px solid var(--bgCream4);
-  border-radius: 3px;
-  margin-bottom: 0px;
-  padding: 0.5rem 0.5rem;
-  z-index: 25000;
-  font-size: 0.9rem;
-  font-weight: bold;
-  max-height: 50%;
-  overflow-y: auto;
-  p {
-    line-height: 1.2rem;
-    margin: 0 0;
-  }
-}
-
-.clear-error {
-  float: right;
-  font-weight: bold;
-  margin-right: 2px;
-  padding: 0px 5px;
-}
-
-.clear-error:hover {
-  cursor: pointer;
-  color: red;
-  background-color: #88888833;
-}
+// Note: .error-text and .clear-error styles moved to DashboardCard.vue component
 
 .favorite-icon {
   margin: auto -0.5rem auto 1rem;
@@ -1858,17 +1732,29 @@ li.is-not-active b a {
   cursor: pointer;
 }
 
-// Data table card styles
+/*
+ * Data table card styles
+ * Uses CSS variables from StyleManager for theme-aware colors:
+ * - --dashboard-bg-* for backgrounds
+ * - --dashboard-text-* for text colors
+ * - --dashboard-border-* for borders
+ * - --dashboard-interaction-hover (#fbbf24) and --dashboard-interaction-selected (#3b82f6)
+ *
+ * Note: rgba() backgrounds use hardcoded values as CSS color-mix not widely supported.
+ * The hex values match StyleManager definitions.
+ */
 .table-card-frame {
   flex: 1;
   min-height: 300px;
   max-height: 500px;
   display: flex;
   flex-direction: column;
+  background: var(--dashboard-bg-secondary, var(--bgCardFrame));
 
   &.is-fullscreen {
     max-height: none;
     height: 100%;
+    background: var(--dashboard-bg-primary, var(--bgBold));
   }
 
   .reset-label,
@@ -1881,7 +1767,7 @@ li.is-not-active b a {
     align-items: center;
     margin-right: 0.5rem;
     font-size: 0.8rem;
-    color: var(--text);
+    color: var(--dashboard-text-primary, var(--text));
     cursor: pointer;
     opacity: 0.7;
 
@@ -1892,6 +1778,48 @@ li.is-not-active b a {
     &:hover {
       opacity: 1;
     }
+  }
+}
+
+// Table controls (scroll toggle, filter reset) - now inside DashboardCard slot
+.table-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--dashboard-bg-tertiary, var(--bgPanel2));
+  border-radius: 3px;
+  margin-bottom: 0.25rem;
+
+  .scroll-toggle {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--dashboard-text-primary, var(--text));
+    cursor: pointer;
+    opacity: 0.7;
+
+    input {
+      margin-right: 0.25rem;
+    }
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .scroll-label,
+  .reset-label {
+    margin-left: 0.25rem;
+  }
+
+  .comparison-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--dashboard-interaction-selected, #3b82f6);
+    padding: 0 0.5rem;
+    border-left: 1px solid var(--dashboard-border-subtle, var(--borderFaint));
+    margin-left: auto;
   }
 }
 
@@ -1909,25 +1837,26 @@ li.is-not-active b a {
   thead {
     position: sticky;
     top: 0;
-    background: var(--bgCardFrame);
+    background: var(--dashboard-bg-secondary, var(--bgCardFrame));
     z-index: 10;
 
     th {
       padding: 0.5rem 0.75rem;
       text-align: left;
       font-weight: 600;
-      border-bottom: 2px solid var(--borderColor);
-      color: var(--text);
+      border-bottom: 2px solid var(--dashboard-border-default, var(--borderColor));
+      color: var(--dashboard-text-primary, var(--text));
       white-space: nowrap;
       cursor: pointer;
       user-select: none;
 
       &:hover {
-        background: var(--bgHover);
+        background: var(--dashboard-bg-tertiary, var(--bgHover));
       }
 
       &.sorted {
-        color: var(--link);
+        // Use interaction.selected color for sorted column indicator
+        color: var(--dashboard-interaction-selected, var(--link));
       }
 
       .header-cell {
@@ -1945,18 +1874,18 @@ li.is-not-active b a {
 
   tbody {
     tr {
-      border-bottom: 1px solid var(--borderColor);
+      border-bottom: 1px solid var(--dashboard-border-subtle, var(--borderColor));
       cursor: pointer;
       transition: all 0.1s ease;
 
       &:hover {
-        background: var(--bgHover);
+        background: var(--dashboard-bg-tertiary, var(--bgHover));
       }
 
-      // Filtered rows (matching current filters) - highlighted
+      // Filtered rows (matching current filters) - use selected color (#3b82f6)
       &.is-filtered {
-        background-color: rgba(59, 130, 246, 0.1);
-        border-left: 3px solid #3b82f6;
+        background-color: rgba(59, 130, 246, 0.1); // --dashboard-interaction-selected at 10%
+        border-left: 3px solid var(--dashboard-interaction-selected, #3b82f6);
         font-weight: 500;
       }
 
@@ -1965,48 +1894,35 @@ li.is-not-active b a {
         opacity: 0.5;
       }
 
-      // Hovered from map/other component
+      // Hovered from map/other component - use hover color (#fbbf24)
       &.is-hovered {
-        background: rgba(52, 152, 219, 0.25);
+        background: rgba(251, 191, 36, 0.25); // --dashboard-interaction-hover at 25%
         transform: scale(1.001);
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         z-index: 1;
       }
 
-      // Selected (clicked) rows
+      // Selected (clicked) rows - use selected color (#3b82f6)
       &.is-selected {
-        background: rgba(231, 76, 60, 0.25);
+        background: rgba(59, 130, 246, 0.25); // --dashboard-interaction-selected at 25%
       }
 
       // Combined states
       &.is-filtered.is-hovered {
         background: rgba(59, 130, 246, 0.25);
-        border-left: 3px solid #2563eb;
+        border-left: 3px solid var(--dashboard-interaction-selected, #2563eb);
       }
 
       &.is-hovered.is-selected {
+        // Purple blend of hover+selected
         background: rgba(155, 89, 182, 0.35);
       }
 
       td {
         padding: 0.4rem 0.75rem;
-        color: var(--text);
+        color: var(--dashboard-text-primary, var(--text));
       }
     }
-  }
-}
-
-// Linked tables section styles
-.linked-tables-section {
-  padding: 1rem 0;
-  margin-top: 1rem;
-  border-top: 2px solid var(--bgBold);
-  
-  h4 {
-    margin: 0 0 1rem 0;
-    font-size: 0.9rem;
-    color: var(--textFancy);
-    font-weight: 600;
   }
 }
 </style>

@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { StyleManager, type SequentialScaleName } from '../../managers/StyleManager'
 
 interface LegendItem {
   label: string
@@ -43,6 +44,7 @@ interface Props {
   maxValue?: number
   clickable?: boolean
   isDarkMode?: boolean
+  sequentialScale?: SequentialScaleName
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -52,16 +54,17 @@ const props = withDefaults(defineProps<Props>(), {
   maxValue: 100,
   clickable: true,
   isDarkMode: false,
+  sequentialScale: 'viridis',
 })
 
 const emit = defineEmits<{
   itemClicked: [label: string]
 }>()
 
-// Compute gradient style for numeric legend
+// Compute gradient style for numeric legend using StyleManager
 const gradientStyle = computed(() => {
-  // Viridis gradient approximation
-  return 'linear-gradient(to right, #440154, #31688e, #35b779, #fde724)'
+  const styleManager = StyleManager.getInstance()
+  return styleManager.getSequentialGradientCSS(props.sequentialScale)
 })
 
 function handleItemClick(item: LegendItem) {
@@ -71,10 +74,9 @@ function handleItemClick(item: LegendItem) {
 }
 
 function formatNumber(value: number | undefined): string {
-  if (value === undefined) return '0'
-  if (Math.abs(value) > 1000) return value.toFixed(0)
-  if (Math.abs(value) > 10) return value.toFixed(1)
-  return value.toFixed(2)
+  // Use centralized number formatting from StyleManager
+  const styleManager = StyleManager.getInstance()
+  return styleManager.formatNumber(value)
 }
 </script>
 
@@ -84,9 +86,11 @@ function formatNumber(value: number | undefined): string {
   bottom: 20px;
   right: 20px;
   z-index: 1000;
-  background: white;
+  background: var(--dashboard-bg-secondary, white);
+  color: var(--dashboard-text-primary, #374151);
   padding: 12px;
   border-radius: 4px;
+  border: 1px solid var(--dashboard-border-default, rgba(0, 0, 0, 0.1));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   font-size: 12px;
   min-width: 150px;
@@ -94,8 +98,6 @@ function formatNumber(value: number | undefined): string {
 }
 
 .color-legend.dark {
-  background: #1f2937;
-  color: #e5e7eb;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
@@ -103,6 +105,9 @@ function formatNumber(value: number | undefined): string {
   font-weight: 600;
   margin-bottom: 8px;
   font-size: 13px;
+  color: var(--dashboard-text-primary, inherit);
+  border-bottom: 1px solid var(--dashboard-border-subtle, transparent);
+  padding-bottom: 4px;
 }
 
 .legend-items {
@@ -125,11 +130,7 @@ function formatNumber(value: number | undefined): string {
 }
 
 .legend-item.clickable:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.color-legend.dark .legend-item.clickable:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--dashboard-bg-tertiary, rgba(0, 0, 0, 0.05));
 }
 
 .legend-swatch {
@@ -137,16 +138,13 @@ function formatNumber(value: number | undefined): string {
   height: 16px;
   border-radius: 2px;
   flex-shrink: 0;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.color-legend.dark .legend-swatch {
-  border-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--dashboard-border-subtle, rgba(0, 0, 0, 0.1));
 }
 
 .legend-label {
   flex: 1;
   line-height: 1.2;
+  color: var(--dashboard-text-primary, inherit);
 }
 
 /* Numeric legend */
@@ -160,21 +158,13 @@ function formatNumber(value: number | undefined): string {
   width: 100%;
   height: 20px;
   border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.color-legend.dark .legend-gradient {
-  border-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--dashboard-border-subtle, rgba(0, 0, 0, 0.1));
 }
 
 .legend-scale {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #6b7280;
-}
-
-.color-legend.dark .legend-scale {
-  color: #9ca3af;
+  color: var(--dashboard-text-secondary, #6b7280);
 }
 </style>

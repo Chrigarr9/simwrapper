@@ -57,6 +57,7 @@ export default defineConfig(({ command, mode }) => {
     test: {
       globals: true,
       environment: 'jsdom',
+      exclude: ['tests/e2e/**', 'node_modules/**'],
     },
     resolve: {
       alias: {

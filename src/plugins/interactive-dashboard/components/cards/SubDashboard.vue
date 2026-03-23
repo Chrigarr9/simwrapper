@@ -160,9 +160,9 @@ export default Vue.extend({
   margin-top: 1.5rem;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  // Ensure proper containment
   position: relative;
-  contain: layout;
+  // Note: Removed `contain: layout` - it was blocking position:fixed for card fullscreen.
+  // The FullscreenPortal pattern now handles escaping containment by teleporting to document.body.
 }
 
 .sub-dashboard-header {
@@ -218,12 +218,18 @@ export default Vue.extend({
   
   // The embedded InteractiveDashboard will handle its own layout
   // Hide the header in embedded dashboards (we have our own)
+  // BUT keep .header-controls visible so colorBy selector works in sub-dashboards
   :deep(.dash-header) {
     display: none !important;
   }
-  
+
   :deep(.dashboard-header) {
-    display: none !important;
+    // Hide title/description and favstar (SubDashboard has its own header)
+    .dtitles { display: none !important; }
+    .favstar { display: none !important; }
+    // Hide theme toggle and export (inherit from parent dashboard)
+    .theme-toggle { display: none !important; }
+    .export-dropdown { display: none !important; }
   }
   
   // Override any fixed or absolute positioning from embedded dashboard

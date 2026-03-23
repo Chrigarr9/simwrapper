@@ -41,12 +41,14 @@ export interface NavigationItem {
 export const BG_COLOR_DASHBOARD = {
   light: '#fff',
   dark: '#14141a',
+  scientific: '#ffffff',
 }
 
 // same colors as the table plot
 export const BG_COLOR_PLOTLY_FACETS = {
   light: '#f6f6f6',
   dark: '#212121',
+  scientific: '#ffffff',
 }
 
 export const MAPBOX_TOKEN =
@@ -189,6 +191,7 @@ export interface DirectoryEntry {
 export enum ColorScheme {
   LightMode = 'light',
   DarkMode = 'dark',
+  ScientificMode = 'scientific',
 }
 
 export interface BreadCrumb {

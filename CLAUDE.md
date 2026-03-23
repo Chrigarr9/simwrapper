@@ -1,5 +1,15 @@
 # CLAUDE.md
 
+## Project-Bound Memory
+
+This project uses **`.project-memory/`** (at the Dissertation repo root) as a git-tracked shared memory store.
+When you learn something worth remembering, sync it to `.project-memory/` — see the root `CLAUDE.md` for the full protocol.
+
+## Planning & Context
+
+Check `.planning/` for project roadmap, phase plans, codebase analysis, research notes, resolved debug sessions, and todos.
+Also check the root `.project-memory/` for cross-project insights.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -26,6 +36,9 @@ npm run test:run
 
 # Run tests with UI
 npm run test:ui
+
+# Headless export (pure Node.js, no browser)
+npm run export <config.yaml> [--output <dir>] [--states <s1,s2>] [--format png|svg] [--scale N]
 
 # Build WASM modules (if needed)
 npm run wasm
@@ -78,8 +91,11 @@ The Interactive Dashboard plugin (`src/plugins/interactive-dashboard/`) implemen
 
 **2. Component Layer** (`components/cards/`)
 - `LinkableCardWrapper.vue` - Wraps cards to add interactive capabilities
-- `HistogramCard.vue` - Interactive histogram with filtering
-- `PieChartCard.vue` - Interactive pie chart
+- `HistogramCard.vue` - Interactive histogram with filtering (uses shared trace builder)
+- `PieChartCard.vue` - Interactive pie chart (uses shared trace builder)
+- `ScatterCard.vue` - Interactive scatter plot with 5 trace paths (uses shared trace builder)
+- `CorrelationMatrixCard.vue` - Pearson correlation heatmap (uses shared trace builder)
+- `TimelineCard.vue` - Gantt-style timeline with swim lanes (uses shared trace builder)
 - `MapCard.vue` - Interactive map with deck.gl layers and linkage support
 
 **3. Dashboard Layer**
@@ -140,10 +156,29 @@ Global state in Vuex store (`src/store.ts`):
 
 ```
 src/
+├── export/                # Headless export pipeline (pure Node.js)
+│   ├── types.ts           # Shared types (PlotlyFigure, ChartStyle, etc.)
+│   ├── defaults.ts        # Export defaults, print style, map style URLs
+│   ├── configParser.ts    # YAML config parser with 3-level override cascade
+│   ├── cli.ts             # CLI entry point (npm run export)
+│   ├── trace-builders/    # Pure functions: (input, style) → PlotlyFigure
+│   │   ├── index.ts       # Registry mapping card types to builders
+│   │   ├── histogram.ts   # Histogram trace builder
+│   │   ├── scatter.ts     # Scatter plot trace builder (5 trace paths)
+│   │   ├── pie.ts         # Pie/donut chart trace builder
+│   │   ├── correlation.ts # Correlation matrix heatmap builder
+│   │   ├── timeline.ts    # Gantt-style timeline builder
+│   │   ├── map.ts         # Map config builder (deck.gl → MapLibre translation)
+│   │   └── __tests__/     # 255 unit tests for all builders
+│   ├── renderers/
+│   │   ├── chartRenderer.ts  # jsdom + plotly → SVG → resvg → PNG
+│   │   ├── mapRenderer.ts    # maplibre-gl-native + sharp → PNG
+│   │   └── __tests__/
+│   └── __tests__/         # Config parser tests
 ├── plugins/               # Visualization plugins
 │   ├── interactive-dashboard/
 │   │   ├── managers/      # Data/filter/linkage managers
-│   │   ├── components/    # Linkable cards (histogram, pie, map)
+│   │   ├── components/    # Linkable cards (histogram, pie, scatter, map, etc.)
 │   │   ├── InteractiveDashboard.vue
 │   │   └── README.md      # Plugin-specific documentation
 │   ├── shape-file/        # Map viewer for GeoJSON/shapefiles
@@ -191,8 +226,12 @@ describe('FilterManager', () => {
 
 ### Adding a New Card Type to Interactive Dashboard
 
-1. Create component in `src/plugins/interactive-dashboard/components/cards/YourCard.vue`
-2. Implement props interface:
+1. Create a **trace builder** in `src/export/trace-builders/yourcard.ts` as a pure function: `(input, style) → PlotlyFigure`
+2. Add tests in `src/export/trace-builders/__tests__/yourcard.test.ts`
+3. Register the builder in `src/export/trace-builders/index.ts`
+4. Create Vue component in `src/plugins/interactive-dashboard/components/cards/YourCard.vue`
+5. In the component, call the trace builder and apply interactive overrides (hover/selection) on top
+6. Implement props interface:
    ```typescript
    interface Props {
      filteredData: any[]       // From LinkableCardWrapper
@@ -202,9 +241,9 @@ describe('FilterManager', () => {
      // ... card-specific props
    }
    ```
-3. Emit events for user interactions (via `LinkableCardWrapper`)
-4. Add card type to `InteractiveDashboard.vue` component mapping
-5. Document YAML configuration in plugin README
+7. Emit events for user interactions (via `LinkableCardWrapper`)
+8. Add card type to `InteractiveDashboard.vue` component mapping
+9. Document YAML configuration in plugin README
 
 ### Working with MapCard Layers
 
@@ -247,6 +286,83 @@ interface DashboardConfig {
 }
 ```
 
+## Export System (Headless)
+
+The export system (`src/export/`) renders dashboard charts to PNG/SVG without a browser, using pure Node.js.
+
+### Architecture
+
+```
+YAML config → configParser → resolveExportPlan → [ExportItem per state+plot]
+                                                        │
+                                              ┌─────────┴──────────┐
+                                         chart type?            map type?
+                                              │                    │
+                                    trace builder → PlotlyFigure   map builder → MapRenderConfig
+                                              │                    │
+                                    chartRenderer (jsdom+plotly)   mapRenderer (maplibre-native)
+                                              │                    │
+                                         SVG / PNG              PNG
+```
+
+### Shared Trace Builders
+
+Trace builders are **pure functions** with signature `(input, style) → PlotlyFigure`. They have **zero** Vue/DOM/StyleManager dependencies. Both the headless CLI export and the interactive Vue cards call the same builders.
+
+| Builder | Card type | Key features |
+|---------|-----------|--------------|
+| `histogram.ts` | `histogram` | Binning, comparison mode, categorical/numeric colorBy, adaptive tick thinning |
+| `scatter.ts` | `scatter-plot` | 5 trace paths, secondary Y-axis, connectLines, scientific symbols, sizeColumn |
+| `pie.ts` | `pie-chart` | Donut, comparison dual-ring, pattern fills, text positioning thresholds |
+| `correlation.ts` | `correlation-matrix` | Pearson computation, heatmap, lower triangle, cell annotations |
+| `timeline.ts` | `timeline` | Gantt horizontal bars, greedy track allocation, HH:MM time axis |
+| `map.ts` | `map` | deck.gl→MapLibre translation, arc→bezier, data-driven expressions |
+
+### Card ↔ Builder Integration Pattern
+
+Vue cards delegate to trace builders, then apply interactive-only overrides:
+
+```typescript
+// In a Vue card component:
+import { buildHistogramFigure } from '@/export/trace-builders/histogram'
+
+const buildChartData = () => {
+  const style: ChartStyle = { /* resolve from StyleManager for interactive mode */ }
+  const input: HistogramInput = { /* map Vue props to builder input */ }
+  const figure = buildHistogramFigure(input, style)
+
+  // Apply interactive-only overrides (hover, selection highlights)
+  applyInteractiveHighlights(figure, props.hoveredIds, props.selectedIds)
+  return figure
+}
+```
+
+### Config Override Cascade
+
+Export configs support a 3-level override cascade: `defaults → per-plot → per-state per-plot`.
+
+```yaml
+export:
+  defaults:                    # Level 1: global defaults
+    format: png
+    width: 1200
+  plots:
+    dist-hist:                 # Level 2: per-plot overrides
+      width: 800
+  states:
+    car-only:
+      filters: { mode: car }
+      export: [dist-hist]
+      plots:
+        dist-hist:             # Level 3: per-state per-plot overrides
+          title: Car Distance
+```
+
+### Renderers
+
+- **chartRenderer:** Creates a jsdom instance, loads plotly.js, calls `Plotly.toImage()` for SVG, then `@resvg/resvg-js` for PNG rasterization
+- **mapRenderer:** Uses `@maplibre/maplibre-gl-native` for server-side tile rendering, `sharp` for PNG encoding
+
 ## Important Constraints
 
 1. **All code must be TypeScript** - No JavaScript files except configs
@@ -267,7 +383,14 @@ Example: `import globalStore from '@/store'`
 
 ## Interactive Dashboard - Current Status
 
-Recent work has implemented full dashboard interactivity:
+All chart cards use **shared trace builders** (`src/export/trace-builders/`) for rendering logic, with interactive-only overrides (hover, selection) applied on top in the Vue component.
+
+**Chart Cards** (all use shared trace builders):
+- `HistogramCard` - Binned filtering, comparison mode, categorical/numeric colorBy, adaptive tick thinning
+- `ScatterCard` - 5 trace paths, secondary Y-axis, connectLines, scientific symbols, sizeColumn
+- `PieChartCard` - Donut chart, comparison dual-ring, pattern fills, categorical colors
+- `CorrelationMatrixCard` - Pearson heatmap, lower triangle masking, cell annotations
+- `TimelineCard` - Gantt swim lanes, greedy track allocation, zoom, request detail view
 
 **MapCard Features:**
 - Core MapCard with polygon/line/arc/scatterplot layers
@@ -284,10 +407,6 @@ Recent work has implemented full dashboard interactivity:
 - Auto-scroll to hovered row (map→table sync)
 - Fullscreen toggle
 - Filter reset button
-
-**Chart Features:**
-- PieChartCard with categorical colors (mode-aware colors)
-- HistogramCard with binned filtering
 
 ### Map Controls Configuration
 
@@ -340,6 +459,105 @@ See these docs in `src/plugins/interactive-dashboard/`:
 - **Indentation:** 2 spaces (Pug requires consistent indentation)
 - **Imports:** Group by external, internal, relative
 - **Naming:** camelCase for variables/functions, PascalCase for components/classes
+
+## Known Pitfalls and Debugging Learnings
+
+### Plotly.js Event Handling
+
+Plotly.js has specific behavior around event handlers that can cause issues:
+
+1. **Register handlers ONCE** - Event handlers (`.on('plotly_click', ...)`) should only be registered during initialization, not on every update
+2. **Memory leaks** - Re-registering handlers without cleanup causes `MaxListenersExceededWarning` (e.g., "11 plotly_click listeners added")
+3. **newPlot vs react**:
+   - `Plotly.newPlot()` - Creates new chart, clears all event handlers
+   - `Plotly.react()` - Updates data/layout while preserving event handlers
+4. **Pattern**: Initialize chart once with `newPlot()` + register handlers, then use `react()` for updates
+
+```typescript
+// CORRECT pattern
+const initializeChart = () => {
+  Plotly.newPlot(container, traces, layout, config)
+  container.on('plotly_click', handleClick)  // Register ONCE
+}
+
+const updateChart = () => {
+  Plotly.react(container, traces, layout, config)  // Preserves handlers
+}
+
+// WRONG - causes memory leak
+const updateChart = () => {
+  Plotly.react(container, traces, layout, config)
+  container.on('plotly_click', handleClick)  // Adds duplicate listener every time!
+}
+```
+
+### Vue Reactivity with Sets
+
+Vue's reactivity system doesn't always track Set mutations properly:
+
+```typescript
+// Watch both reference AND size to catch all changes
+watch(
+  [
+    () => props.selectedIds,
+    () => props.selectedIds?.size ?? 0
+  ],
+  () => { /* handle change */ }
+)
+
+// When updating a Set, create a new instance to trigger reactivity
+hoveredIds.value = new Set(ids)  // ✓ Vue detects change
+hoveredIds.value.add(id)          // ✗ Vue may miss this
+```
+
+### Selection vs Filter Event Pattern
+
+Cards emit different events based on user intent:
+
+| Event | Intent | Example Cards | Threshold? |
+|-------|--------|---------------|------------|
+| `@filter` | "Filter to this category/bin" | HistogramCard, PieChartCard | No - immediate |
+| `@select` | "Mark/identify this item" | ScatterCard, DataTableCard | Yes - use threshold |
+| `@hover` | "Temporarily highlight" | All cards | No - immediate |
+
+**Threshold-based comparison mode** (for selection events):
+- 1 selection = highlight only, no comparison mode
+- 2+ selections = trigger comparison mode (selection-to-filter promotion)
+
+### Handling Overlapping Points in Scatter Plots
+
+When multiple data points share the same coordinates:
+
+```typescript
+// Use tolerance-based matching to find ALL points at a coordinate
+const findIdsAtCoordinate = (x: number, y: number): any[] => {
+  const xRange = Math.max(...data.x) - Math.min(...data.x)
+  const yRange = Math.max(...data.y) - Math.min(...data.y)
+  const xTolerance = Math.max(xRange * 0.001, 0.001)  // 0.1% of range
+  const yTolerance = Math.max(yRange * 0.001, 0.001)
+
+  return data.filter(row =>
+    Math.abs(row.x - x) < xTolerance &&
+    Math.abs(row.y - y) < yTolerance
+  )
+}
+```
+
+### Debugging Best Practices
+
+1. **Use `debugLog()` utility** instead of `console.log()` - controlled output via `src/plugins/interactive-dashboard/utils/debug.ts`
+2. **Check for event handler memory leaks** - Look for `MaxListenersExceededWarning` in console
+3. **Debounce rapid updates** - Prevent excessive re-renders that can break event handlers
+4. **Keep axis ranges stable** - Use baseline data (not filtered data) for axis range calculation to prevent zoom on filter
+
+### Comparison Mode Architecture
+
+When implementing comparison mode (baseline vs filtered data):
+
+1. **Baseline layer** - Gray/transparent, shows all data for context
+2. **Filtered layer** - Colored, shows selected/filtered items
+3. **Axis ranges** - Calculate from baseline data to prevent zooming when filtering
+4. **Skip baseline in interactions** - Check `curveNumber` to ignore clicks on baseline trace
 
 ## Resources
 
