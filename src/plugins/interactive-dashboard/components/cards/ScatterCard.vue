@@ -36,6 +36,7 @@ interface Props {
   yColumn: string           // Column for Y axis
   yColumnRight?: string     // Optional second Y column for right-side secondary axis
   colorColumn?: string      // Optional column for point colors (categorical)
+  colorDecimals?: number    // Decimal places for color category labels (e.g. 2 for fixed_price)
   sizeColumn?: string       // Optional column for point sizes (numeric)
   markerSize?: number       // Default marker size (default: 8)
   filteredData?: any[]      // From LinkableCardWrapper (optional for safety)
@@ -333,10 +334,12 @@ function buildScatterInput(): ScatterInput {
   let colorMap: Map<string, string> | undefined
   const colorCol = colorByActive ? props.colorByAttribute! : props.colorColumn
   if (colorCol) {
+    const fmtCat = (v: any): string =>
+      props.colorDecimals !== undefined && typeof v === 'number' ? v.toFixed(props.colorDecimals) : String(v)
     const categorySet = new Set<string>()
     for (const row of props.filteredData || []) {
       const v = row[colorCol]
-      if (v !== undefined && v !== null) categorySet.add(String(v))
+      if (v !== undefined && v !== null) categorySet.add(fmtCat(v))
     }
     const sorted = sortLegendCategories(Array.from(categorySet))
     colorMap = styleManager.buildCategoricalColorMap(sorted)
@@ -350,6 +353,7 @@ function buildScatterInput(): ScatterInput {
     yColumnRight: props.yColumnRight || undefined,
     idColumn: props.idColumn || undefined,
     colorColumn: props.colorColumn || undefined,
+    colorDecimals: props.colorDecimals,
     colorBy: colorByActive ? props.colorByAttribute : undefined,
     colorByType: colorByType,
     colorMap,

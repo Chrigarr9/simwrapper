@@ -100,6 +100,7 @@
               :y-column="card.yColumn"
               :y-column-right="card.yColumnRight"
               :color-column="card.colorColumn"
+              :color-decimals="card.colorDecimals"
               :size-column="card.sizeColumn"
               :marker-size="card.markerSize"
               :connect-lines="card.connectLines"

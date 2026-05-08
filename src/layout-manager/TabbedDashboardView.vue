@@ -22,7 +22,7 @@
     //- mobile: dashboard dropdown-button
     .dashboard-mobile-section(v-show="!isZoomed && Object.keys(dashboards).length > 1 && isMobile")
       .dropdown
-        b-button.dropbtn(@click="dropDownClicked()") {{ dashboards[activeTab].header.tab || 'Dashboards' }}
+        b-button.dropbtn(@click="dropDownClicked()") {{ (dashboards[activeTab] && dashboards[activeTab].header && dashboards[activeTab].header.tab) || 'Dashboards' }}
           i.fa.fa-caret-down
 
         .dropdown-content(v-if="showDropDown")
@@ -35,7 +35,7 @@
 
     //-- The actual dashboard for this tab (if there is one) ------------------
     .dashboard-content(
-      v-if="dashboardTabWithDelay && dashboardTabWithDelay !== 'FILE__BROWSER' && dashboards[dashboardTabWithDelay] && dashboards[dashboardTabWithDelay].header.tab !== '...'"
+      v-if="dashboardTabWithDelay && dashboardTabWithDelay !== 'FILE__BROWSER' && dashboards[dashboardTabWithDelay] && dashboards[dashboardTabWithDelay].header && dashboards[dashboardTabWithDelay].header.tab !== '...'"
       :class="{'is-breadcrumbs-hidden': !isShowingBreadcrumbs && !isZoomed}"
     )
       component(

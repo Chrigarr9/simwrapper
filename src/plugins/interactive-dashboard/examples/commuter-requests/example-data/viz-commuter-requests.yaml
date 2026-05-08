@@ -16,10 +16,6 @@ files:
 
 # Display settings
 display:
-  # Initial view settings
-  center: [11.57, 48.14]  # Munich coordinates
-  zoom: 11
-
   # Color schemes
   colorScheme: viridis
 

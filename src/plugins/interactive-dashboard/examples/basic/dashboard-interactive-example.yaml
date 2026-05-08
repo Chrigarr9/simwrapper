@@ -22,8 +22,6 @@ layout:
       title: "Geographic View"
       width: 2
       height: 8
-      center: [13.40, 52.52]
-      zoom: 11
       layers:
         - name: points
           file: points.geojson

@@ -212,8 +212,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  center: () => [13.4, 52.52],
-  zoom: 10,
   mapStyle: 'auto',
   showComparison: false,
   layers: () => [],
@@ -246,6 +244,7 @@ const isApplyingExternalViewport = ref(false)
 const deckOverlay = ref<MapboxOverlay | null>(null)
 const isLoading = ref(true)
 const hasEmittedLoaded = ref(false)
+const hasFittedBounds = ref(false)
 
 // Layer data storage
 const layerData = ref<Map<string, any[]>>(new Map())
@@ -301,9 +300,10 @@ onMounted(async () => {
     initDeckOverlay()
     updateLayers()
 
-    // Only auto-fit bounds if no explicit center/zoom was provided in config
-    if (!props.center || !props.zoom) {
+    // Auto-fit bounds on first load when no explicit center was provided in config
+    if (!props.center && !hasFittedBounds.value) {
       fitBounds()
+      hasFittedBounds.value = true
     }
 
     // Ensure the first rendered frame includes deck layers before export capture

@@ -18,6 +18,7 @@ export interface ScatterInput {
   yColumnRight?: string
   idColumn?: string
   colorColumn?: string
+  colorDecimals?: number
   colorBy?: string
   colorByType?: 'categorical' | 'numeric'
   colorMap?: Map<string, string>
@@ -154,6 +155,7 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     yColumn,
     yColumnRight,
     colorColumn,
+    colorDecimals,
     colorBy,
     colorByType,
     colorMap,
@@ -200,11 +202,14 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
   // ── Determine trace path ──────────────────────────────────────────────
 
   // Gather unique categories from colorColumn
+  const fmtCat = (v: any): string =>
+    colorDecimals !== undefined && typeof v === 'number' ? v.toFixed(colorDecimals) : String(v)
+
   const categorySet = new Set<string>()
   if (colorColumn) {
     for (const row of filteredData) {
       const v = row[colorColumn]
-      if (v !== undefined && v !== null) categorySet.add(String(v))
+      if (v !== undefined && v !== null) categorySet.add(fmtCat(v))
     }
   }
   const categories = sortLegendCategories(Array.from(categorySet))
@@ -380,7 +385,7 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
       const cSizes: number[] = []
 
       for (const row of filteredData) {
-        if (String(row[colorColumn!]) !== cat) continue
+        if (fmtCat(row[colorColumn!]) !== cat) continue
         const xv = row[xColumn]
         const yv = row[yColumn]
         if (!isFiniteNumeric(xv) || !isFiniteNumeric(yv)) continue

@@ -17,8 +17,6 @@ layout:
       title: "All Features Demo"
       width: 2
       height: 12
-      center: [11.57, 48.14]
-      zoom: 11
       mapStyle: "auto"  # auto | light | dark
 
       layers:

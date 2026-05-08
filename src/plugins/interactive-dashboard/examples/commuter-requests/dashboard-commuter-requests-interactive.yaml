@@ -40,8 +40,6 @@ layout:
       title: "Request Map"
       width: 2
       height: 12
-      center: [13.4, 52.52]
-      zoom: 10
       layers:
         # Cluster boundaries layer (polygon)
         - name: cluster_boundaries

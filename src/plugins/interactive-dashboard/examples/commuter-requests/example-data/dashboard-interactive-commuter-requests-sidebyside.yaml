@@ -120,8 +120,6 @@ layout:
       title: "Requests Map"
       width: 2
       height: 12
-      center: [11.57, 48.14]
-      zoom: 10
       legend:
         enabled: true
         position: bottom-right
