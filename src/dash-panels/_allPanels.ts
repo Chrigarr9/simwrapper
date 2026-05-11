@@ -8,7 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 export const panelLookup: { [key: string]: AsyncComponent } = {
   aggregate: defineAsyncComponent(() => import('./aggregate-od.vue')),
   area: defineAsyncComponent(() => import('./area.vue')),
-  bar: defineAsyncComponent(() => import('./bar.vue')),
+  bar: defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/BarCard.vue')),
   bubble: defineAsyncComponent(() => import('./bubble.vue')),
   'correlation-matrix': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/CorrelationMatrixCard.vue')),
   csv: defineAsyncComponent(() => import('./table.vue')),
