@@ -1,0 +1,64 @@
+# Task 9 integration smoke test. Points at REAL v3 data (NOT mini fixtures).
+# Produces three figures: CS3 fleet curve, CS6 KPI bars, CS8 subsidy curve.
+# Validates that the entire trace-builder pipeline works against production-scale data.
+
+table:
+  file: ../../../../ExmasCommuters/outputs/lyon-service-area-phase1-25pct-v3/simwrapper/scenarios_summary.csv
+  idColumn: trial_id
+
+output:
+  directory: ../_output/integration-smoke
+
+defaults:
+  format: png
+  width: 1200
+  height: 700
+  scale: 2
+
+plots:
+  cs3-fleet-curve:
+    type: scatter-plot
+    title: "CS3: Commutes served vs fleet size"
+    xColumn: pc_fleet_size
+    yColumn: served_requests
+    connectLines: true
+    xAxisTitle: "Fleet size (vehicles)"
+    yAxisTitle: "Commutes served per day (25% sample)"
+    annotations:
+      - { x: 100, y: 1116, text: "First corridor", showarrow: true, arrowhead: 2, ax: 40, ay: -30 }
+      - { x: 300, y: 3283, text: "Regional backbone", showarrow: true, arrowhead: 2, ax: 40, ay: -30 }
+      - { x: 1000, y: 10210, text: "Majority system", showarrow: true, arrowhead: 2, ax: 40, ay: -30 }
+
+  cs6-kpi-bars:
+    type: bar
+    title: "CS6: KPIs by pricing scheme @ fleet=300"
+    xColumn: pricing_scheme
+    yColumns: [service_rate, cost_recovery_ratio, mean_detour_factor]
+    yAxisTitle: "Value"
+    xAxisTitle: "Pricing scheme"
+
+  cs8-subsidy-curve:
+    type: scatter-plot
+    title: "CS8: Required subsidy curve"
+    xColumn: pc_fleet_size
+    yColumn: total_subsidy
+    connectLines: true
+    xAxisTitle: "Fleet size (vehicles)"
+    yAxisTitle: "Subsidy (€/day)"
+    referenceLines:
+      - { axis: y, value: 59, label: "Deutschlandticket €59/mo", dash: dash }
+
+states:
+  gate-equal-base:
+    filters:
+      anchor_zone_policy: gate
+      pricing_scheme: equal
+      fixed_price: 0.0
+    export: [cs3-fleet-curve, cs8-subsidy-curve]
+
+  fleet-300-gate-base:
+    filters:
+      constraint__fleet_size: 300
+      anchor_zone_policy: gate
+      fixed_price: 0.0
+    export: [cs6-kpi-bars]
