@@ -6,7 +6,8 @@
  * parameter and the ScatterInput configuration.
  */
 
-import type { PlotlyFigure, ChartStyle } from '../types'
+import type { PlotlyFigure, ChartStyle, ReferenceLine } from '../types'
+import { buildReferenceShape, buildReferenceAnnotation } from './_layout-helpers'
 
 // ── Input interface ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export interface ScatterInput {
   scientificSymbols?: string[]
   scientificLinePatterns?: string[]
   annotations?: any[]  // Plotly annotation objects, passthrough to layout.annotations
+  referenceLines?: ReferenceLine[]
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -692,7 +694,13 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
       bgcolor: 'rgba(0,0,0,0)',
       borderwidth: 0,
     } : undefined,
-    annotations: [...(input.annotations ?? [])],
+    shapes: [
+      ...(input.referenceLines ?? []).map(buildReferenceShape),
+    ],
+    annotations: [
+      ...(input.annotations ?? []),
+      ...(input.referenceLines ?? []).filter(r => r.label).map(buildReferenceAnnotation),
+    ],
   }
 
   return {

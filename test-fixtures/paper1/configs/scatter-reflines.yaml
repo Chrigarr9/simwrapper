@@ -1,0 +1,30 @@
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+output:
+  directory: ../_output
+
+defaults:
+  format: png
+  width: 1200
+  height: 700
+  scale: 2
+
+plots:
+  subsidy-curve:
+    type: scatter-plot
+    title: "Passenger-km vs fleet size (reference lines)"
+    xColumn: pc_fleet_size
+    yColumn: total_passenger_km
+    connectLines: true
+    xAxisTitle: "Fleet size"
+    yAxisTitle: "Total passenger-km"
+    referenceLines:
+      - { axis: y, value: 8000, label: "Benchmark threshold", color: "#c0392b", dash: dash }
+      - { axis: x, value: 100, label: "Fleet target", color: "#2980b9", dash: dot }
+
+states:
+  gate:
+    filters: { anchor_zone_policy: gate, fixed_price: 0.0 }
+    export: [subsidy-curve]

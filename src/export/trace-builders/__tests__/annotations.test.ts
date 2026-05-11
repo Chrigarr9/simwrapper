@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildScatterFigure } from '../scatter'
 import { buildHistogramFigure } from '../histogram'
+import { buildBarFigure } from '../bar'
 import { PRINT_CHART_STYLE } from '../../defaults'
 
 const style = PRINT_CHART_STYLE
@@ -93,5 +94,81 @@ describe('annotation passthrough — histogram', () => {
       column: 'value',
       filteredData: [{ value: 1 }],
     } as any, style)).not.toThrow()
+  })
+})
+
+describe('reference-line passthrough — scatter', () => {
+  it('renders y-axis reference line as shape + labeled annotation', () => {
+    const fig = buildScatterFigure({
+      type: 'scatter-plot',
+      xColumn: 'x', yColumn: 'y',
+      filteredData: [{ x: 1, y: 50 }, { x: 2, y: 80 }],
+      referenceLines: [{ axis: 'y', value: 59, label: 'Deutschlandticket', color: '#c0392b' }],
+    } as any, style)
+
+    const yShapes = (fig.layout.shapes ?? []).filter((s: any) => s.y0 === 59 && s.y1 === 59)
+    expect(yShapes.length).toBeGreaterThanOrEqual(1)
+
+    const labels = (fig.layout.annotations ?? []).map((a: any) => a.text)
+    expect(labels).toContain('Deutschlandticket')
+  })
+
+  it('renders x-axis reference line as shape + labeled annotation', () => {
+    const fig = buildScatterFigure({
+      type: 'scatter-plot',
+      xColumn: 'x', yColumn: 'y',
+      filteredData: [{ x: 1, y: 50 }],
+      referenceLines: [{ axis: 'x', value: 300, label: 'Backbone target' }],
+    } as any, style)
+
+    const xShapes = (fig.layout.shapes ?? []).filter((s: any) => s.x0 === 300 && s.x1 === 300)
+    expect(xShapes.length).toBeGreaterThanOrEqual(1)
+
+    const labels = (fig.layout.annotations ?? []).map((a: any) => a.text)
+    expect(labels).toContain('Backbone target')
+  })
+
+  it('renders unlabeled reference line as shape only (no annotation)', () => {
+    const fig = buildScatterFigure({
+      type: 'scatter-plot',
+      xColumn: 'x', yColumn: 'y',
+      filteredData: [{ x: 1, y: 50 }],
+      referenceLines: [{ axis: 'y', value: 100 }],  // no label
+    } as any, style)
+
+    expect(fig.layout.shapes?.length).toBe(1)
+    const refLineLabels = (fig.layout.annotations ?? []).filter((a: any) => a.text)
+    expect(refLineLabels.length).toBe(0)
+  })
+
+  it('preserves existing annotations when both annotations AND referenceLines provided', () => {
+    const fig = buildScatterFigure({
+      type: 'scatter-plot',
+      xColumn: 'x', yColumn: 'y',
+      filteredData: [{ x: 1, y: 50 }],
+      annotations: [{ x: 1, y: 50, text: 'Direct annotation' }],
+      referenceLines: [{ axis: 'y', value: 59, label: 'Reference label' }],
+    } as any, style)
+
+    const texts = (fig.layout.annotations ?? []).map((a: any) => a.text)
+    expect(texts).toContain('Direct annotation')
+    expect(texts).toContain('Reference label')
+  })
+})
+
+describe('reference-line passthrough — bar (extracted helpers still wired)', () => {
+  it('renders y-axis reference line on bar chart via shared helpers', () => {
+    const fig = buildBarFigure({
+      type: 'bar',
+      xColumn: 'scheme',
+      yColumns: ['service_rate'],
+      filteredData: [{ scheme: 'equal', service_rate: 0.8 }],
+      referenceLines: [{ axis: 'y', value: 0.75, label: 'Target' }],
+    } as any, style)
+
+    const yShapes = (fig.layout.shapes ?? []).filter((s: any) => s.y0 === 0.75 && s.y1 === 0.75)
+    expect(yShapes.length).toBeGreaterThanOrEqual(1)
+    const labels = (fig.layout.annotations ?? []).map((a: any) => a.text)
+    expect(labels).toContain('Target')
   })
 })
