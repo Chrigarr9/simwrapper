@@ -9,7 +9,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import Plotly from 'plotly.js/dist/plotly'
 import { StyleManager } from '../../managers/StyleManager'
 import { buildBarFigure } from '@/export/trace-builders/bar'
-import type { BarInput, ChartStyle } from '@/export/types'
+import type { BarInput, ChartStyle, ReferenceLine } from '@/export/types'
 
 interface Props {
   title?: string
@@ -19,8 +19,8 @@ interface Props {
   barmode?: 'group' | 'stack' | 'relative'
   yAxisTitle?: string
   xAxisTitle?: string
-  annotations?: any[]
-  referenceLines?: any[]
+  annotations?: any[] // TODO: use PlotlyAnnotation type when available in types.ts
+  referenceLines?: ReferenceLine[]
   filteredData?: any[]
   baselineData?: any[]
   showComparison?: boolean
@@ -36,6 +36,18 @@ const props = withDefaults(defineProps<Props>(), {
 
 const plotContainer = ref<HTMLElement>()
 let chartInitialized = false
+
+// Debounce timer — collapses N prop changes in one tick into one Plotly.react call
+// Mirrors HistogramCard's debouncedRenderChart pattern
+let renderTimeout: ReturnType<typeof setTimeout> | null = null
+
+const scheduleUpdate = () => {
+  if (renderTimeout) clearTimeout(renderTimeout)
+  renderTimeout = setTimeout(() => {
+    updateChart()
+    renderTimeout = null
+  }, 50)
+}
 
 // Resolve interactive ChartStyle from StyleManager
 // Verbatim copy of HistogramCard lines 163-185
@@ -103,16 +115,26 @@ const updateChart = () => {
   }
 }
 
-watch(() => props.filteredData, () => { updateChart() })
-watch(() => props.yColumns, () => { updateChart() }, { deep: true })
-watch(() => props.barmode, () => { updateChart() })
-watch(() => props.colorByColumn, () => { updateChart() })
+watch(() => props.filteredData, () => { scheduleUpdate() })
+watch(() => props.yColumns, () => { scheduleUpdate() }, { deep: true })
+watch(() => props.barmode, () => { scheduleUpdate() })
+watch(() => props.colorByColumn, () => { scheduleUpdate() })
+watch(() => props.xColumn, () => { scheduleUpdate() })
+watch(() => props.annotations, () => { scheduleUpdate() }, { deep: true })
+watch(() => props.referenceLines, () => { scheduleUpdate() }, { deep: true })
+watch(() => props.yAxisTitle, () => { scheduleUpdate() })
+watch(() => props.xAxisTitle, () => { scheduleUpdate() })
+watch(() => props.title, () => { scheduleUpdate() })
 
 onMounted(() => {
   initializeChart()
 })
 
 onUnmounted(() => {
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+    renderTimeout = null
+  }
   chartInitialized = false
   if (plotContainer.value) {
     Plotly.purge(plotContainer.value)

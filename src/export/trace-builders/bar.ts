@@ -100,7 +100,7 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
         traces.length > 1
           ? { font: { size: style.legendFontSize }, bgcolor: 'rgba(255,255,255,0)' }
           : undefined,
-      margin: { l: 60, r: 20, t: title ? 50 : 20, b: 50 },
+      margin: style.margin ?? { l: 60, r: 20, t: title ? 50 : 20, b: 50 },
       shapes,
       annotations: layoutAnnotations,
     },
