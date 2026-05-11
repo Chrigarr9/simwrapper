@@ -1,0 +1,62 @@
+# Task 8 style showcase: one of each scenarios-based chart type at paper-column width.
+# Render with current PRINT_CHART_STYLE; human visually reviews and decides
+# which font sizes / line weights / colors to tune.
+# Sankey is in a separate YAML (different data source: mode_shift_mini.csv).
+
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+output:
+  directory: ../_output/style-showcase
+
+defaults:
+  format: png
+  width: 700
+  height: 500
+  scale: 2
+
+plots:
+  showcase-bar-single:
+    type: bar
+    title: "Bar (single trace)"
+    xColumn: pricing_scheme
+    yColumns: [service_rate]
+    yAxisTitle: "Service rate"
+    xAxisTitle: "Pricing scheme"
+
+  showcase-bar-grouped:
+    type: bar
+    title: "Bar (grouped, scientific patterns)"
+    xColumn: pricing_scheme
+    yColumns: [service_rate, cost_recovery_ratio, mean_detour_factor]
+    yAxisTitle: "Value"
+    xAxisTitle: "Pricing scheme"
+
+  showcase-scatter:
+    type: scatter-plot
+    title: "Scatter with lines + waypoint annotation + ref line"
+    xColumn: pc_fleet_size
+    yColumn: served_requests
+    connectLines: true
+    xAxisTitle: "Fleet size (vehicles)"
+    yAxisTitle: "Commutes served"
+    annotations:
+      - { x: 64, y: 720, text: "Fleet 100 scenario", showarrow: true, arrowhead: 2, ax: 40, ay: -30 }
+    referenceLines:
+      - { axis: y, value: 1500, label: "Target threshold", color: "#c0392b", dash: dash }
+
+  showcase-histogram:
+    type: histogram
+    title: "Histogram (detour factor distribution)"
+    column: mean_detour_factor
+    binSize: 0.002
+
+states:
+  gate:
+    filters: { anchor_zone_policy: gate, fixed_price: 0.0 }
+    export:
+      - showcase-bar-single
+      - showcase-bar-grouped
+      - showcase-scatter
+      - showcase-histogram

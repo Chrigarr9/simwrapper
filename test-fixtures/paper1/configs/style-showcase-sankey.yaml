@@ -1,0 +1,35 @@
+# Task 8 style showcase — Sankey companion (separate YAML due to different data source).
+# Render with current PRINT_CHART_STYLE; human visually reviews node padding,
+# link proportions, and label sizing at paper-column width.
+
+table:
+  file: ../data/mode_shift_mini.csv
+  idColumn: source
+
+output:
+  directory: ../_output/style-showcase
+
+defaults:
+  format: png
+  width: 700
+  height: 500
+  scale: 2
+
+plots:
+  showcase-sankey:
+    type: sankey
+    title: "Sankey: base mode → DRT"
+    sourceColumn: source
+    targetColumn: target
+    valueColumn: value
+    nodeColorMap:
+      car: "#e74c3c"
+      pt: "#3498db"
+      bike: "#2ecc71"
+      walk: "#f39c12"
+      drt: "#9b59b6"
+
+states:
+  fleet-300:
+    filters: { fleet: 300 }
+    export: [showcase-sankey]
