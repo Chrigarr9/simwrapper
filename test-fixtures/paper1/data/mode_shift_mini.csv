@@ -1,0 +1,13 @@
+source,target,value,fleet
+car,drt,1230,100
+pt,drt,180,100
+bike,drt,98,100
+walk,drt,55,100
+car,drt,3680,300
+pt,drt,520,300
+bike,drt,290,300
+walk,drt,180,300
+car,drt,11500,1000
+pt,drt,1900,1000
+bike,drt,950,1000
+walk,drt,580,1000

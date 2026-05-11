@@ -30,3 +30,6 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Paper-1 visual test outputs
+test-fixtures/paper1/_output/
