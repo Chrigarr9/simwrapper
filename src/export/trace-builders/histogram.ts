@@ -18,6 +18,7 @@ export interface HistogramInput {
   colorByType?: 'categorical' | 'numeric'
   colorMap?: Map<string, string>
   showComparison?: boolean
+  annotations?: any[]  // Plotly annotation objects, passthrough to layout.annotations
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +439,7 @@ export function buildHistogramFigure(
       y: 1,
       font: { color: textColor, size: legendFontSize },
     },
+    annotations: [...(input.annotations ?? [])],
   }
 
   // Override layout for categorical color-by

@@ -33,6 +33,9 @@ export async function renderToSVG(
   // Stub APIs that Plotly expects but jsdom doesn't have
   ;(window as any).HTMLCanvasElement.prototype.getContext = () => null
   ;(window as any).URL.createObjectURL = () => ''
+  // Stub SVG path methods needed by Plotly annotation arrows
+  ;(window as any).SVGElement.prototype.getTotalLength = () => 0
+  ;(window as any).SVGElement.prototype.getPointAtLength = () => ({ x: 0, y: 0 })
 
   // Load plotly.js into jsdom
   window.eval(getPlotlySource())

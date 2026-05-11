@@ -35,6 +35,7 @@ export interface ScatterInput {
   yAutoTrim?: number
   scientificSymbols?: string[]
   scientificLinePatterns?: string[]
+  annotations?: any[]  // Plotly annotation objects, passthrough to layout.annotations
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -691,6 +692,7 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
       bgcolor: 'rgba(0,0,0,0)',
       borderwidth: 0,
     } : undefined,
+    annotations: [...(input.annotations ?? [])],
   }
 
   return {

@@ -1,0 +1,31 @@
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+output:
+  directory: ../_output
+
+defaults:
+  format: png
+  width: 1200
+  height: 700
+  scale: 2
+
+plots:
+  fleet-curve:
+    type: scatter-plot
+    title: "Fleet scaling with waypoint annotations"
+    xColumn: pc_fleet_size
+    yColumn: served_requests
+    connectLines: true
+    xAxisTitle: "Fleet size (vehicles)"
+    yAxisTitle: "Commutes served per day"
+    annotations:
+      - { x: 100, y: 1116, text: "First corridor", showarrow: true, arrowhead: 2, ax: 30, ay: -40 }
+      - { x: 300, y: 3283, text: "Regional backbone", showarrow: true, arrowhead: 2, ax: 30, ay: -40 }
+      - { x: 1000, y: 10210, text: "Majority system", showarrow: true, arrowhead: 2, ax: 30, ay: -40 }
+
+states:
+  gate:
+    filters: { anchor_zone_policy: gate }
+    export: [fleet-curve]
