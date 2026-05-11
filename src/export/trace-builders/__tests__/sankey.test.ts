@@ -42,6 +42,40 @@ describe('buildSankeyFigure', () => {
     expect(fig.traces[0].link.value).toEqual([1000])
     expect(fig.traces[0].link.source).toEqual([0])
     expect(fig.traces[0].link.target).toEqual([1])
+    // Dedup invariant: aggregation must not re-introduce duplicate node labels
+    expect(fig.traces[0].node.label).toEqual(['car', 'drt'])
+  })
+
+  it('skips self-loop rows (source === target)', () => {
+    const input: SankeyInput = {
+      type: 'sankey',
+      sourceColumn: 'source',
+      targetColumn: 'target',
+      valueColumn: 'value',
+      filteredData: [
+        { source: 'car', target: 'car', value: 500 },  // self-loop, must be skipped
+        { source: 'pt', target: 'drt', value: 200 },
+      ],
+    }
+    const fig = buildSankeyFigure(input, style)
+    expect(fig.traces[0].link.value).toEqual([200])
+    expect(fig.traces[0].node.label).toEqual(['pt', 'drt'])
+  })
+
+  it('skips empty-string value (would otherwise coerce to 0)', () => {
+    const input: SankeyInput = {
+      type: 'sankey',
+      sourceColumn: 'source',
+      targetColumn: 'target',
+      valueColumn: 'value',
+      filteredData: [
+        { source: 'car', target: 'drt', value: 100 },
+        { source: 'pt', target: 'drt', value: '' as any },
+      ],
+    }
+    const fig = buildSankeyFigure(input, style)
+    expect(fig.traces[0].link.value).toEqual([100])
+    expect(fig.traces[0].node.label).not.toContain('pt')
   })
 
   it('applies nodeColorMap when provided', () => {

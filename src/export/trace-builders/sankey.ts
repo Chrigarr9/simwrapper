@@ -13,13 +13,16 @@ import type { SankeyInput, ChartStyle, PlotlyFigure } from '../types'
 export function buildSankeyFigure(input: SankeyInput, style: ChartStyle): PlotlyFigure {
   const { title, sourceColumn, targetColumn, valueColumn, nodeColorMap, filteredData } = input
 
-  // 1. Aggregate by (source, target) — skip nulls and NaN
+  // 1. Aggregate by (source, target) — skip nulls, non-finite values, and self-loops
   const linkMap = new Map<string, { s: any; t: any; v: number }>()
   for (const row of filteredData) {
     const s = row[sourceColumn]
     const t = row[targetColumn]
     const v = row[valueColumn]
-    if (s == null || t == null || v == null || isNaN(Number(v))) continue
+    // Number.isFinite (post-coerce) excludes null/undefined, NaN, Infinity, and "" (Number("")===0 with isFinite=true is the one gotcha; explicit empty-string check below)
+    if (s == null || t == null || v == null || v === '' || !Number.isFinite(Number(v))) continue
+    // Plotly sankey does not support self-loops; skip them silently
+    if (String(s) === String(t)) continue
     const key = `${s}\x00${t}`  // null-byte delimiter prevents collisions
     const existing = linkMap.get(key)
     if (existing) {
@@ -56,10 +59,12 @@ export function buildSankeyFigure(input: SankeyInput, style: ChartStyle): Plotly
   return {
     traces: [{
       type: 'sankey',
+      // snap: nodes auto-align to left/right columns; alternative is 'freeform'
       arrangement: 'snap',
       node: {
         label: nodeLabels,
         color: nodeColors,
+        // Visual constants tuned for paper-column width; promote to ChartStyle if reused elsewhere
         pad: 15,
         thickness: 18,
         line: { color: style.textColor, width: 0.5 },
