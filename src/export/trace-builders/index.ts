@@ -5,6 +5,7 @@ import { buildCorrelationFigure } from './correlation'
 import { buildTimelineFigure } from './timeline'
 import { buildMapRenderConfig } from './map'
 import { buildBarFigure } from './bar'
+import { buildSankeyFigure } from './sankey'
 import type { PlotlyFigure, ChartStyle, MapRenderConfig } from '../types'
 
 export type ChartBuilder = (input: any, style: ChartStyle) => PlotlyFigure
@@ -16,6 +17,7 @@ export const CHART_BUILDERS: Record<string, ChartBuilder> = {
   'correlation-matrix': buildCorrelationFigure,
   timeline: buildTimelineFigure,
   bar: buildBarFigure,
+  sankey: buildSankeyFigure,
 }
 
 export const MAP_BUILDER = buildMapRenderConfig
@@ -26,4 +28,4 @@ export function isMapType(type: string): boolean {
 
 export { buildHistogramFigure, buildScatterFigure, buildPieFigure }
 export { buildCorrelationFigure, buildTimelineFigure, buildMapRenderConfig }
-export { buildBarFigure }
+export { buildBarFigure, buildSankeyFigure }

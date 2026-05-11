@@ -140,6 +140,20 @@ export interface ReferenceLine {
   dash?: 'solid' | 'dot' | 'dash' | 'dashdot'
 }
 
+export interface SankeyInput {
+  type: 'sankey'
+  title?: string
+  sourceColumn: string
+  targetColumn: string
+  valueColumn: string
+  nodeColorMap?: Record<string, string>  // e.g. { car: '#e74c3c', drt: '#9b59b6' }
+  filteredData: any[]
+  baselineData?: any[]
+  showComparison?: boolean
+  width?: number
+  height?: number
+}
+
 /** Linked export YAML — references a dashboard file */
 export interface LinkedExportConfig {
   dashboard: string

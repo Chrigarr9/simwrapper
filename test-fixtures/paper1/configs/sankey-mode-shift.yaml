@@ -1,0 +1,37 @@
+table:
+  file: ../data/mode_shift_mini.csv
+  idColumn: source
+
+output:
+  directory: ../_output
+
+defaults:
+  format: png
+  width: 1000
+  height: 600
+  scale: 2
+
+plots:
+  mode-shift:
+    type: sankey
+    title: "Base mode → DRT"
+    sourceColumn: source
+    targetColumn: target
+    valueColumn: value
+    nodeColorMap:
+      car: "#e74c3c"
+      pt: "#3498db"
+      bike: "#2ecc71"
+      walk: "#f39c12"
+      drt: "#9b59b6"
+
+states:
+  fleet-100:
+    filters: { fleet: 100 }
+    export: [mode-shift]
+  fleet-300:
+    filters: { fleet: 300 }
+    export: [mode-shift]
+  fleet-1000:
+    filters: { fleet: 1000 }
+    export: [mode-shift]
