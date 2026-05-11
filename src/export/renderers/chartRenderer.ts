@@ -33,7 +33,9 @@ export async function renderToSVG(
   // Stub APIs that Plotly expects but jsdom doesn't have
   ;(window as any).HTMLCanvasElement.prototype.getContext = () => null
   ;(window as any).URL.createObjectURL = () => ''
-  // Stub SVG path methods needed by Plotly annotation arrows
+  // jsdom doesn't implement SVG path geometry; Plotly calls these when drawing
+  // annotation arrows (showarrow: true). Safe no-op stubs prevent crashes — the
+  // headless renderer doesn't need pixel-perfect arrow coordinates.
   ;(window as any).SVGElement.prototype.getTotalLength = () => 0
   ;(window as any).SVGElement.prototype.getPointAtLength = () => ({ x: 0, y: 0 })
 
