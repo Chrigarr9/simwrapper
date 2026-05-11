@@ -1,3 +1,8 @@
+# Visual test for reference-line passthrough (Task 7).
+# Uses total_passenger_km rather than total_subsidy (the CS8 Deutschlandticket
+# axis) because the gate-trial mini fixture has zero subsidies throughout.
+# The real CS8 figure is generated in Task 9's integration smoke against v3 data.
+
 table:
   file: ../data/scenarios_mini.csv
   idColumn: pc_fleet_size
