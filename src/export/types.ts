@@ -114,6 +114,32 @@ export interface ExportDefaults {
   markerSizeMultiplier: number
 }
 
+export interface BarInput {
+  type: 'bar'
+  title?: string
+  xColumn: string
+  yColumns: string[]                       // one trace per yColumn
+  colorByColumn?: string                   // alternative: split one yColumn by category
+  barmode?: 'group' | 'stack' | 'relative' // default 'group'
+  yAxisTitle?: string
+  xAxisTitle?: string
+  filteredData: any[]
+  baselineData?: any[]
+  showComparison?: boolean
+  annotations?: any[]                      // Plotly annotation objects, passthrough
+  referenceLines?: ReferenceLine[]
+  width?: number
+  height?: number
+}
+
+export interface ReferenceLine {
+  axis: 'x' | 'y'
+  value: number
+  label?: string
+  color?: string
+  dash?: 'solid' | 'dot' | 'dash' | 'dashdot'
+}
+
 /** Linked export YAML — references a dashboard file */
 export interface LinkedExportConfig {
   dashboard: string

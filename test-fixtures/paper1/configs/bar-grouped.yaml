@@ -1,0 +1,23 @@
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+defaults:
+  format: png
+  width: 1000
+  height: 600
+  scale: 2
+
+plots:
+  kpi-grouped:
+    type: bar
+    title: "KPIs by pricing scheme (fleet=300)"
+    xColumn: pricing_scheme
+    yColumns: [service_rate, cost_recovery_ratio]
+    yAxisTitle: "Value"
+    xAxisTitle: "Pricing scheme"
+
+states:
+  fleet-300:
+    filters: { constraint__fleet_size: 300 }
+    export: [kpi-grouped]

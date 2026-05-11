@@ -1,0 +1,24 @@
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+defaults:
+  format: png
+  width: 1000
+  height: 600
+  scale: 2
+
+plots:
+  stacked-test:
+    type: bar
+    title: "Income + subsidy stacked"
+    xColumn: constraint__fleet_size
+    yColumns: [total_income, total_subsidy]
+    barmode: stack
+    yAxisTitle: "EUR/day"
+    xAxisTitle: "Fleet size"
+
+states:
+  gate-only:
+    filters: { anchor_zone_policy: gate }
+    export: [stacked-test]
