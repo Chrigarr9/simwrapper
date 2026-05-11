@@ -581,6 +581,41 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
   let xAutorange = true
   let yAutorange = true
 
+  // Degenerate-axis guard: when all x or y values are identical, Plotly's autorange
+  // produces a zero-width axis [v, v] which resvg renders as zero-height geometry
+  // and panics with Option::unwrap() on a None value (geom.rs:27). Force autorange=false
+  // so that the non-degenerate padded range computed above is respected by Plotly.
+  if (xMinData === xMaxData) xAutorange = false
+  if (yMinData === yMaxData) yAutorange = false
+
+  // Reference-line inclusion guard: if any y-axis reference line value lies outside
+  // the current yRange, resvg panics when rasterizing the out-of-bounds SVG path
+  // (geom.rs:27 extreme coordinates like y=-38995 inside a 1400px canvas).
+  // Expand yRange to include all y-axis reference line values, and force autorange=false
+  // so Plotly doesn't override the explicit range we set.
+  if (input.referenceLines) {
+    for (const rl of input.referenceLines) {
+      if (rl.axis === 'y' && typeof rl.value === 'number' && Number.isFinite(rl.value)) {
+        if (rl.value < yRange[0] || rl.value > yRange[1]) {
+          const lo = Math.min(yRange[0], rl.value)
+          const hi = Math.max(yRange[1], rl.value)
+          const pad = (hi - lo) * 0.08
+          yRange = [lo - pad, hi + pad]
+          yAutorange = false
+        }
+      }
+      if (rl.axis === 'x' && typeof rl.value === 'number' && Number.isFinite(rl.value)) {
+        if (rl.value < xRange[0] || rl.value > xRange[1]) {
+          const lo = Math.min(xRange[0], rl.value)
+          const hi = Math.max(xRange[1], rl.value)
+          const pad = (hi - lo) * 0.08
+          xRange = [lo - pad, hi + pad]
+          xAutorange = false
+        }
+      }
+    }
+  }
+
   // Override with explicit/autoTrim ranges when specified
   const configuredXRange = computeAxisRange(xDataForRange, {
     min: xMin, max: xMax, autoTrim: xAutoTrim, padding: 0.02,

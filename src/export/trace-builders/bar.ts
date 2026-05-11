@@ -75,6 +75,21 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
     ...(referenceLines ?? []).filter(r => r.label).map(buildReferenceAnnotation),
   ]
 
+  // Degenerate-axis guard: when all y values across all traces are identical,
+  // Plotly's autorange produces a zero-height axis which resvg panics on (geom.rs:27).
+  // Detect constant-value y data and force a non-degenerate explicit range.
+  const allYNumeric = traces
+    .flatMap((t: any) => (t.y as any[]) ?? [])
+    .filter((v: any) => typeof v === 'number' && Number.isFinite(v))
+  const yMin = allYNumeric.length > 0 ? Math.min(...allYNumeric) : 0
+  const yMax = allYNumeric.length > 0 ? Math.max(...allYNumeric) : 0
+  const yDegenerate = allYNumeric.length > 0 && yMin === yMax
+  // Pad by 1 absolute unit (or 10% of the value) so the axis is always visible
+  const yPad = Math.abs(yMin * 0.1) + 1
+  const yAxisRange: [number, number] | undefined = yDegenerate
+    ? [yMin - yPad, yMax + yPad]
+    : undefined
+
   return {
     traces,
     layout: {
@@ -96,6 +111,7 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
         ticks: 'outside',
         zeroline: true,
         zerolinecolor: style.textColor,
+        ...(yAxisRange ? { range: yAxisRange, autorange: false } : {}),
       },
       legend:
         traces.length > 1

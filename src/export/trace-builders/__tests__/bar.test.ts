@@ -120,3 +120,41 @@ describe('buildBarFigure — colorByColumn (categorical)', () => {
     expect(coalitionTrace.y).toEqual([1100, 3500])
   })
 })
+
+// ── Degenerate-axis guard (resvg panic prevention) ──────────────────────────
+
+describe('buildBarFigure — degenerate axis guard', () => {
+  it('forces autorange=false and non-degenerate yaxis range when all y values are identical', () => {
+    // Simulates a slice where total_subsidy is all-zero: Plotly would autorange
+    // to [0,0] producing zero-height geometry that crashes resvg (geom.rs:27).
+    const input: BarInput = {
+      type: 'bar',
+      xColumn: 'scheme',
+      yColumns: ['total_subsidy'],
+      filteredData: [
+        { scheme: 'equal', total_subsidy: 0 },
+        { scheme: 'coalition', total_subsidy: 0 },
+        { scheme: 'solidarity', total_subsidy: 0 },
+      ],
+    }
+    const fig = buildBarFigure(input, baseStyle)
+    expect(fig.layout.yaxis.autorange).toBe(false)
+    const [lo, hi] = fig.layout.yaxis.range as [number, number]
+    expect(hi).toBeGreaterThan(lo)
+  })
+
+  it('does not set autorange=false when y values vary normally', () => {
+    const input: BarInput = {
+      type: 'bar',
+      xColumn: 'scheme',
+      yColumns: ['service_rate'],
+      filteredData: [
+        { scheme: 'equal', service_rate: 0.8 },
+        { scheme: 'coalition', service_rate: 0.85 },
+      ],
+    }
+    const fig = buildBarFigure(input, baseStyle)
+    expect(fig.layout.yaxis.autorange).toBeUndefined()
+    expect(fig.layout.yaxis.range).toBeUndefined()
+  })
+})

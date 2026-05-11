@@ -702,3 +702,81 @@ describe('buildScatterFigure — numeric category sorting', () => {
     expect(names).toEqual(['1', '2', '10'])
   })
 })
+
+// ── Degenerate-axis guard (resvg panic prevention) ──────────────────────────
+
+describe('buildScatterFigure — degenerate axis guard', () => {
+  it('forces autorange=false and non-degenerate yaxis range when all y values are identical', () => {
+    // Simulates CS8 total_subsidy all-zero: Plotly would autorange to [0,0]
+    // which produces zero-height geometry and crashes resvg (geom.rs:27).
+    const fig = buildScatterFigure(
+      {
+        filteredData: [{ x: 100, y: 0 }, { x: 300, y: 0 }, { x: 1000, y: 0 }],
+        xColumn: 'x',
+        yColumn: 'y',
+        connectLines: true,
+      },
+      baseStyle,
+    )
+    // autorange must be explicitly false so Plotly does not override our range
+    expect(fig.layout.yaxis.autorange).toBe(false)
+    // Range must be non-degenerate (hi > lo)
+    const [lo, hi] = fig.layout.yaxis.range as [number, number]
+    expect(hi).toBeGreaterThan(lo)
+  })
+
+  it('forces autorange=false and non-degenerate xaxis range when all x values are identical', () => {
+    const fig = buildScatterFigure(
+      {
+        filteredData: [{ x: 5, y: 10 }, { x: 5, y: 20 }, { x: 5, y: 30 }],
+        xColumn: 'x',
+        yColumn: 'y',
+      },
+      baseStyle,
+    )
+    expect(fig.layout.xaxis.autorange).toBe(false)
+    const [lo, hi] = fig.layout.xaxis.range as [number, number]
+    expect(hi).toBeGreaterThan(lo)
+  })
+
+  it('does not set autorange=false on either axis when data varies normally', () => {
+    const fig = buildScatterFigure(
+      {
+        filteredData: [{ x: 1, y: 10 }, { x: 2, y: 20 }, { x: 3, y: 30 }],
+        xColumn: 'x',
+        yColumn: 'y',
+      },
+      baseStyle,
+    )
+    // Non-degenerate data: autorange guard should not fire
+    expect(fig.layout.xaxis.autorange).toBeUndefined()
+    expect(fig.layout.yaxis.autorange).toBeUndefined()
+  })
+
+  it('expands yaxis range to include out-of-data reference line (prevents extreme coordinates in SVG)', () => {
+    // Exact scenario that caused the resvg geom.rs:27 panic:
+    // total_subsidy=0 for all rows, reference line at y=59 (Deutschlandticket).
+    // Without the fix, yRange was [-1,1] but the shape was rendered at y=-38995
+    // (pixel position of y=59 on a [-1,1] axis), causing resvg to panic.
+    const fig = buildScatterFigure(
+      {
+        filteredData: [
+          { pc_fleet_size: 5, total_subsidy: 0 },
+          { pc_fleet_size: 64, total_subsidy: 0 },
+          { pc_fleet_size: 157, total_subsidy: 0 },
+        ],
+        xColumn: 'pc_fleet_size',
+        yColumn: 'total_subsidy',
+        connectLines: true,
+        referenceLines: [{ axis: 'y', value: 59, label: 'Deutschlandticket €59/mo', dash: 'dash' }],
+      },
+      baseStyle,
+    )
+    // autorange must be false so Plotly respects our explicit range
+    expect(fig.layout.yaxis.autorange).toBe(false)
+    // yRange must contain the reference line value
+    const [lo, hi] = fig.layout.yaxis.range as [number, number]
+    expect(hi).toBeGreaterThanOrEqual(59)
+    expect(lo).toBeLessThan(0)
+  })
+})

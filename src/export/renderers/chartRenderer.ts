@@ -68,19 +68,47 @@ export async function renderToSVG(
 
 /**
  * Render a PlotlyFigure to PNG buffer via SVG → resvg.
+ * If resvg panics (e.g. degenerate zero-height geometry from a constant-value
+ * column), returns a small placeholder error tile so the export run can continue.
  */
 export async function renderToPNG(
   figure: PlotlyFigure,
   width: number,
   height: number,
-  scale: number
+  scale: number,
+  filename?: string
 ): Promise<Buffer> {
   const svg = await renderToSVG(figure, width, height, scale)
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: 'width' as const, value: width * scale },
-  })
-  const rendered = resvg.render()
-  return Buffer.from(rendered.asPng())
+  try {
+    const resvg = new Resvg(svg, {
+      fitTo: { mode: 'width' as const, value: width * scale },
+    })
+    const rendered = resvg.render()
+    return Buffer.from(rendered.asPng())
+  } catch (err) {
+    const label = filename ?? 'unknown'
+    const msg = (err instanceof Error ? err.message : String(err)).slice(0, 100)
+    console.warn(`[chartRenderer] resvg failed for "${label}": ${msg}`)
+    return renderErrorPlaceholder(label, msg)
+  }
+}
+
+/**
+ * Returns a small PNG tile indicating render failure.
+ * Uses sharp (already a dependency via mapRenderer) to rasterize a plain SVG.
+ */
+async function renderErrorPlaceholder(filename: string, message: string): Promise<Buffer> {
+  function esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+  const errSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120">
+    <rect width="400" height="120" fill="#fff0f0" stroke="#cc3333" stroke-width="2"/>
+    <text x="12" y="28" font-family="monospace" font-size="13" fill="#cc3333" font-weight="bold">Render failed</text>
+    <text x="12" y="52" font-family="monospace" font-size="11" fill="#444444">${esc(filename)}</text>
+    <text x="12" y="76" font-family="monospace" font-size="10" fill="#666666">${esc(message)}</text>
+  </svg>`
+  const sharp = (await import('sharp')).default
+  return sharp(Buffer.from(errSvg)).png().toBuffer()
 }
 
 /**
@@ -99,6 +127,6 @@ export async function renderChart(
     return { filename, format: 'svg', data: Buffer.from(svg, 'utf-8') }
   }
 
-  const png = await renderToPNG(figure, width, height, scale)
+  const png = await renderToPNG(figure, width, height, scale, filename)
   return { filename, format: 'png', data: png }
 }
