@@ -23,6 +23,7 @@ export const panelLookup: { [key: string]: AsyncComponent } = {
   'pie-chart': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/PieChartCard.vue')),
   plotly: defineAsyncComponent(() => import('./plotly.vue')),
   sankey: defineAsyncComponent(() => import('./sankey.vue')),
+  'sankey-chart': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/SankeyCard.vue')),
   scatter: defineAsyncComponent(() => import('./scatter.vue')),
   'scatter-plot': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/ScatterCard.vue')),
   'stat-card': defineAsyncComponent(() => import('@/plugins/interactive-dashboard/components/cards/StatCard.vue')),
