@@ -86,9 +86,32 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
   const yDegenerate = allYNumeric.length > 0 && yMin === yMax
   // Pad by 1 absolute unit (or 10% of the value) so the axis is always visible
   const yPad = Math.abs(yMin * 0.1) + 1
-  const yAxisRange: [number, number] | undefined = yDegenerate
+  let yAxisRange: [number, number] | undefined = yDegenerate
     ? [yMin - yPad, yMax + yPad]
     : undefined
+
+  // Reference-line inclusion guard: if any y-axis reference line value lies outside
+  // the data range (or degenerate-padded range), resvg panics when rasterizing the
+  // out-of-bounds SVG path (same root cause as the degenerate-axis case above).
+  // Expand yAxisRange to include all y-axis ref line values.
+  if (referenceLines) {
+    let lo = yAxisRange ? yAxisRange[0] : yMin
+    let hi = yAxisRange ? yAxisRange[1] : yMax
+    let expanded = false
+    for (const rl of referenceLines) {
+      if (rl.axis === 'y' && typeof rl.value === 'number' && Number.isFinite(rl.value)) {
+        if (rl.value < lo || rl.value > hi) {
+          lo = Math.min(lo, rl.value)
+          hi = Math.max(hi, rl.value)
+          expanded = true
+        }
+      }
+    }
+    if (expanded) {
+      const pad = (hi - lo) * 0.08
+      yAxisRange = [lo - pad, hi + pad]
+    }
+  }
 
   return {
     traces,
