@@ -2,6 +2,9 @@ table:
   file: ../data/scenarios_mini.csv
   idColumn: pc_fleet_size
 
+output:
+  directory: ../_output
+
 defaults:
   format: png
   width: 1000
