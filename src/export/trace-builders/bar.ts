@@ -43,6 +43,7 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
         buildSingleTrace({
           name: String(cat),
           x: xVals,
+          // null → Plotly renders no bar for this x; 0 would imply a measured zero
           y: xVals.map(x => lookup.get(x) ?? null),
           traceIndex: i,
           totalTraces: cats.length,
@@ -146,6 +147,7 @@ function buildSingleTrace(opts: {
   return trace
 }
 
+// TODO(task-7): extract to trace-builders/_layout-helpers.ts — shared with scatter.ts
 function buildReferenceShape(r: {
   axis: 'x' | 'y'
   value: number
