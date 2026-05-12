@@ -478,7 +478,14 @@ describe('buildHistogramFigure', () => {
     it('uses default margins when style.margin is undefined', () => {
       const noMarginStyle = { ...style, margin: undefined }
       const fig = buildHistogramFigure(input(), noMarginStyle)
-      expect(fig.layout.margin).toEqual({ l: 60, r: 15, t: 10, b: 50 })
+      // No title in this fixture → tight top margin matching dashboard scale
+      expect(fig.layout.margin).toEqual({ l: 60, r: 20, t: 15, b: 55 })
+    })
+
+    it('uses larger top margin when title is present', () => {
+      const noMarginStyle = { ...style, margin: undefined }
+      const fig = buildHistogramFigure(input({ title: 'Foo' }), noMarginStyle)
+      expect(fig.layout.margin.t).toBe(45)
     })
 
     it('applies font sizes from style', () => {
@@ -503,25 +510,27 @@ describe('buildHistogramFigure', () => {
       expect(fig.layout.xaxis.title.font.family).toBe(style.fontFamily)
     })
 
-    it('uses textColor for axis lines in scientific mode', () => {
+    it('uses textColor for axis lines regardless of scientific mode', () => {
+      // Paper-quality figures use dark axis lines whether or not scientific
+      // patterns are enabled — the visual distinction was confusing and the
+      // gridColor variant produced washed-out, hard-to-read frames at PNG scale.
       const sciStyle = { ...style, isScientific: true }
-      const fig = buildHistogramFigure(input(), sciStyle)
-      expect(fig.layout.xaxis.linecolor).toBe(sciStyle.textColor)
-      expect(fig.layout.yaxis.linecolor).toBe(sciStyle.textColor)
-      expect(fig.layout.xaxis.linewidth).toBe(1.5)
-    })
+      const figSci = buildHistogramFigure(input(), sciStyle)
+      expect(figSci.layout.xaxis.linecolor).toBe(sciStyle.textColor)
+      expect(figSci.layout.yaxis.linecolor).toBe(sciStyle.textColor)
+      expect(figSci.layout.xaxis.linewidth).toBe(1.2)
 
-    it('uses gridColor for axis lines outside scientific mode', () => {
       const plainStyle = { ...style, isScientific: false }
-      const fig = buildHistogramFigure(input(), plainStyle)
-      expect(fig.layout.xaxis.linecolor).toBe(plainStyle.gridColor)
-      expect(fig.layout.yaxis.linecolor).toBe(plainStyle.gridColor)
-      expect(fig.layout.xaxis.linewidth).toBe(1)
+      const figPlain = buildHistogramFigure(input(), plainStyle)
+      expect(figPlain.layout.xaxis.linecolor).toBe(plainStyle.textColor)
+      expect(figPlain.layout.yaxis.linecolor).toBe(plainStyle.textColor)
     })
 
-    it('uses title from input as x-axis title', () => {
+    it('uses title from input as the chart title (not x-axis title)', () => {
       const fig = buildHistogramFigure(input({ title: 'Trip Distance' }), style)
-      expect(fig.layout.xaxis.title.text).toBe('Trip Distance')
+      expect(fig.layout.title.text).toBe('Trip Distance')
+      // X-axis title still uses the column name so the axis is self-documenting
+      expect(fig.layout.xaxis.title.text).toBe('distance')
     })
 
     it('falls back to column name as x-axis title', () => {
@@ -634,6 +643,51 @@ describe('buildHistogramFigure', () => {
     it('defaults to binSize=1 when not specified', () => {
       const fig = buildHistogramFigure(input(), style)
       expect(fig.traces[0].width).toBeCloseTo(0.85)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // referenceLines passthrough
+  // ---------------------------------------------------------------------------
+
+  describe('buildHistogramFigure — referenceLines', () => {
+    it('adds shapes for each referenceLine (axis: x)', () => {
+      const fig = buildHistogramFigure(
+        input({
+          filteredData: [{ distance: 0 }, { distance: 1 }, { distance: 2 }, { distance: 3 }],
+          referenceLines: [
+            { axis: 'x', value: 1.5, label: 'threshold', dash: 'dash' },
+          ],
+        }),
+        style
+      )
+      expect(fig.layout.shapes?.length ?? 0).toBeGreaterThanOrEqual(1)
+      const shape = (fig.layout.shapes as any[])[0]
+      expect(shape.x0).toBe(1.5)
+      expect(shape.x1).toBe(1.5)
+    })
+
+    it('adds an annotation when referenceLine has a label', () => {
+      const fig = buildHistogramFigure(
+        input({
+          filteredData: [{ distance: 0 }, { distance: 1 }],
+          referenceLines: [{ axis: 'x', value: 0.5, label: 'half' }],
+        }),
+        style
+      )
+      const annotations = (fig.layout.annotations ?? []) as any[]
+      expect(annotations.some((a: any) => a.text === 'half')).toBe(true)
+    })
+
+    it('renders normally when referenceLines is undefined', () => {
+      const fig = buildHistogramFigure(
+        input({
+          filteredData: [{ distance: 0 }, { distance: 1 }],
+        }),
+        style
+      )
+      // No shapes should be set, or shapes is empty array
+      expect((fig.layout.shapes ?? []).length).toBe(0)
     })
   })
 })

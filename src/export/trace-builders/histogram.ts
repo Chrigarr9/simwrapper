@@ -1,4 +1,5 @@
-import type { PlotlyFigure, ChartStyle } from '../types'
+import type { PlotlyFigure, ChartStyle, ReferenceLine } from '../types'
+import { buildReferenceShape, buildReferenceAnnotation } from './_layout-helpers'
 
 // ---------------------------------------------------------------------------
 // Input interface
@@ -19,6 +20,7 @@ export interface HistogramInput {
   colorMap?: Map<string, string>
   showComparison?: boolean
   annotations?: any[]  // Plotly annotation objects, passthrough to layout.annotations
+  referenceLines?: ReferenceLine[]
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +157,7 @@ export function buildHistogramFigure(
     colorByType,
     colorMap,
     showComparison = false,
+    referenceLines,
   } = input
 
   const binSize = rawBinSize || 1
@@ -267,8 +270,8 @@ export function buildHistogramFigure(
         marker: {
           color: colorMap?.get(catStr) || barColor,
           line: {
-            color: showComparison ? 'rgba(120,120,120,0.7)' : bgColor,
-            width: showComparison ? 1 : 1,
+            color: showComparison ? 'rgba(120,120,120,0.7)' : gridColor,
+            width: showComparison ? 1 : 0.6,
           },
         },
         hovertemplate: usePercentage
@@ -315,8 +318,8 @@ export function buildHistogramFigure(
           tickfont: { color: textColor, size: axisTickFontSize, family: fontFamily },
         },
         line: {
-          color: showComparison ? 'rgba(120,120,120,0.7)' : bgColor,
-          width: showComparison ? 1 : 1,
+          color: showComparison ? 'rgba(120,120,120,0.7)' : gridColor,
+          width: showComparison ? 1 : 0.6,
         },
       },
       hovertemplate: usePercentage
@@ -334,8 +337,8 @@ export function buildHistogramFigure(
       marker: {
         color: barColor,
         line: {
-          color: showComparison ? 'rgba(120,120,120,0.7)' : bgColor,
-          width: 1,
+          color: showComparison ? 'rgba(120,120,120,0.7)' : gridColor,
+          width: showComparison ? 1 : 0.6,
         },
       },
       hovertemplate: usePercentage
@@ -353,16 +356,20 @@ export function buildHistogramFigure(
   const maxTicksToShow = maxLabelLength <= 4 ? 12 : maxLabelLength <= 6 ? 10 : 8
   const shouldRotate = maxLabelLength > 4 && numBins > 3
 
+  // X-axis title: prefer column name; reserve `title` for the chart title above
   const xaxisConfig: any = {
     title: {
-      text: title || column,
+      text: column,
       font: { color: textColor, size: axisTitleFontSize, family: fontFamily },
     },
     tickfont: { color: textColor, size: axisTickFontSize, family: fontFamily },
+    side: 'bottom',
+    anchor: 'y',
     gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,
-    linewidth: isScientific ? 1.5 : 1,
+    linecolor: textColor,
+    linewidth: 1.2,
     showline: true,
+    mirror: false,                // hide top spine — matplotlib look
     zerolinecolor: gridColor,
     automargin: true,
     tickangle: shouldRotate ? -45 : 0,
@@ -404,14 +411,21 @@ export function buildHistogramFigure(
 
   // --- Layout -----------------------------------------------------------
 
-  const margin = style.margin || { l: 60, r: 15, t: 10, b: 50 }
+  const titleFontSize = style.titleFontSize ?? axisTitleFontSize + 4
+  // Dashboard passes margin {l:60,r:15,t:10,b:50}; export defaults add top
+  // room for title since export renders titles inside the plot (no card frame).
+  const margin = style.margin || { l: 60, r: 20, t: title ? 45 : 15, b: 55 }
 
   const layout: any = {
-    title: {
-      text: '',
-      font: { color: textColor, size: axisTitleFontSize + 2, family: fontFamily },
-    },
-    font: { family: fontFamily, color: textColor },
+    title: title
+      ? {
+          text: title,
+          font: { color: textColor, size: titleFontSize, family: fontFamily },
+          x: 0.5,
+          xanchor: 'center',
+        }
+      : undefined,
+    font: { family: fontFamily, color: textColor, size: axisTickFontSize },
     xaxis: xaxisConfig,
     yaxis: {
       title: {
@@ -419,10 +433,13 @@ export function buildHistogramFigure(
         font: { color: textColor, size: axisTitleFontSize, family: fontFamily },
       },
       tickfont: { color: textColor, size: axisTickFontSize, family: fontFamily },
+      side: 'left',
+      anchor: 'x',
       gridcolor: gridColor,
-      linecolor: isScientific ? textColor : gridColor,
-      linewidth: isScientific ? 1.5 : 1,
+      linecolor: textColor,
+      linewidth: 1.2,
       showline: true,
+      mirror: false,              // hide right spine — matplotlib look
       zerolinecolor: gridColor,
       automargin: true,
     },
@@ -430,7 +447,7 @@ export function buildHistogramFigure(
     autosize: true,
     paper_bgcolor: bgColor,
     plot_bgcolor: bgColor,
-    bargap: 0.1,
+    bargap: 0.08,
     barmode: 'overlay',
     showlegend: showComparison,
     legend: {
@@ -439,7 +456,11 @@ export function buildHistogramFigure(
       y: 1,
       font: { color: textColor, size: legendFontSize },
     },
-    annotations: [...(input.annotations ?? [])],
+    annotations: [
+      ...(input.annotations ?? []),
+      ...(referenceLines ?? []).filter(r => r.label).map(r => buildReferenceAnnotation(r, style)),
+    ],
+    shapes: referenceLines ? referenceLines.map(buildReferenceShape) : [],
   }
 
   // Override layout for categorical color-by
