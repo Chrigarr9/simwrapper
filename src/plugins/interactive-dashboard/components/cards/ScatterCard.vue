@@ -273,7 +273,7 @@ function buildChartStyle(): ChartStyle {
     axisTickFontSize: 10,
     legendTitleFontSize: 11,
     legendFontSize: 10,
-    lineWidth: 1.5,
+    lineWidth: 2.5,
     markerSizeMultiplier: 1.0,
     fontFamily,
     backgroundColor: styleManager.getColor('theme.background.primary'),

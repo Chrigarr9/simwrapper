@@ -1,0 +1,70 @@
+# Map test fixture: render Lyon cluster boundaries + flows.
+# Verifies the headless map pipeline (mapRenderer + map trace builder) works
+# end-to-end against the cluster_geometries_mini.geojson fixture.
+#
+# Three test states show: (a) only origin clusters, (b) only destination
+# clusters, (c) flow lines colored by num_requests. All three render to
+# the gitignored _output/ dir.
+
+table:
+  file: ../data/scenarios_mini.csv
+  idColumn: pc_fleet_size
+
+output:
+  directory: ../_output/maps
+
+defaults:
+  format: png
+  width: 800
+  height: 700
+  scale: 2
+
+plots:
+  cluster-origin-polygons:
+    type: map
+    title: "Cluster origin boundaries (Lyon)"
+    center: [5.10, 45.76]
+    zoom: 10
+    layers:
+      - name: origin-hulls
+        file: ../data/cluster_geometries_mini.geojson
+        type: polygon
+        filter: ["all", ["==", ["get", "geometry_type"], "boundary"], ["==", ["get", "hull_type"], "origin"]]
+        colorBy:
+          attribute: num_requests
+          type: numeric
+          scale: [0, 200]
+        opacity: 0.55
+        strokeColor: "#222"
+        strokeWidth: 1
+
+  cluster-flows:
+    type: map
+    title: "Cluster flows (origin → destination)"
+    center: [5.10, 45.76]
+    zoom: 10
+    layers:
+      - name: flow-lines
+        file: ../data/cluster_geometries_mini.geojson
+        type: line
+        filter: ["==", ["get", "geometry_type"], "flow"]
+        colorBy:
+          attribute: num_requests
+          type: numeric
+          scale: [0, 200]
+        widthBy:
+          attribute: num_requests
+          scale: [1, 8]
+      - name: centroids
+        file: ../data/cluster_geometries_mini.geojson
+        type: scatterplot
+        filter: ["==", ["get", "geometry_type"], "centroid"]
+        color: "#222"
+        radius: 4
+
+states:
+  base:
+    filters: { anchor_zone_policy: gate }
+    export:
+      - cluster-origin-polygons
+      - cluster-flows

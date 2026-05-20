@@ -256,6 +256,63 @@ const selectedFeatureIds = ref<Set<any>>(new Set())
 // Computed layer roles for adaptive coloring (from LayerColoringManager)
 const layerRoles = ref<Map<string, LayerColoringRole>>(new Map())
 
+// Set of all geoProperty IDs (as strings) currently mappable to a rendered feature
+// across all visible linkage-enabled layers. Used to short-circuit hover/select watchers
+// when an incoming ID (typically from table hover on a row outside the visual sample)
+// matches nothing on the map — avoids the full updateLayers() rebuild for ~95% of
+// table hovers when |table rows| >> |map sample|.
+const renderedFeatureIds = new Set<string>()
+let lastHoverMatched = false
+let lastSelectionMatched = false
+
+function rebuildRenderedFeatureIds() {
+  renderedFeatureIds.clear()
+  if (!props.layers) return
+  for (const lc of props.layers) {
+    if (!isLayerVisible(lc)) continue
+    const prop = lc.linkage?.geoProperty
+    if (!prop) continue
+    const features = getLayerData(lc.name)
+    if (!features || features.length === 0) continue
+    for (const f of features) {
+      const id = f?.properties?.[prop]
+      if (id != null) renderedFeatureIds.add(String(id))
+    }
+  }
+}
+
+function setIntersectsRendered(set: Set<any> | undefined | null): boolean {
+  if (!set || set.size === 0) return false
+  if (renderedFeatureIds.size === 0) return false
+  for (const id of set) {
+    if (renderedFeatureIds.has(String(id))) return true
+  }
+  return false
+}
+
+// Cached deck.gl main layer instances (polygon/line/arc/scatter/baseline).
+// Passing the same layer instances to deck.gl's setProps is a near no-op:
+// deck.gl identity-compares props, sees no changes, and reuses GPU buffers.
+// Hover/select changes only the highlight overlay (which IS rebuilt every call),
+// so the expensive sortFeaturesByState + per-feature accessor allocations in the
+// main-layer factories are skipped on hover.
+let cachedMainLayers: any[] | null = null
+
+function invalidateMainLayers() {
+  cachedMainLayers = null
+}
+
+// Some dashboards use `linkage.renderOnlyWhenLinked: true` so the main layer
+// renders ONLY hovered/selected features (see getRenderableFeatures). For those,
+// hovering changes the main layer's feature set → cache must be invalidated.
+function hasRenderOnlyWhenLinked(): boolean {
+  if (!props.layers) return false
+  for (const lc of props.layers) {
+    if (lc?.linkage?.renderOnlyWhenLinked && isLayerVisible(lc)) return true
+  }
+  return false
+}
+
 // Dark mode access from global store (Critical Fix #2)
 const isDarkMode = computed(() => globalStore.state.isDarkMode)
 
@@ -319,16 +376,30 @@ onUnmounted(() => {
   cleanup()
 })
 
-// Watch for linkage prop changes and update layers
+// Watch for linkage prop changes and update layers.
+// invalidateMainLayers() is called for any input that changes main-layer
+// geometry, ordering, color mapping, or feature set. Hover does NOT invalidate
+// unless a visible layer uses renderOnlyWhenLinked (where hover changes which
+// features render in the main layer).
 watch(() => props.filteredData, () => {
   debugLog('[MapCard] filteredData changed, updating layers')
+  invalidateMainLayers()
   updateLayers()
 })
 
 watch(
   [() => props.hoveredIds, () => props.hoveredIds?.size ?? 0],
   () => {
+    const currMatched = setIntersectsRendered(props.hoveredIds)
+    if (!currMatched && !lastHoverMatched) {
+      // Both previous and current hover sets miss the map's rendered features
+      // (typical case when hovering table rows outside the visual sample).
+      // Nothing on the map would change — skip the full layer rebuild.
+      return
+    }
     debugLog('[MapCard] hoveredIds changed:', props.hoveredIds)
+    if (hasRenderOnlyWhenLinked()) invalidateMainLayers()
+    lastHoverMatched = currMatched
     updateLayers()
   }
 )
@@ -336,7 +407,15 @@ watch(
 watch(
   [() => props.selectedIds, () => props.selectedIds?.size ?? 0],
   () => {
+    const currMatched = setIntersectsRendered(props.selectedIds)
+    if (!currMatched && !lastSelectionMatched) {
+      return
+    }
     debugLog('[MapCard] selectedIds changed:', props.selectedIds)
+    // selectedIds is wired into main-layer updateTriggers (getFillColor,
+    // getLineColor, getLineWidth) so a selection change must rebuild.
+    invalidateMainLayers()
+    lastSelectionMatched = currMatched
     updateLayers()
   }
 )
@@ -345,18 +424,21 @@ watch(
 // KEEP deep: true - layers is a config array whose contents change but reference may not
 watch(() => props.layers, () => {
   debugLog('[MapCard] layers prop changed, reloading layer data')
+  invalidateMainLayers()
   loadLayerData().then(() => updateLayers())
 }, { deep: true })
 
 // Watch for colorByAttribute changes to update layer colors
 watch(() => props.colorByAttribute, (newVal, oldVal) => {
   debugLog('[MapCard] colorByAttribute changed:', oldVal, '->', newVal)
+  invalidateMainLayers()
   updateLayers()
 })
 
 // Watch for layerStrategy changes to recompute roles and update layers
 watch(() => props.layerStrategy, (newVal, oldVal) => {
   debugLog('[MapCard] layerStrategy changed:', oldVal, '->', newVal)
+  invalidateMainLayers()
   updateLayers()
 })
 
@@ -480,6 +562,8 @@ watch(isDarkMode, (newVal) => {
       }
     })
   }
+  // Dark mode affects neutral layer colors via getBaseColor → invalidate.
+  invalidateMainLayers()
 })
 
 // Watch for colorScheme changes to update scientific mode styling
@@ -489,6 +573,7 @@ watch(() => globalStore.state.colorScheme, () => {
   debugLog('[MapCard] colorScheme changed, scientific mode:', isScientificMode.value)
   // Force layer update in case scientific mode affects layer styling
   if (map.value) {
+    invalidateMainLayers()
     updateLayers()
   }
 })
@@ -969,41 +1054,25 @@ function sortLayersByZIndex(layers: any[]): any[] {
   return layersWithInfo.map((info) => info.layer)
 }
 
-function updateLayers() {
-  if (!deckOverlay.value) {
-    // Expected during initial render - overlay may not be ready yet
-    debugLog('[MapCard] Cannot update layers: overlay not initialized')
-    return
-  }
+function buildMainLayers(): any[] {
+  if (!props.layers || props.layers.length === 0) return []
 
-  if (!props.layers || props.layers.length === 0) {
-    deckOverlay.value.setProps({ layers: [] })
-    return
-  }
-
-  // Filter to visible layers only BEFORE computing roles
-  // This is critical: role computation must only consider currently visible layers
-  // Otherwise, hidden arcs would cause all visible polygons to become neutral
+  // Filter to visible layers only BEFORE computing roles.
+  // Role computation must only consider currently visible layers; otherwise
+  // hidden arcs would cause visible polygons to become neutral.
   const visibleLayers = props.layers.filter(layer => isLayerVisible(layer))
 
-  // Log visibility filtering
   debugLog('[MapCard] geometryType selected:', props.geometryType)
-  debugLog('[MapCard] All layers:', props.layers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
   debugLog('[MapCard] Visible layers:', visibleLayers.map(l => ({ name: l.name, geometryType: l.geometryType, type: l.type })))
   debugLog('[MapCard] layerStrategy:', props.layerStrategy)
   debugLog('[MapCard] colorByAttribute:', props.colorByAttribute)
 
-  // Compute layer roles using LayerColoringManager
-  // This determines which layers get colorBy coloring vs neutral styling
   layerRoles.value = computeAllLayerRoles(visibleLayers, props.layerStrategy)
-  debugLog('[MapCard] Computed layer roles for', visibleLayers.length, 'visible layers:', [...layerRoles.value.entries()])
 
   const layers: any[] = []
 
   props.layers.forEach((layerConfig) => {
-    if (!isLayerVisible(layerConfig)) {
-      return
-    }
+    if (!isLayerVisible(layerConfig)) return
 
     const features = getRenderableFeatures(layerConfig)
     if (features.length === 0) {
@@ -1011,44 +1080,38 @@ function updateLayers() {
       return
     }
 
-    debugLog(`[MapCard] Creating layer "${layerConfig.name}" (type: ${layerConfig.type}, linkage: ${!!layerConfig.linkage}, features: ${features.length})`)
-
-    // TASK 12: Create baseline layer if comparison mode enabled
     if (props.showComparison && props.baselineData && props.baselineData.length > 0) {
       const baselineLayer = createBaselineLayer(layerConfig, features)
-      if (baselineLayer) {
-        layers.push(baselineLayer)
-      }
+      if (baselineLayer) layers.push(baselineLayer)
     }
 
     let layer: any = null
 
     switch (layerConfig.type) {
       case 'polygon':
-      case 'fill':  // Alias for polygon
+      case 'fill':
         layer = createPolygonLayer(layerConfig, features)
         break
 
       case 'line':
         layer = createLineLayer(layerConfig, features)
-        layers.push(layer)
+        if (layer) layers.push(layer)
         const lineMarkers = createLineDestinationMarkers(layerConfig, features)
         if (lineMarkers) layers.push(lineMarkers)
         return
 
       case 'arc':
         layer = createArcLayer(layerConfig, features)
-        layers.push(layer)
+        if (layer) layers.push(layer)
         const arcTips = createArcArrowTips(layerConfig, features)
         if (arcTips) layers.push(arcTips)
-        // Add circular markers for self-loops (same origin/destination)
         const selfLoopMarkers = createSelfLoopMarkers(layerConfig, features)
         if (selfLoopMarkers) layers.push(selfLoopMarkers)
         return
 
       case 'scatterplot':
-      case 'circle':  // Alias for scatterplot
-      case 'point':   // Alias for scatterplot
+      case 'circle':
+      case 'point':
         layer = createScatterplotLayer(layerConfig, features)
         break
 
@@ -1056,37 +1119,72 @@ function updateLayers() {
         console.warn(`[MapCard] Unknown layer type: ${layerConfig.type}`)
     }
 
-    if (layer) {
-      layers.push(layer)
-    }
+    if (layer) layers.push(layer)
   })
 
-  // Create highlight overlay layers for hovered/selected features
-  // These render LAST to ensure they're always on top of normal features
-  const hasHighlightedFeatures = (props.hoveredIds && props.hoveredIds.size > 0) ||
-                                  (props.selectedIds && props.selectedIds.size > 0)
+  return layers
+}
 
-  if (hasHighlightedFeatures) {
-    props.layers.forEach((layerConfig) => {
-      if (!isLayerVisible(layerConfig)) return
+function buildHighlightLayers(): any[] {
+  const layers: any[] = []
+  if (!props.layers) return layers
 
-      const features = getRenderableFeatures(layerConfig)
-      if (features.length === 0) return
+  const hasHighlightedFeatures =
+    (props.hoveredIds && props.hoveredIds.size > 0) ||
+    (props.selectedIds && props.selectedIds.size > 0)
+  if (!hasHighlightedFeatures) return layers
 
-      const highlightLayer = createHighlightOverlayLayer(layerConfig, features)
-      if (highlightLayer) {
-        layers.push(highlightLayer)
-      }
-    })
+  props.layers.forEach((layerConfig) => {
+    if (!isLayerVisible(layerConfig)) return
+    const features = getRenderableFeatures(layerConfig)
+    if (features.length === 0) return
+    const highlightLayer = createHighlightOverlayLayer(layerConfig, features)
+    if (highlightLayer) layers.push(highlightLayer)
+  })
+
+  return layers
+}
+
+function updateLayers() {
+  if (!deckOverlay.value) {
+    debugLog('[MapCard] Cannot update layers: overlay not initialized')
+    return
   }
 
-  // Sort layers by zIndex (if specified) or by original order
-  const sortedLayers = sortLayersByZIndex(layers)
+  if (!props.layers || props.layers.length === 0) {
+    deckOverlay.value.setProps({ layers: [] })
+    cachedMainLayers = null
+    return
+  }
 
-  // Update deck overlay
+  console.time('[MapCard] updateLayers')
+
+  // Reuse cached main-layer instances unless a watcher invalidated them.
+  // deck.gl identity-compares props on each instance — passing the SAME
+  // instance back is effectively free (no buffer rebuild, no accessor calls).
+  const mainRebuilt = cachedMainLayers === null
+  if (mainRebuilt) {
+    cachedMainLayers = buildMainLayers()
+  }
+
+  // Highlight overlay is always rebuilt — it's small (only hovered/selected
+  // features) and its inputs change on every hover event.
+  const highlight = buildHighlightLayers()
+
+  const sortedLayers = sortLayersByZIndex([...cachedMainLayers!, ...highlight])
+
   deckOverlay.value.setProps({ layers: sortedLayers })
-  debugLog(`[MapCard] Updated ${sortedLayers.length} layers (comparison: ${props.showComparison}, highlights: ${hasHighlightedFeatures})`)
-  debugLog(`[MapCard] Layer details:`, sortedLayers.map(l => ({ id: l.id, pickable: l.props?.pickable })))
+
+  // Refresh the rendered-ID cache ONLY when main layers actually changed.
+  // On a cache hit (e.g. hover), the rendered feature set is identical to the
+  // previous call, so re-iterating every feature is pure waste.
+  if (mainRebuilt) {
+    rebuildRenderedFeatureIds()
+  }
+  lastHoverMatched = setIntersectsRendered(props.hoveredIds)
+  lastSelectionMatched = setIntersectsRendered(props.selectedIds)
+
+  console.timeEnd('[MapCard] updateLayers')
 }
 
 // TASK 12: Create baseline layer (gray, dimmed) for comparison mode
@@ -1360,10 +1458,13 @@ function createPolygonLayer(layerConfig: LayerConfig, features: any[]): PolygonL
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover is rendered by the highlight overlay layer — main-layer accessors
+      // intentionally exclude `props.hoveredIds` so deck.gl reuses cached GPU
+      // attribute buffers across hover events.
       updateTriggers: {
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
-        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
-        getLineWidth: [props.hoveredIds, props.selectedIds],
+        getFillColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineWidth: [props.selectedIds],
       },
     })
   } catch (error) {
@@ -1399,9 +1500,11 @@ function createLineLayer(layerConfig: LayerConfig, features: any[]): PathLayer |
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds so deck.gl
+      // reuses cached attribute buffers across hover events.
       updateTriggers: {
-        getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getWidth: [props.selectedIds, props.filteredData],
+        getColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1444,9 +1547,10 @@ function createLineDestinationMarkers(layerConfig: LayerConfig, features: any[])
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds.
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
+        getRadius: [props.selectedIds, props.filteredData, layerConfig.widthBy],
+        getFillColor: [props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1510,10 +1614,11 @@ function createArcLayer(layerConfig: LayerConfig, features: any[]): ArcLayer | n
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds.
       updateTriggers: {
-        getWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getSourceColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
-        getTargetColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getWidth: [props.selectedIds, props.filteredData],
+        getSourceColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getTargetColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1550,10 +1655,11 @@ function createSelfLoopMarkers(layerConfig: LayerConfig, features: any[]): Scatt
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds.
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData],
-        getLineColor: [props.hoveredIds, props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
-        getLineWidth: [props.hoveredIds, props.selectedIds, props.filteredData],
+        getRadius: [props.selectedIds, props.filteredData],
+        getLineColor: [props.selectedIds, props.filteredData, props.colorByAttribute, layerRoles.value],
+        getLineWidth: [props.selectedIds, props.filteredData],
       },
     })
   } catch (error) {
@@ -1588,9 +1694,10 @@ function createArcArrowTips(layerConfig: LayerConfig, features: any[]): Scatterp
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds.
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.widthBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
+        getRadius: [props.selectedIds, props.filteredData, layerConfig.widthBy],
+        getFillColor: [props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1623,9 +1730,10 @@ function createScatterplotLayer(layerConfig: LayerConfig, features: any[]): Scat
       onClick: (info: any) => handleClick(info),
       onHover: (info: any) => handleHover(info),
 
+      // Hover handled by highlight overlay; exclude hoveredIds.
       updateTriggers: {
-        getRadius: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.radiusBy],
-        getFillColor: [props.hoveredIds, props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
+        getRadius: [props.selectedIds, props.filteredData, layerConfig.radiusBy],
+        getFillColor: [props.selectedIds, props.filteredData, layerConfig.colorBy, props.colorByAttribute, layerRoles.value],
       },
     })
   } catch (error) {
@@ -1646,6 +1754,24 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
   // Check if there are active filters
   const totalFeatures = layerData.value.get(layerConfig.name)?.length || 0
   const hasActiveFilters = props.filteredData.length < totalFeatures
+
+  // Tiebreaker: when a colorBy attribute is set, render higher-valued features later
+  // (on top). For binary attributes like is_ever_activated this puts activated clusters
+  // on top of non-activated ones; for numeric attributes like demand it surfaces the
+  // higher-magnitude features.
+  const colorAttr = props.colorByAttribute
+  const colorAttrConfig = colorAttr
+    ? props.colorByOptions.find(opt => opt.attribute === colorAttr)
+    : undefined
+  const getColorValue = (f: any): number => {
+    if (!colorAttr) return 0
+    let v = f.properties?.[colorAttr]
+    if (v === undefined && layerConfig.linkage && props.filteredData) {
+      v = getAggregatedAttributeValue(f, layerConfig, colorAttr)
+    }
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
 
   return [...features].sort((a, b) => {
     const aId = getFeatureId(a, layerConfig)
@@ -1669,6 +1795,13 @@ function sortFeaturesByState(features: any[], layerConfig: LayerConfig): any[] {
     if (hasActiveFilters) {
       if (aFiltered && !bFiltered) return 1
       if (!aFiltered && bFiltered) return -1
+    }
+
+    // Final tiebreaker: higher colorBy value on top
+    if (colorAttr && colorAttrConfig) {
+      const av = getColorValue(a)
+      const bv = getColorValue(b)
+      if (av !== bv) return av - bv
     }
 
     return 0
@@ -1878,6 +2011,11 @@ function getFeatureWidth(feature: any, layerConfig: LayerConfig): number {
     // Static sizing
     baseWidth = layerConfig.width ?? defaultWidth
   }
+  // Per-feature dimming: shrink width when dimWhen matches.
+  if (matchesDimWhen(feature, layerConfig)) {
+    const mult = (layerConfig as any).dimWhen?.widthMultiplier
+    if (typeof mult === 'number') baseWidth = baseWidth * mult
+  }
 
   // State-based scaling
   if (isHovered) return baseWidth * 3
@@ -1982,8 +2120,33 @@ function getFeatureColor(feature: any, layerConfig: LayerConfig): [number, numbe
   } else if (layerConfig.type === 'fill' || layerConfig.type === 'polygon') {
     defaultOpacity = styleManager.getBoundaryLayerStyle().fillOpacity
   }
-  const opacity = Math.round((layerConfig.opacity ?? defaultOpacity) * 255)
+  let opacityFraction = layerConfig.opacity ?? defaultOpacity
+  // Per-feature dimming: if dimWhen matches the joined attribute value, swap to dim alpha.
+  if (matchesDimWhen(feature, layerConfig)) {
+    const dimOpacity = (layerConfig as any).dimWhen?.opacity
+    if (typeof dimOpacity === 'number') opacityFraction = dimOpacity
+  }
+  const opacity = Math.round(opacityFraction * 255)
   return [baseColor[0], baseColor[1], baseColor[2], opacity]
+}
+
+/**
+ * Check whether the feature's value for `dimWhen.attribute` (read from the joined
+ * central table when linkage is configured, otherwise from feature properties)
+ * matches `dimWhen.equals`. Used by getFeatureColor + getFeatureWidth to apply
+ * a per-feature dim treatment driven by a CSV column.
+ */
+function matchesDimWhen(feature: any, layerConfig: LayerConfig): boolean {
+  const dimWhen = (layerConfig as any).dimWhen
+  if (!dimWhen || dimWhen.attribute === undefined || dimWhen.equals === undefined) return false
+  let value = feature.properties?.[dimWhen.attribute]
+  if (value === undefined && layerConfig.linkage && props.filteredData) {
+    value = getAggregatedAttributeValue(feature, layerConfig, dimWhen.attribute)
+  }
+  if (value === undefined || value === null) return false
+  // Loose comparison so YAML int 0 matches CSV "0"/0.
+  // eslint-disable-next-line eqeqeq
+  return value == dimWhen.equals
 }
 
 // ============================================================================
@@ -2135,18 +2298,21 @@ function getBaseColor(feature: any, layerConfig: LayerConfig): [number, number, 
       const attrType = attrConfig?.type || 'categorical'
 
       if (attrType === 'numeric') {
-        // Numeric coloring - calculate range from central table data
+        // Numeric coloring - calculate range from central table data.
+        // CSV-loaded rows often store numbers as strings, so coerce via Number().
         const allValues = props.filteredData
-          .map((row: any) => row[props.colorByAttribute])
-          .filter((v: any) => typeof v === 'number')
+          .map((row: any) => Number(row[props.colorByAttribute]))
+          .filter((v: number) => Number.isFinite(v))
         if (allValues.length === 0) return [128, 128, 128]
         const min = Math.min(...allValues)
         const max = Math.max(...allValues)
         const scale: [number, number] = [min, max]
-        return getNumericColor(attributeValue, scale)
+        return getNumericColor(Number(attributeValue), scale)
       } else {
-        // Categorical coloring
-        return getCategoricalColor(attributeValue, undefined, props.colorByAttribute)
+        // Categorical coloring — pass through per-attribute `colors` map so dashboards
+        // can pin specific values (e.g. {0: "#888888", 1: "#27ae60"}) when set in
+        // map.colorBy.attributes[].colors
+        return getCategoricalColor(attributeValue, (attrConfig as any)?.colors, props.colorByAttribute)
       }
     }
   }
@@ -2480,8 +2646,8 @@ const legendData = computed(() => {
       if (props.filteredData && props.filteredData.length > 0) {
         if (attrConfig.type === 'numeric') {
           const allValues = props.filteredData
-            .map((row: any) => row[props.colorByAttribute])
-            .filter((v: any) => typeof v === 'number')
+            .map((row: any) => Number(row[props.colorByAttribute]))
+            .filter((v: number) => Number.isFinite(v))
           const min = allValues.length > 0 ? Math.min(...allValues) : 0
           const max = allValues.length > 0 ? Math.max(...allValues) : 1
           return {
@@ -2499,7 +2665,7 @@ const legendData = computed(() => {
               labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
               stripEmptyUnits: true,
             }),
-            items: buildCategoricalLegendItemsFromTable(props.colorByAttribute),
+            items: buildCategoricalLegendItemsFromTable(props.colorByAttribute, (attrConfig as any)?.colors),
           }
         }
       }
@@ -2528,7 +2694,7 @@ const legendData = computed(() => {
             labelOverride: attrConfig.label || toTitleCase(props.colorByAttribute),
             stripEmptyUnits: true,
           }),
-          items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute),
+          items: buildCategoricalLegendItemsFromAttribute(primaryLayer, props.colorByAttribute, (attrConfig as any)?.colors),
         }
       }
     }
@@ -2619,7 +2785,8 @@ function buildCategoricalLegendItems(
 // Build categorical legend items from dashboard-level colorByAttribute
 function buildCategoricalLegendItemsFromAttribute(
   layerConfig: LayerConfig,
-  attribute: string
+  attribute: string,
+  colors?: Record<string, string>,
 ): { label: string; color: string }[] {
   const items: { label: string; color: string }[] = []
   const features = getLayerData(layerConfig.name)
@@ -2637,7 +2804,7 @@ function buildCategoricalLegendItemsFromAttribute(
   const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
 
   sortedValues.forEach((value) => {
-    const rgb = getCategoricalColor(value, undefined, attribute)
+    const rgb = getCategoricalColor(value, colors, attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
@@ -2651,7 +2818,8 @@ function buildCategoricalLegendItemsFromAttribute(
 
 // Build categorical legend items from central table data (props.filteredData)
 function buildCategoricalLegendItemsFromTable(
-  attribute: string
+  attribute: string,
+  colors?: Record<string, string>,
 ): { label: string; color: string }[] {
   const items: { label: string; color: string }[] = []
 
@@ -2672,7 +2840,7 @@ function buildCategoricalLegendItemsFromTable(
   const sortedValues = sortLegendCategories(Array.from(uniqueValues).map(v => String(v)))
 
   sortedValues.forEach((value) => {
-    const rgb = getCategoricalColor(value, undefined, attribute)
+    const rgb = getCategoricalColor(value, colors, attribute)
     const hexColor = rgbToHex(rgb)
 
     items.push({
@@ -2717,20 +2885,12 @@ function rgbToHex(rgb: [number, number, number]): string {
   return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`
 }
 
-// Watch for data changes to trigger layer updates
-// Shallow watching is sufficient - LinkableCardWrapper creates new array/Set references on change
-watch(
-  [() => props.filteredData, () => props.hoveredIds, () => props.hoveredIds?.size ?? 0, () => props.selectedIds, () => props.selectedIds?.size ?? 0],
-  () => {
-    updateLayers()
-  }
-)
-
 // Watch for comparison mode changes
 watch(
   () => props.showComparison,
   () => {
     debugLog('[MapCard] Comparison mode changed:', props.showComparison)
+    invalidateMainLayers()
     updateLayers()
   }
 )

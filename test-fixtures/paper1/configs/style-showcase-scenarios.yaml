@@ -12,8 +12,10 @@ output:
 
 defaults:
   format: png
-  width: 700
-  height: 500
+  # Match the typical dashboard card render size so font-relative-to-canvas
+  # ratios are identical between live dashboard and exported PNG.
+  width: 600
+  height: 400
   scale: 2
 
 plots:

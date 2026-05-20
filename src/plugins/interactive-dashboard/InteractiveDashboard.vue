@@ -525,24 +525,27 @@ export default defineComponent({
       return String(value)
     },
 
-    // Get layers for a card, filtering by geometry type if applicable
-    // NOTE: colorBy is NOT applied here - MapCard handles colorBy based on computed layer roles
-    // from LayerColoringManager. This ensures neutral layers skip colorBy coloring.
+    // Get layers for a card, filtering by geometry type if applicable.
+    // Memoized: returns the same array reference until `card.layers` or `geometryType`
+    // changes. Stable references prevent MapCard's `watch(props.layers)` from firing
+    // on every hover/render and re-running `loadLayerData()`.
     getCardLayers(card: any): any[] {
       if (!card.layers) return []
 
-      // Filter layers based on geometry type selector
-      // Layers can specify which geometry types they belong to via `geometryType` property
-      return card.layers.filter((layer: any) => {
-        // If geometry type is 'all', include all layers
+      const cache: WeakMap<any, { gt: string; src: any[]; layers: any[] }> =
+        (this as any)._cardLayersCache || ((this as any)._cardLayersCache = new WeakMap())
+      const cached = cache.get(card)
+      if (cached && cached.gt === this.geometryType && cached.src === card.layers) {
+        return cached.layers
+      }
+
+      const layers = card.layers.filter((layer: any) => {
         if (this.geometryType === 'all') return true
-        // If layer doesn't specify geometryType, always include it
         if (!layer.geometryType) return true
-        // If layer specifies geometryType, only include if it matches current selection
         return layer.geometryType === this.geometryType
       })
-      // Note: Previous implementation applied colorBy here, but that's now handled
-      // in MapCard.vue's getBaseColor() using LayerColoringManager for role-aware coloring
+      cache.set(card, { gt: this.geometryType, src: card.layers, layers })
+      return layers
     },
 
     // Table row interaction methods
