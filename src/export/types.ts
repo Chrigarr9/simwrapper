@@ -13,6 +13,8 @@ export interface ChartStyle {
   axisTickFontSize: number
   legendTitleFontSize: number
   legendFontSize: number
+  titleFontSize?: number       // chart title; falls back to axisTitleFontSize+4 if absent
+  annotationFontSize?: number  // ref-line labels and free annotations
   lineWidth: number
   markerSizeMultiplier: number
   fontFamily: string
@@ -58,6 +60,23 @@ export interface LegendData {
   items?: Array<{ label: string; color: string }>
 }
 
+export interface ColumnFormat {
+  label?: string
+  unit?: string
+}
+
+export interface TableColumns {
+  formats?: Record<string, ColumnFormat>
+  [key: string]: any
+}
+
+export interface TableConfig {
+  file: string
+  dataset?: string
+  idColumn?: string
+  columns?: TableColumns
+}
+
 /** Resolved export item — one plot in one state */
 export interface ExportItem {
   plotId: string
@@ -82,7 +101,7 @@ export interface ExportResult {
 
 /** Dashboard YAML structure (relevant parts) */
 export interface DashboardConfig {
-  table: { file: string; idColumn?: string; columns?: any }
+  table: TableConfig
   layout: Record<string, any[]>
   export?: ExportSection
 }
