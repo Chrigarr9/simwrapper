@@ -263,7 +263,8 @@ export function buildCorrelationFigure(
   // Dynamic margin based on longest label
   const allLabels = [...grid.rowLabels, ...grid.colLabels]
   const maxLen = allLabels.length > 0 ? Math.max(...allLabels.map(l => l.length)) : 0
-  const dynamicMargin = Math.min(150, 80 + Math.max(0, maxLen - 10) * 5)
+  const marginScale = style.marginScale ?? 1.0
+  const dynamicMargin = Math.round(Math.min(150, 80 + Math.max(0, maxLen - 10) * 5) * marginScale)
 
   // Build trace
   const trace = {
@@ -303,7 +304,7 @@ export function buildCorrelationFigure(
       autorange: 'reversed',
       automargin: true,
     },
-    margin: { l: dynamicMargin, r: 60, t: 20, b: dynamicMargin },
+    margin: { l: dynamicMargin, r: Math.round(60 * marginScale), t: Math.round(20 * marginScale), b: dynamicMargin },
     paper_bgcolor: style.backgroundColor,
     plot_bgcolor: style.backgroundColor,
     annotations,

@@ -646,13 +646,18 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     || hasSecondaryY
   const hasColorbar = colorByActive && effectiveColorByType === 'numeric'
 
+  const marginScale = style.marginScale ?? 1.0
+  const ms = (n: number) => Math.round(n * marginScale)
+
   const rightMargin = hasSecondaryY
-    ? (showLegend ? 160 : 70)
-    : (showLegend ? 100 : (hasColorbar ? 80 : 15))
+    ? (showLegend ? ms(160) : ms(70))
+    : (showLegend ? ms(100) : (hasColorbar ? ms(80) : ms(15)))
 
   // Dashboard passes margin {l:60,r:15,t:10,b:50}; export defaults add top room
   // for title since export renders titles inside the plot (no card frame).
-  const layoutMargin = style.margin ?? { l: 60, r: rightMargin, t: title ? 45 : 15, b: 55 }
+  // marginScale inflates these for paper-width canvases so scaled axis titles
+  // fit (Plotly automargin under jsdom is unreliable; explicit floor is safer).
+  const layoutMargin = style.margin ?? { l: ms(60), r: rightMargin, t: title ? ms(45) : ms(15), b: ms(55) }
   // Override right margin even if style.margin is provided, based on trace content
   layoutMargin.r = rightMargin
 
@@ -763,7 +768,13 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
       ...(input.referenceLines ?? []).map(buildReferenceShape),
     ],
     annotations: [
-      ...(input.annotations ?? []),
+      // Default user annotation font to axisTickFontSize when caller didn't set
+      // one — paper exports otherwise render YAML annotations at Plotly's 12px
+      // default, which gets lost next to scaled axis labels.
+      ...(input.annotations ?? []).map((a: any) => ({
+        ...a,
+        font: { size: style.axisTickFontSize, family: fontFamily, color: textColor, ...(a.font ?? {}) },
+      })),
       ...(input.referenceLines ?? []).filter(r => r.label).map(r => buildReferenceAnnotation(r, style)),
     ],
   }

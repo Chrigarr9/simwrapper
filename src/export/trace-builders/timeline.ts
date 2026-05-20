@@ -305,7 +305,10 @@ export function buildTimelineFigure(
       showticklabels: false,
       range: totalTracks > 0 ? [-0.5, totalTracks - 0.5] : [-0.5, 0.5],
     },
-    margin: style.margin ?? { l: 15, r: 15, t: title ? 40 : 10, b: 35 },
+    margin: style.margin ?? (() => {
+      const ms = (n: number) => Math.round(n * (style.marginScale ?? 1.0))
+      return { l: ms(15), r: ms(15), t: title ? ms(40) : ms(10), b: ms(35) }
+    })(),
     autosize: true,
     paper_bgcolor: style.backgroundColor,
     plot_bgcolor: style.backgroundColor,

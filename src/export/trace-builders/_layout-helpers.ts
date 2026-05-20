@@ -39,7 +39,9 @@ export function buildReferenceShape(r: ReferenceLine): any {
 export function buildReferenceAnnotation(r: ReferenceLine, style?: ChartStyle): any {
   const font = {
     color: r.color ?? '#666',
-    size: style?.annotationFontSize ?? 12,
+    // Fall back to axisTickFontSize so ref-line labels scale with the canvas
+    // (legacy fallback was a hardcoded 12px which got lost on paper exports).
+    size: style?.annotationFontSize ?? style?.axisTickFontSize ?? 12,
     family: style?.fontFamily,
   }
   if (r.axis === 'y') {

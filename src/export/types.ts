@@ -17,6 +17,12 @@ export interface ChartStyle {
   annotationFontSize?: number  // ref-line labels and free annotations
   lineWidth: number
   markerSizeMultiplier: number
+  /**
+   * Multiplier applied to builders' hardcoded layout margins. Builders tuned
+   * their {l,r,t,b} for the 600px dashboard baseline; paper-width exports
+   * (>1000px) need ~2× margins so scaled axis titles fit. Falls back to 1.0.
+   */
+  marginScale?: number
   fontFamily: string
   backgroundColor: string
   textColor: string
@@ -131,6 +137,7 @@ export interface ExportDefaults {
   legendFontSize: number
   lineWidth: number
   markerSizeMultiplier: number
+  marginScale?: number
 }
 
 export interface BarInput {

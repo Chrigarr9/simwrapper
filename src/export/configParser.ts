@@ -206,6 +206,7 @@ export function resolveExportPlan(config: ParsedExportConfig): ExportItem[] {
         legendFontSize: stateOverrides.legendFontSize ?? plotOverrides.legendFontSize ?? effectiveDefaults.legendFontSize,
         lineWidth: stateOverrides.lineWidth ?? plotOverrides.lineWidth ?? effectiveDefaults.lineWidth,
         markerSizeMultiplier: stateOverrides.markerSizeMultiplier ?? plotOverrides.markerSizeMultiplier ?? effectiveDefaults.markerSizeMultiplier,
+        marginScale: stateOverrides.marginScale ?? plotOverrides.marginScale ?? effectiveDefaults.marginScale ?? 1.0,
       }
 
       // Plot def: card base → plot overrides → state overrides (for title, binSize, etc.)

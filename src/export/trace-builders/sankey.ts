@@ -97,7 +97,10 @@ export function buildSankeyFigure(input: SankeyInput, style: ChartStyle): Plotly
       paper_bgcolor: style.backgroundColor,
       plot_bgcolor: style.backgroundColor,
       font: { family: style.fontFamily, color: style.textColor, size: style.axisTickFontSize },
-      margin: style.margin ?? { l: 35, r: 35, t: title ? 70 : 25, b: 25 },
+      margin: style.margin ?? (() => {
+        const ms = (n: number) => Math.round(n * (style.marginScale ?? 1.0))
+        return { l: ms(35), r: ms(35), t: title ? ms(70) : ms(25), b: ms(25) }
+      })(),
     },
     config: {
       displayModeBar: false,

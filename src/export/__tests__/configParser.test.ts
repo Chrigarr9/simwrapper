@@ -257,9 +257,13 @@ export:
       export: [s1]
 `
     const plan = resolveExportPlan(parseExportConfig(yaml))
-    expect(plan[0].style.axisTitleFontSize).toBe(25.7)
-    expect(plan[0].style.axisTickFontSize).toBe(23.3)
-    expect(plan[0].style.markerSizeMultiplier).toBe(2.3)
+    // At width=1400 with baselines axisTitle=14 / axisTick=12 / marker=1.1,
+    // factor=2.333: axisTitle 14*2.333≈32.7, axisTick 12*2.333=28, marker 1.1*2.333≈2.6.
+    expect(plan[0].style.axisTitleFontSize).toBe(32.7)
+    expect(plan[0].style.axisTickFontSize).toBe(28)
+    expect(plan[0].style.markerSizeMultiplier).toBe(2.6)
+    // marginScale tracks the same factor so builders can inflate margins
+    expect(plan[0].style.marginScale).toBe(2.3)
   })
 
   it('lets explicit default and state style overrides win over auto-scaling', () => {

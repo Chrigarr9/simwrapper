@@ -414,7 +414,10 @@ export function buildHistogramFigure(
   const titleFontSize = style.titleFontSize ?? axisTitleFontSize + 4
   // Dashboard passes margin {l:60,r:15,t:10,b:50}; export defaults add top
   // room for title since export renders titles inside the plot (no card frame).
-  const margin = style.margin || { l: 60, r: 20, t: title ? 45 : 15, b: 55 }
+  // marginScale inflates these proportionally for paper-width exports.
+  const marginScale = style.marginScale ?? 1.0
+  const ms = (n: number) => Math.round(n * marginScale)
+  const margin = style.margin || { l: ms(60), r: ms(20), t: title ? ms(45) : ms(15), b: ms(55) }
 
   const layout: any = {
     title: title

@@ -192,12 +192,16 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
       // Dashboard cards override this via style.margin = { l:60, r:15, t:10, b:50 }
       // and don't show titles inside the plot. Export defaults add extra top
       // room for title + horizontal legend, but stay close to dashboard scale.
-      margin: style.margin ?? {
-        l: 60,
-        r: 20,
-        t: title ? (traces.length > 1 ? 70 : 45) : (traces.length > 1 ? 40 : 15),
-        b: 55,
-      },
+      // marginScale inflates these proportionally for paper-width exports.
+      margin: style.margin ?? (() => {
+        const ms = (n: number) => Math.round(n * (style.marginScale ?? 1.0))
+        return {
+          l: ms(60),
+          r: ms(20),
+          t: title ? (traces.length > 1 ? ms(70) : ms(45)) : (traces.length > 1 ? ms(40) : ms(15)),
+          b: ms(55),
+        }
+      })(),
       shapes,
       annotations: layoutAnnotations,
     },
