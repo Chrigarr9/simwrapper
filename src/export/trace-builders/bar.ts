@@ -72,7 +72,7 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
   const shapes = referenceLines ? referenceLines.map(buildReferenceShape) : []
   const layoutAnnotations: any[] = [
     ...(annotations ?? []),
-    ...(referenceLines ?? []).filter(r => r.label).map(buildReferenceAnnotation),
+    ...(referenceLines ?? []).filter(r => r.label).map(r => buildReferenceAnnotation(r, style)),
   ]
 
   // Degenerate-axis guard: when all y values across all traces are identical,
@@ -113,34 +113,91 @@ export function buildBarFigure(input: BarInput, style: ChartStyle): PlotlyFigure
     }
   }
 
+  const titleFontSize = style.titleFontSize ?? style.axisTitleFontSize + 4
+
   return {
     traces,
     layout: {
-      title: title ? { text: title } : undefined,
+      title: title
+        ? {
+            text: title,
+            font: { size: titleFontSize, color: style.textColor, family: style.fontFamily },
+            x: 0.5,
+            xanchor: 'center',
+          }
+        : undefined,
       barmode,
+      bargap: 0.25,
+      bargroupgap: 0.12,
       paper_bgcolor: style.backgroundColor,
       plot_bgcolor: style.backgroundColor,
       font: { family: style.fontFamily, color: style.textColor, size: style.axisTickFontSize },
       xaxis: {
-        title: xAxisTitle ? { text: xAxisTitle, font: { size: style.axisTitleFontSize } } : undefined,
+        title: xAxisTitle
+          ? {
+              text: xAxisTitle,
+              font: { size: style.axisTitleFontSize, color: style.textColor, family: style.fontFamily },
+            }
+          : undefined,
+        tickfont: { size: style.axisTickFontSize, color: style.textColor, family: style.fontFamily },
+        side: 'bottom',
+        anchor: 'y',
         showgrid: false,
         linecolor: style.textColor,
+        linewidth: 1.2,
         ticks: 'outside',
+        mirror: false,                  // hide top spine — matplotlib look
+        showline: true,
+        automargin: true,
       },
       yaxis: {
-        title: yAxisTitle ? { text: yAxisTitle, font: { size: style.axisTitleFontSize } } : undefined,
+        title: yAxisTitle
+          ? {
+              text: yAxisTitle,
+              font: { size: style.axisTitleFontSize, color: style.textColor, family: style.fontFamily },
+            }
+          : undefined,
+        tickfont: { size: style.axisTickFontSize, color: style.textColor, family: style.fontFamily },
+        side: 'left',
+        anchor: 'x',
         gridcolor: style.gridColor,
         linecolor: style.textColor,
+        linewidth: 1.2,
         ticks: 'outside',
         zeroline: true,
-        zerolinecolor: style.textColor,
+        zerolinecolor: style.gridColor,
+        zerolinewidth: 1,
+        mirror: false,                  // hide right spine — matplotlib look
+        showline: true,
+        automargin: true,
         ...(yAxisRange ? { range: yAxisRange, autorange: false } : {}),
       },
       legend:
         traces.length > 1
-          ? { font: { size: style.legendFontSize }, bgcolor: 'rgba(255,255,255,0)' }
+          ? {
+              // Top-horizontal legend below the title. Right-side vertical was
+              // tried but Plotly's resvg/jsdom render path clips long trace names
+              // ("cost_recovery_ratio") to single letters regardless of margin.r
+              // or entrywidth — putting legend at the top sidesteps the bug and
+              // gives the full canvas width for entries.
+              font: { size: style.legendFontSize, color: style.textColor, family: style.fontFamily },
+              bgcolor: 'rgba(255,255,255,0)',
+              orientation: 'h',
+              x: 0.5,
+              xanchor: 'center',
+              y: 1.02,
+              yanchor: 'bottom',
+            }
           : undefined,
-      margin: style.margin ?? { l: 60, r: 20, t: title ? 50 : 20, b: 50 },
+      // Dashboard cards override this via style.margin = { l:60, r:15, t:10, b:50 }
+      // and don't show titles inside the plot. Export defaults add extra top
+      // room for title + horizontal legend, but stay close to dashboard scale.
+      margin: style.margin ?? {
+        l: 60,
+        r: 20,
+        t: title ? (traces.length > 1 ? 70 : 45) : (traces.length > 1 ? 40 : 15),
+        b: 55,
+      },
       shapes,
       annotations: layoutAnnotations,
     },
@@ -172,16 +229,18 @@ function buildSingleTrace(opts: {
     y,
     marker: {
       color: style.barColor,
-      line: { color: style.textColor, width: 0.5 },
+      line: { color: style.gridColor, width: 0.6 },  // soft border, not pure black
     },
   }
   if (style.isScientific && isMulti) {
+    // Lower solidity (0.3 → 0.18) and larger pattern size keeps bars distinguishable
+    // without turning them into a noisy black mesh at 1200×800 PNG resolution.
     trace.marker.pattern = {
       shape: BAR_PATTERNS[traceIndex % BAR_PATTERNS.length],
       fgcolor: style.textColor,
       bgcolor: style.barColor,
-      size: 8,
-      solidity: 0.3,
+      size: 12,
+      solidity: 0.18,
     }
   }
   return trace

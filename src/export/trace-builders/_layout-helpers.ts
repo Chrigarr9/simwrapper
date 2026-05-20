@@ -1,14 +1,10 @@
-import type { ReferenceLine } from '../types'
+import type { ReferenceLine, ChartStyle } from '../types'
 
 /**
  * Convert a ReferenceLine to a Plotly layout.shapes entry.
  *
  * Y-axis lines span the full plot width (xref='paper', x0=0, x1=1).
  * X-axis lines span the full plot height (yref='paper', y0=0, y1=1).
- *
- * Returns a plain object rather than `Partial<Shape>` to avoid the
- * unresolvable type friction between Plotly's bundled types and a
- * structurally-equivalent literal.
  */
 export function buildReferenceShape(r: ReferenceLine): any {
   if (r.axis === 'y') {
@@ -38,8 +34,14 @@ export function buildReferenceShape(r: ReferenceLine): any {
 /**
  * Convert a ReferenceLine with a label to a Plotly layout.annotations entry.
  * Caller is responsible for filtering out ReferenceLines without a label.
+ * Optional style param drives label font; falls back to size 12 if absent.
  */
-export function buildReferenceAnnotation(r: ReferenceLine): any {
+export function buildReferenceAnnotation(r: ReferenceLine, style?: ChartStyle): any {
+  const font = {
+    color: r.color ?? '#666',
+    size: style?.annotationFontSize ?? 12,
+    family: style?.fontFamily,
+  }
   if (r.axis === 'y') {
     return {
       x: 0.98,
@@ -49,8 +51,9 @@ export function buildReferenceAnnotation(r: ReferenceLine): any {
       text: r.label,
       showarrow: false,
       xanchor: 'right',
-      bgcolor: 'rgba(255,255,255,0.8)',
-      font: { color: r.color ?? '#666', size: 10 },
+      yanchor: 'bottom',
+      bgcolor: 'rgba(255,255,255,0.85)',
+      font,
     }
   }
   return {
@@ -61,7 +64,8 @@ export function buildReferenceAnnotation(r: ReferenceLine): any {
     text: r.label,
     showarrow: false,
     yanchor: 'top',
-    bgcolor: 'rgba(255,255,255,0.8)',
-    font: { color: r.color ?? '#666', size: 10 },
+    xanchor: 'left',
+    bgcolor: 'rgba(255,255,255,0.85)',
+    font,
   }
 }

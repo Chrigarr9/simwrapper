@@ -104,6 +104,23 @@ describe('buildScatterFigure — single trace', () => {
     expect(fig.layout.yaxis.title.text).toBe('y')
   })
 
+  it('uses explicit xAxisTitle and yAxisTitle when provided', () => {
+    const fig = buildScatterFigure({
+      filteredData: [
+        { constraint__fleet_size: 100, served_requests: 20 },
+        { constraint__fleet_size: 200, served_requests: 35 },
+        { constraint__fleet_size: 300, served_requests: 50 },
+      ],
+      xColumn: 'constraint__fleet_size',
+      yColumn: 'served_requests',
+      xAxisTitle: 'Fleet size (vehicles)',
+      yAxisTitle: 'Daily commutes replaced',
+    }, baseStyle)
+
+    expect(fig.layout.xaxis.title.text).toBe('Fleet size (vehicles)')
+    expect(fig.layout.yaxis.title.text).toBe('Daily commutes replaced')
+  })
+
   it('tickformat is .5~g and nticks is 10', () => {
     const fig = buildScatterFigure(input, baseStyle)
     expect(fig.layout.xaxis.tickformat).toBe('.5~g')
@@ -529,16 +546,18 @@ describe('buildScatterFigure — scientific mode', () => {
     expect(fig.layout.yaxis.linecolor).toBe(scientificStyle.textColor)
   })
 
-  it('axis linewidth is 1.5 in scientific mode', () => {
+  it('axis linewidth is 1.2 (paper-tuned)', () => {
     const input: ScatterInput = { filteredData: makeRows(3), xColumn: 'x', yColumn: 'y' }
     const fig = buildScatterFigure(input, scientificStyle)
-    expect(fig.layout.xaxis.linewidth).toBe(1.5)
+    expect(fig.layout.xaxis.linewidth).toBe(1.2)
   })
 
-  it('axis linecolor is gridColor in non-scientific mode', () => {
+  it('axis linecolor is textColor regardless of scientific mode', () => {
+    // Paper figures use dark axes whether or not scientific patterns are
+    // enabled — the previous gridColor variant produced washed-out frames.
     const input: ScatterInput = { filteredData: makeRows(3), xColumn: 'x', yColumn: 'y' }
     const fig = buildScatterFigure(input, baseStyle)
-    expect(fig.layout.xaxis.linecolor).toBe(baseStyle.gridColor)
+    expect(fig.layout.xaxis.linecolor).toBe(baseStyle.textColor)
   })
 
   it('accepts custom scientificSymbols', () => {

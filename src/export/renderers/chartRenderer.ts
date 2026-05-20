@@ -30,14 +30,102 @@ export async function renderToSVG(
   })
   const { window } = dom
 
-  // Stub APIs that Plotly expects but jsdom doesn't have
-  ;(window as any).HTMLCanvasElement.prototype.getContext = () => null
+  // Stub APIs that Plotly expects but jsdom doesn't have.
+  //
+  // Canvas getContext: Plotly uses `ctx.measureText(str).width` to size
+  // legends, axis tick labels, and annotations. jsdom returns null for
+  // getContext, which previously caused Plotly to fall back to a tiny
+  // default character width (~6px) and clip multi-word legend entries
+  // ("service_rate") to single-letter fragments. We return a minimal mock
+  // context whose measureText approximates Arial glyph widths well enough
+  // for layout purposes (length × 0.55 × fontSize, matching ~1100u/em).
+  ;(window as any).HTMLCanvasElement.prototype.getContext = function (kind: string) {
+    if (kind !== '2d') return null
+    let _font = '14px Arial'
+    return {
+      get font() { return _font },
+      set font(v: string) { _font = v },
+      measureText(text: string) {
+        const m = /(\d+(?:\.\d+)?)px/.exec(_font)
+        const fontSize = m ? parseFloat(m[1]) : 14
+        return { width: (text?.length ?? 0) * fontSize * 0.55 }
+      },
+      // No-op drawing methods so Plotly can call them without crashing
+      save() {}, restore() {}, scale() {}, translate() {}, rotate() {},
+      beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {},
+      fillRect() {}, clearRect() {}, fillText() {}, strokeText() {},
+      setTransform() {}, transform() {}, drawImage() {},
+      getImageData() { return { data: new Uint8ClampedArray(4), width: 1, height: 1 } },
+      putImageData() {},
+      createLinearGradient() { return { addColorStop() {} } },
+      createRadialGradient() { return { addColorStop() {} } },
+      arc() {}, ellipse() {}, rect() {}, clip() {},
+      lineWidth: 1, fillStyle: '#000', strokeStyle: '#000',
+      textAlign: 'start', textBaseline: 'alphabetic', globalAlpha: 1,
+    }
+  }
   ;(window as any).URL.createObjectURL = () => ''
   // jsdom doesn't implement SVG path geometry; Plotly calls these when drawing
   // annotation arrows (showarrow: true). Safe no-op stubs prevent crashes — the
   // headless renderer doesn't need pixel-perfect arrow coordinates.
   ;(window as any).SVGElement.prototype.getTotalLength = () => 0
   ;(window as any).SVGElement.prototype.getPointAtLength = () => ({ x: 0, y: 0 })
+
+  // jsdom returns 0 (or `undefined`) for SVG text-measurement APIs, which
+  // makes Plotly's auto-layout think every legend entry / axis label is one
+  // character wide → it then over-truncates trace names ("service_rate" → "s")
+  // and overlaps legend entries. We patch SVGElement.prototype (in jsdom, text
+  // elements inherit directly from SVGElement, not SVGGraphicsElement or
+  // SVGTextContentElement, both of which are absent from the prototype chain).
+  // Width approximation: length × 0.55 × fontSize matches Arial proportions
+  // well enough that legends, axis ticks, and annotations render at correct
+  // width. Falls back to font-size 14 when neither attr nor CSS is set.
+  function approxFontSize(el: any): number {
+    const attr = el.getAttribute?.('font-size')
+    if (attr) {
+      const n = parseFloat(attr)
+      if (Number.isFinite(n)) return n
+    }
+    const styleSize = el.style?.fontSize
+    if (styleSize) {
+      const n = parseFloat(styleSize)
+      if (Number.isFinite(n)) return n
+    }
+    return 14
+  }
+  function approxBBox(el: any) {
+    const text = el.textContent ?? ''
+    const fontSize = approxFontSize(el)
+    return {
+      x: 0,
+      y: 0,
+      width: text.length * fontSize * 0.55,
+      height: fontSize * 1.2,
+      top: 0,
+      left: 0,
+      right: text.length * fontSize * 0.55,
+      bottom: fontSize * 1.2,
+    }
+  }
+  ;(window as any).SVGElement.prototype.getBBox = function () {
+    return approxBBox(this)
+  }
+  ;(window as any).SVGElement.prototype.getComputedTextLength = function () {
+    const text = (this as any).textContent ?? ''
+    const fontSize = approxFontSize(this)
+    return text.length * fontSize * 0.55
+  }
+  // getBoundingClientRect: Plotly's legend / annotation sizing path uses this
+  // (not getBBox or canvas measureText). Patch only on SVGElement so non-SVG
+  // elements (e.g. the wrapping div) keep jsdom's zero-default behavior —
+  // that worked correctly for plot-area layout before this stub was added.
+  // Restrict approximation to TEXT elements; non-text SVG elements get
+  // zero-bbox so Plotly doesn't double-count them in margin calculations.
+  ;(window as any).SVGElement.prototype.getBoundingClientRect = function () {
+    const tag = (this as any).tagName
+    if (tag === 'text' || tag === 'tspan') return approxBBox(this)
+    return { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }
+  }
 
   // Load plotly.js into jsdom
   window.eval(getPlotlySource())

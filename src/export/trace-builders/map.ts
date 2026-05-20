@@ -20,6 +20,7 @@ export interface MapInput {
   width?: number
   height?: number
   scale?: number
+  legend?: LegendData
 }
 
 export interface MapLayerInput {
@@ -34,10 +35,20 @@ export interface MapLayerInput {
   opacity?: number
   radius?: number
   colorBy?: ColorByConfig
+  resolvedColorBy?: ColorByConfig
+  resolvedDimWhen?: DimWhenConfig
+  resolvedOpacity?: number
   widthBy?: SizeByConfig
   radiusBy?: SizeByConfig
   arcHeight?: number
   arcTilt?: number
+}
+
+export interface DimWhenConfig {
+  attribute: string
+  equals: any
+  opacity?: number
+  widthMultiplier?: number
 }
 
 export interface ColorByConfig {
@@ -83,7 +94,7 @@ const CATEGORICAL_PALETTE = [
 export function buildMapRenderConfig(input: MapInput, style: ChartStyle): MapRenderConfig {
   const sources: Record<string, { type: 'geojson'; data: any }> = {}
   const layers: MapExportLayer[] = []
-  let legend: LegendData | undefined
+  let legend: LegendData | undefined = input.legend
 
   for (const layerInput of input.layers) {
     const result = translateLayer(layerInput, style)
@@ -156,7 +167,7 @@ function translatePolygonLayer(input: MapLayerInput): TranslationResult {
   // Fill layer
   const fillPaint: Record<string, any> = {}
 
-  if (input.colorBy) {
+  if (getEffectiveColorBy(input)) {
     const { expression, legendData } = buildColorExpression(input)
     colorExpression = expression
     fillPaint['fill-color'] = expression
@@ -164,7 +175,7 @@ function translatePolygonLayer(input: MapLayerInput): TranslationResult {
   } else {
     fillPaint['fill-color'] = input.fillColor ?? '#0072B2'
   }
-  fillPaint['fill-opacity'] = input.fillOpacity ?? 0.6
+  fillPaint['fill-opacity'] = buildOpacity(input, input.fillOpacity ?? input.opacity ?? input.resolvedOpacity ?? 0.6)
 
   layers.push({
     id: `${input.name}-fill`,
@@ -176,7 +187,10 @@ function translatePolygonLayer(input: MapLayerInput): TranslationResult {
   // Outline (line) layer
   const linePaint: Record<string, any> = {
     'line-color': input.lineColor ?? colorExpression ?? '#333333',
-    'line-width': input.lineWidth ?? 1,
+    'line-width': buildWidth(input, input.lineWidth ?? 1),
+  }
+  if (input.resolvedDimWhen?.opacity !== undefined) {
+    linePaint['line-opacity'] = buildOpacity(input, input.opacity ?? input.resolvedOpacity ?? 1)
   }
 
   layers.push({
@@ -201,7 +215,7 @@ function translateLineLayer(input: MapLayerInput): TranslationResult {
 
   const paint: Record<string, any> = {}
 
-  if (input.colorBy) {
+  if (getEffectiveColorBy(input)) {
     const { expression, legendData } = buildColorExpression(input)
     paint['line-color'] = expression
     legend = legendData
@@ -212,10 +226,10 @@ function translateLineLayer(input: MapLayerInput): TranslationResult {
   if (input.widthBy) {
     paint['line-width'] = buildSizeExpression(input.widthBy, input.geojsonData)
   } else {
-    paint['line-width'] = input.lineWidth ?? input.lineWidth ?? 2
+    paint['line-width'] = buildWidth(input, input.lineWidth ?? 2)
   }
 
-  paint['line-opacity'] = input.opacity ?? 1
+  paint['line-opacity'] = buildOpacity(input, input.opacity ?? input.resolvedOpacity ?? 1)
 
   layers.push({
     id: `${input.name}-line`,
@@ -265,7 +279,7 @@ function translateArcLayer(input: MapLayerInput): TranslationResult {
 
   const paint: Record<string, any> = {}
 
-  if (input.colorBy) {
+  if (getEffectiveColorBy(input)) {
     const { expression, legendData } = buildColorExpression(input)
     paint['line-color'] = expression
     legend = legendData
@@ -276,10 +290,10 @@ function translateArcLayer(input: MapLayerInput): TranslationResult {
   if (input.widthBy) {
     paint['line-width'] = buildSizeExpression(input.widthBy, input.geojsonData)
   } else {
-    paint['line-width'] = input.lineWidth ?? 2
+    paint['line-width'] = buildWidth(input, input.lineWidth ?? 2)
   }
 
-  paint['line-opacity'] = input.opacity ?? 0.8
+  paint['line-opacity'] = buildOpacity(input, input.opacity ?? input.resolvedOpacity ?? 0.8)
 
   layers.push({
     id: `${input.name}-arc`,
@@ -303,7 +317,7 @@ function translateScatterplotLayer(input: MapLayerInput): TranslationResult {
 
   const paint: Record<string, any> = {}
 
-  if (input.colorBy) {
+  if (getEffectiveColorBy(input)) {
     const { expression, legendData } = buildColorExpression(input)
     paint['circle-color'] = expression
     legend = legendData
@@ -317,7 +331,7 @@ function translateScatterplotLayer(input: MapLayerInput): TranslationResult {
     paint['circle-radius'] = input.radius ?? 5
   }
 
-  paint['circle-opacity'] = input.opacity ?? 0.8
+  paint['circle-opacity'] = buildOpacity(input, input.opacity ?? input.resolvedOpacity ?? 0.8)
   paint['circle-stroke-color'] = '#ffffff'
   paint['circle-stroke-width'] = 1
 
@@ -341,13 +355,39 @@ interface ColorExpressionResult {
 }
 
 function buildColorExpression(input: MapLayerInput): ColorExpressionResult {
-  const colorBy = input.colorBy!
+  const colorBy = getEffectiveColorBy(input)!
 
   if (colorBy.type === 'categorical') {
     return buildCategoricalColorExpression(colorBy, input.geojsonData)
   } else {
     return buildNumericColorExpression(colorBy, input.geojsonData)
   }
+}
+
+function getEffectiveColorBy(input: MapLayerInput): ColorByConfig | undefined {
+  return input.resolvedColorBy ?? input.colorBy
+}
+
+function buildOpacity(input: MapLayerInput, normalOpacity: number): any {
+  const dimWhen = input.resolvedDimWhen
+  if (!dimWhen || dimWhen.opacity === undefined) return normalOpacity
+  return [
+    'case',
+    ['==', ['to-string', ['get', dimWhen.attribute]], String(dimWhen.equals)],
+    dimWhen.opacity,
+    normalOpacity,
+  ]
+}
+
+function buildWidth(input: MapLayerInput, normalWidth: number): any {
+  const dimWhen = input.resolvedDimWhen
+  if (!dimWhen || dimWhen.widthMultiplier === undefined) return normalWidth
+  return [
+    'case',
+    ['==', ['to-string', ['get', dimWhen.attribute]], String(dimWhen.equals)],
+    normalWidth * dimWhen.widthMultiplier,
+    normalWidth,
+  ]
 }
 
 function buildCategoricalColorExpression(

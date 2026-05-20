@@ -17,6 +17,9 @@ export interface ScatterInput {
   xColumn: string
   yColumn: string
   yColumnRight?: string
+  xAxisTitle?: string
+  yAxisTitle?: string
+  yAxisRightTitle?: string
   idColumn?: string
   colorColumn?: string
   colorDecimals?: number
@@ -157,6 +160,9 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     xColumn,
     yColumn,
     yColumnRight,
+    xAxisTitle,
+    yAxisTitle,
+    yAxisRightTitle,
     colorColumn,
     colorDecimals,
     colorBy,
@@ -644,17 +650,25 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     ? (showLegend ? 160 : 70)
     : (showLegend ? 100 : (hasColorbar ? 80 : 15))
 
-  const layoutMargin = style.margin ?? { l: 60, r: rightMargin, t: 10, b: 45 }
+  // Dashboard passes margin {l:60,r:15,t:10,b:50}; export defaults add top room
+  // for title since export renders titles inside the plot (no card frame).
+  const layoutMargin = style.margin ?? { l: 60, r: rightMargin, t: title ? 45 : 15, b: 55 }
   // Override right margin even if style.margin is provided, based on trace content
   layoutMargin.r = rightMargin
 
   const xAxisConfig: Record<string, any> = {
-    title: { text: xColumn, font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily } },
+    title: {
+      text: xAxisTitle ?? xColumn,
+      font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily },
+    },
     tickfont: { color: textColor, size: style.axisTickFontSize, family: fontFamily },
+    side: 'bottom',
+    anchor: 'y',
     gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,
-    linewidth: isScientific ? 1.5 : 1,
+    linecolor: textColor,
+    linewidth: 1.2,
     showline: true,
+    mirror: false,                // hide top spine — matplotlib look
     zerolinecolor: gridColor,
     automargin: true,
     nticks: 10,
@@ -666,12 +680,18 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
   }
 
   const yAxisConfig: Record<string, any> = {
-    title: { text: yColumn, font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily } },
+    title: {
+      text: yAxisTitle ?? yColumn,
+      font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily },
+    },
     tickfont: { color: textColor, size: style.axisTickFontSize, family: fontFamily },
+    side: 'left',
+    anchor: 'x',
     gridcolor: gridColor,
-    linecolor: isScientific ? textColor : gridColor,
-    linewidth: isScientific ? 1.5 : 1,
+    linecolor: textColor,
+    linewidth: 1.2,
     showline: true,
+    mirror: false,                // hide right spine — matplotlib look
     zerolinecolor: gridColor,
     automargin: true,
     nticks: 10,
@@ -684,7 +704,7 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
 
   // Secondary Y-axis
   const yAxis2Config: Record<string, any> | undefined = hasSecondaryY ? {
-    title: { text: yColumnRight!, font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily } },
+    title: { text: yAxisRightTitle ?? yColumnRight!, font: { color: textColor, size: style.axisTitleFontSize, family: fontFamily } },
     tickfont: { color: textColor, size: style.axisTickFontSize, family: fontFamily },
     gridcolor: 'rgba(0,0,0,0)',
     linecolor: isScientific ? textColor : gridColor,
@@ -706,8 +726,18 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     legendTitle = colorColumn
   }
 
+  const titleFontSize = style.titleFontSize ?? style.axisTitleFontSize + 4
+
   const layout: Record<string, any> = {
-    font: { family: fontFamily, color: textColor },
+    title: title
+      ? {
+          text: title,
+          font: { color: textColor, size: titleFontSize, family: fontFamily },
+          x: 0.5,
+          xanchor: 'center',
+        }
+      : undefined,
+    font: { family: fontFamily, color: textColor, size: style.axisTickFontSize },
     xaxis: xAxisConfig,
     yaxis: yAxisConfig,
     ...(yAxis2Config ? { yaxis2: yAxis2Config } : {}),
@@ -734,7 +764,7 @@ export function buildScatterFigure(input: ScatterInput, style: ChartStyle): Plot
     ],
     annotations: [
       ...(input.annotations ?? []),
-      ...(input.referenceLines ?? []).filter(r => r.label).map(buildReferenceAnnotation),
+      ...(input.referenceLines ?? []).filter(r => r.label).map(r => buildReferenceAnnotation(r, style)),
     ],
   }
 

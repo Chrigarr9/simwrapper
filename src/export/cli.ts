@@ -7,7 +7,8 @@ import { parseExportConfig, resolveExportPlan } from './configParser'
 import { CHART_BUILDERS, MAP_BUILDER, isMapType } from './trace-builders'
 import { renderChart } from './renderers/chartRenderer'
 import { renderMap } from './renderers/mapRenderer'
-import { FilterManager } from '../plugins/interactive-dashboard/managers/FilterManager'
+import { resolveExportItemData } from './dataResolver'
+import { resolveMapSemantics } from './mapSemantics'
 import type { ExportResult } from './types'
 
 async function main() {
@@ -74,10 +75,6 @@ async function main() {
   const csvText = readFileSync(csvPath, 'utf-8')
   const allData: any[] = Papa.parse(csvText, { header: true, dynamicTyping: true, skipEmptyLines: true }).data as any[]
 
-  // Build filter manager
-  const filterManager = new FilterManager()
-  filterManager.buildIndex(allData)
-
   // Group by state
   const stateGroups = new Map<string, typeof plan>()
   for (const item of plan) {
@@ -92,31 +89,6 @@ async function main() {
   const startTime = Date.now()
 
   for (const [stateId, items] of stateGroups) {
-    // Apply filters for this state
-    filterManager.clearAllFilters()
-    const filters = items[0].filters
-    for (const [column, filterDef] of Object.entries(filters)) {
-      if (typeof filterDef === 'string' || typeof filterDef === 'number') {
-        filterManager.setFilter(`export-${column}`, column, new Set([filterDef]), 'categorical')
-      } else if (Array.isArray(filterDef)) {
-        filterManager.setFilter(`export-${column}`, column, new Set(filterDef), 'categorical')
-      } else if (typeof filterDef === 'object' && filterDef !== null) {
-        const { min, max } = filterDef as { min?: number; max?: number }
-        const matching = new Set(allData.filter(r => {
-          const v = r[column]; if (v == null) return false
-          if (min !== undefined && v < min) return false
-          if (max !== undefined && v > max) return false
-          return true
-        }).map(r => r[column]))
-        if (matching.size > 0) filterManager.setFilter(`export-${column}`, column, matching, 'range')
-      }
-    }
-
-    const idColumn = config.table.idColumn || 'id'
-    const filteredData = filterManager.hasActiveFilters()
-      ? filterManager.getFilteredData(allData, idColumn)
-      : allData
-
     // Render each plot
     for (const item of items) {
       const itemStart = Date.now()
@@ -124,11 +96,30 @@ async function main() {
 
       try {
         let result: ExportResult
+        const { filteredData, baselineData } = resolveExportItemData({
+          allData,
+          idColumn: config.table.idColumn || 'id',
+          stateFilters: item.filters,
+          cardFixedFilter: item.plotDef.fixedFilter,
+          useVisualSample: !!item.plotDef.useVisualSample,
+        })
+
+        if (filteredData.length === 0) {
+          console.warn(`[${completed}/${plan.length}] ${stateId}/${item.plotId} WARNING: filteredData is empty`)
+        }
 
         if (isMapType(item.plotDef.type)) {
           const mapLayers = await loadMapLayers(item.plotDef, dirname(configPath))
+          const semanticMap = resolveMapSemantics({
+            layers: mapLayers,
+            filteredData,
+            colorByAttribute: item.plotDef.colorByAttribute ?? item.plotDef.map?.colorBy?.default,
+            colorByOptions: item.plotDef.colorByOptions ?? item.plotDef.map?.colorBy?.attributes ?? [],
+            layerStrategy: item.plotDef.layerStrategy ?? item.plotDef.map?.colorBy?.layerStrategy,
+            geometryType: item.plotDef.geometryType,
+          })
           const mapConfig = MAP_BUILDER(
-            { ...item.plotDef, layers: mapLayers },
+            { ...item.plotDef, layers: semanticMap.layers, legend: semanticMap.legend },
             item.style as any
           )
           result = await renderMap(
@@ -140,7 +131,7 @@ async function main() {
           if (!builder) throw new Error(`No trace builder for type: ${item.plotDef.type}`)
 
           const figure = builder(
-            { ...item.plotDef, filteredData, baselineData: allData, showComparison: item.comparison },
+            { ...item.plotDef, filteredData, baselineData, showComparison: item.comparison },
             item.style
           )
           result = await renderChart(figure, item.filename, item.format, item.width, item.height, item.scale)
@@ -153,7 +144,8 @@ async function main() {
 
         const elapsed = ((Date.now() - itemStart) / 1000).toFixed(1)
         const pad = `[${completed}/${plan.length}]`.padEnd(8)
-        console.log(`${pad} ${stateId}/${item.plotId} ${'·'.repeat(30)} ${ext} ${item.width}x${item.height}  ${elapsed}s`)
+        const rowInfo = `${filteredData.length} rows`
+        console.log(`${pad} ${stateId}/${item.plotId} ${'·'.repeat(30)} ${ext} ${item.width}x${item.height} ${rowInfo} ${elapsed}s`)
 
         results.push(result)
       } catch (err) {

@@ -1,12 +1,13 @@
 import YAML from 'yaml'
-import { EXPORT_DEFAULTS, PRINT_CHART_STYLE } from './defaults'
+import { EXPORT_DEFAULTS, PRINT_CHART_STYLE, scaleStyleForWidth } from './defaults'
+import { resolveAxisTitle } from './labels'
 import type {
   DashboardConfig, ExportSection, LinkedExportConfig,
-  ExportItem, ChartStyle, ExportDefaults
+  ExportItem, ChartStyle, ExportDefaults, TableConfig, ColumnFormat
 } from './types'
 
 export interface ParsedExportConfig {
-  table: { file: string; idColumn?: string; columns?: any }
+  table: TableConfig
   cards: Record<string, Record<string, any>>
   exportSection: ExportSection
   outputNaming: string
@@ -47,16 +48,28 @@ export function parseExportConfig(
   )
 }
 
+/**
+ * The interactive dashboard table uses `dataset:` while the headless CLI's
+ * earlier schema expected `file:`. Treat them as synonyms so a single YAML can
+ * drive both render paths. Normalize to `file` for downstream callers.
+ */
+function normalizeTable(table: any): TableConfig {
+  if (!table) throw new Error('Dashboard YAML has no table section')
+  const file = table.file ?? table.dataset
+  if (!file) throw new Error('Dashboard YAML table needs a `file:` or `dataset:` key')
+  return { ...table, file }
+}
+
 function parseInlineConfig(dashboard: DashboardConfig): ParsedExportConfig {
   if (!dashboard.export) throw new Error('Dashboard YAML has no export: section')
   if (!dashboard.layout) throw new Error('Dashboard YAML has no layout: section')
-  if (!dashboard.table?.file) throw new Error('Dashboard YAML has no table.file')
+  const table = normalizeTable(dashboard.table)
 
   const cards = resolveCardsFromLayout(dashboard.layout)
   validateCardReferences(cards, dashboard.export)
 
   return {
-    table: dashboard.table,
+    table,
     cards,
     exportSection: dashboard.export,
     outputNaming: dashboard.export.output?.naming ?? '{state}-{plot}',
@@ -69,7 +82,7 @@ function parseLinkedConfig(
 ): ParsedExportConfig {
   const dashboard = YAML.parse(dashboardYamlText) as DashboardConfig
   if (!dashboard.layout) throw new Error('Referenced dashboard has no layout: section')
-  if (!dashboard.table?.file) throw new Error('Referenced dashboard has no table.file')
+  const table = normalizeTable(dashboard.table)
 
   const cards = resolveCardsFromLayout(dashboard.layout)
   const exportSection: ExportSection = {
@@ -81,7 +94,7 @@ function parseLinkedConfig(
   validateCardReferences(cards, exportSection)
 
   return {
-    table: dashboard.table,
+    table,
     cards,
     exportSection,
     outputNaming: exportConfig.output?.naming ?? '{state}-{plot}',
@@ -98,7 +111,7 @@ function parseLinkedConfig(
  *   output: { naming, directory }
  */
 function parseStandaloneConfig(config: any): ParsedExportConfig {
-  if (!config.table?.file) throw new Error('Standalone export YAML has no table.file')
+  const table = normalizeTable(config.table)
 
   // In standalone format, each plot in `plots` is a card definition keyed by name
   const cards: Record<string, Record<string, any>> = {}
@@ -115,7 +128,7 @@ function parseStandaloneConfig(config: any): ParsedExportConfig {
   validateCardReferences(cards, exportSection)
 
   return {
-    table: config.table,
+    table,
     cards,
     exportSection,
     outputNaming: config.output?.naming ?? '{state}-{plot}',
@@ -161,7 +174,11 @@ function validateCardReferences(
  */
 export function resolveExportPlan(config: ParsedExportConfig): ExportItem[] {
   const plan: ExportItem[] = []
-  const globalDefaults = { ...EXPORT_DEFAULTS, ...config.exportSection.defaults }
+  // User defaults from the YAML override the built-in EXPORT_DEFAULTS for
+  // fields the user actually set (undefined-spread is a no-op). Auto-scaling
+  // for canvas width happens per-item below so each plot can have its own
+  // width without rescaling siblings.
+  const userDefaults = config.exportSection.defaults ?? {}
 
   for (const [stateId, stateDef] of Object.entries(config.exportSection.states)) {
     for (const plotId of stateDef.export) {
@@ -169,21 +186,26 @@ export function resolveExportPlan(config: ParsedExportConfig): ExportItem[] {
       const plotOverrides = config.exportSection.plots?.[plotId] ?? {}
       const stateOverrides = stateDef.plots?.[plotId] ?? {}
 
-      // Cascade: globalDefaults → plotOverrides → stateOverrides
-      const format = (stateOverrides.format ?? plotOverrides.format ?? globalDefaults.format) as 'png' | 'svg'
-      const width = stateOverrides.width ?? plotOverrides.width ?? globalDefaults.width
-      const height = stateOverrides.height ?? plotOverrides.height ?? globalDefaults.height
-      const scale = stateOverrides.scale ?? plotOverrides.scale ?? globalDefaults.scale
+      // Cascade for format/width/height/scale: user defaults → plot → state
+      const format = (stateOverrides.format ?? plotOverrides.format ?? userDefaults.format ?? EXPORT_DEFAULTS.format) as 'png' | 'svg'
+      const width = stateOverrides.width ?? plotOverrides.width ?? userDefaults.width ?? EXPORT_DEFAULTS.width
+      const height = stateOverrides.height ?? plotOverrides.height ?? userDefaults.height ?? EXPORT_DEFAULTS.height
+      const scale = stateOverrides.scale ?? plotOverrides.scale ?? userDefaults.scale ?? EXPORT_DEFAULTS.scale
 
-      // Style cascade
+      // Auto-scale the built-in font/marker/line defaults for the resolved
+      // canvas width, then let the user's defaults block override. Per-plot
+      // and per-state explicit settings win over both.
+      const scaledDefaults = scaleStyleForWidth(EXPORT_DEFAULTS, width)
+      const effectiveDefaults = { ...scaledDefaults, ...userDefaults }
+
       const style: ChartStyle = {
         ...PRINT_CHART_STYLE,
-        axisTitleFontSize: stateOverrides.axisTitleFontSize ?? plotOverrides.axisTitleFontSize ?? globalDefaults.axisTitleFontSize,
-        axisTickFontSize: stateOverrides.axisTickFontSize ?? plotOverrides.axisTickFontSize ?? globalDefaults.axisTickFontSize,
-        legendTitleFontSize: stateOverrides.legendTitleFontSize ?? plotOverrides.legendTitleFontSize ?? globalDefaults.legendTitleFontSize,
-        legendFontSize: stateOverrides.legendFontSize ?? plotOverrides.legendFontSize ?? globalDefaults.legendFontSize,
-        lineWidth: stateOverrides.lineWidth ?? plotOverrides.lineWidth ?? globalDefaults.lineWidth,
-        markerSizeMultiplier: stateOverrides.markerSizeMultiplier ?? plotOverrides.markerSizeMultiplier ?? globalDefaults.markerSizeMultiplier,
+        axisTitleFontSize: stateOverrides.axisTitleFontSize ?? plotOverrides.axisTitleFontSize ?? effectiveDefaults.axisTitleFontSize,
+        axisTickFontSize: stateOverrides.axisTickFontSize ?? plotOverrides.axisTickFontSize ?? effectiveDefaults.axisTickFontSize,
+        legendTitleFontSize: stateOverrides.legendTitleFontSize ?? plotOverrides.legendTitleFontSize ?? effectiveDefaults.legendTitleFontSize,
+        legendFontSize: stateOverrides.legendFontSize ?? plotOverrides.legendFontSize ?? effectiveDefaults.legendFontSize,
+        lineWidth: stateOverrides.lineWidth ?? plotOverrides.lineWidth ?? effectiveDefaults.lineWidth,
+        markerSizeMultiplier: stateOverrides.markerSizeMultiplier ?? plotOverrides.markerSizeMultiplier ?? effectiveDefaults.markerSizeMultiplier,
       }
 
       // Plot def: card base → plot overrides → state overrides (for title, binSize, etc.)
@@ -193,6 +215,8 @@ export function resolveExportPlan(config: ParsedExportConfig): ExportItem[] {
       delete plotDef.width
       delete plotDef.height
       delete plotDef.scale
+
+      applyResolvedAxisTitles(plotDef, config.table.columns?.formats)
 
       const filename = config.outputNaming
         .replace('{state}', stateId)
@@ -215,4 +239,33 @@ export function resolveExportPlan(config: ParsedExportConfig): ExportItem[] {
   }
 
   return plan
+}
+
+function applyResolvedAxisTitles(
+  plotDef: Record<string, any>,
+  tableFormats?: Record<string, ColumnFormat>
+): void {
+  if (plotDef.xColumn && !plotDef.xAxisTitle) {
+    plotDef.xAxisTitle = resolveAxisTitle({
+      explicitTitle: plotDef.xAxisTitle,
+      column: plotDef.xColumn,
+      tableFormats,
+    })
+  }
+
+  if (plotDef.yColumn && !plotDef.yAxisTitle) {
+    plotDef.yAxisTitle = resolveAxisTitle({
+      explicitTitle: plotDef.yAxisTitle,
+      column: plotDef.yColumn,
+      tableFormats,
+    })
+  }
+
+  if (plotDef.yColumnRight && !plotDef.yAxisRightTitle) {
+    plotDef.yAxisRightTitle = resolveAxisTitle({
+      explicitTitle: plotDef.yAxisRightTitle,
+      column: plotDef.yColumnRight,
+      tableFormats,
+    })
+  }
 }

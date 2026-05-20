@@ -56,32 +56,48 @@ export function buildSankeyFigure(input: SankeyInput, style: ChartStyle): Plotly
     ? nodeLabels.map(l => nodeColorMap[l] ?? style.barColor)
     : nodeLabels.map(() => style.barColor)
 
+  const titleFontSize = style.titleFontSize ?? style.axisTitleFontSize + 4
+
   return {
     traces: [{
       type: 'sankey',
-      // snap: nodes auto-align to left/right columns; alternative is 'freeform'
       arrangement: 'snap',
       node: {
         label: nodeLabels,
         color: nodeColors,
-        // Visual constants tuned for paper-column width; promote to ChartStyle if reused elsewhere
-        pad: 15,
-        thickness: 18,
+        // Tuned for paper-column 1200×800 PNG: thicker bars + larger pad reduce
+        // visual emptiness when one node dominates volume.
+        pad: 25,
+        thickness: 24,
         line: { color: style.textColor, width: 0.5 },
+        // Node label font matches axis-tick scale so labels read at the same
+        // visual weight as other charts in the figure series.
+        font: { color: style.textColor, size: style.axisTitleFontSize, family: style.fontFamily },
       },
       link: {
         source: sources,
         target: targets,
         value: values,
-        color: 'rgba(150,150,150,0.4)',
+        // Slightly darker + more opaque than the previous rgba(150,150,150,0.4):
+        // pure pale gray ribbons disappeared against white background.
+        color: 'rgba(120,120,120,0.45)',
       },
     }],
     layout: {
-      title: title ? { text: title } : undefined,
+      title: title
+        ? {
+            text: title,
+            font: { color: style.textColor, size: titleFontSize, family: style.fontFamily },
+            x: 0.5,
+            xanchor: 'center',
+            y: 0.96,
+            yanchor: 'top',
+          }
+        : undefined,
       paper_bgcolor: style.backgroundColor,
       plot_bgcolor: style.backgroundColor,
       font: { family: style.fontFamily, color: style.textColor, size: style.axisTickFontSize },
-      margin: style.margin ?? { l: 30, r: 30, t: title ? 50 : 20, b: 20 },
+      margin: style.margin ?? { l: 35, r: 35, t: title ? 70 : 25, b: 25 },
     },
     config: {
       displayModeBar: false,

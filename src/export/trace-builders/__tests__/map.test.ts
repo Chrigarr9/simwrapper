@@ -698,6 +698,28 @@ describe('buildMapRenderConfig', () => {
       expect(result.legend).toBeDefined()
       expect(result.legend!.title).toBe('mode')
     })
+
+    it('prefers input legend over layer-generated legend', () => {
+      const input: MapInput = {
+        layers: [
+          {
+            name: 'colored',
+            type: 'scatterplot',
+            geojsonData: makeFeatureCollection([
+              makePointFeature(10, 48, { mode: 'car' }),
+            ]),
+            colorBy: { attribute: 'mode', type: 'categorical' },
+          },
+        ],
+        legend: {
+          type: 'categorical',
+          title: 'Resolved legend',
+          items: [{ label: 'car', color: '#ff0000' }],
+        },
+      } as any
+      const result = buildMapRenderConfig(input, LIGHT_STYLE)
+      expect(result.legend!.title).toBe('Resolved legend')
+    })
   })
 
   describe('GeoJSON sources', () => {
@@ -783,6 +805,51 @@ describe('buildMapRenderConfig', () => {
       // min=42, max=43 (guarded)
       expect(width[3]).toBe(42)
       expect(width[5]).toBe(43)
+    })
+
+    it('uses resolvedColorBy before raw layer colorBy', () => {
+      const features = makeFeatureCollection([
+        makePolygonFeature([[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]], { activated: 1 }),
+      ])
+      const input: MapInput = {
+        layers: [{
+          name: 'zones',
+          type: 'fill',
+          geojsonData: features,
+          colorBy: { attribute: 'other', type: 'categorical' },
+          resolvedColorBy: {
+            attribute: 'activated',
+            type: 'categorical',
+            colors: { '1': '#27ae60' },
+          },
+        } as any],
+      }
+      const result = buildMapRenderConfig(input, LIGHT_STYLE)
+      const fillColor = result.layers[0].paint['fill-color']
+      expect(fillColor[1]).toEqual(['get', 'activated'])
+      expect(fillColor).toContain('#27ae60')
+    })
+
+    it('translates resolvedDimWhen into opacity expressions', () => {
+      const features = makeFeatureCollection([
+        makePolygonFeature([[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]], { active: 0 }),
+      ])
+      const input: MapInput = {
+        layers: [{
+          name: 'zones',
+          type: 'fill',
+          geojsonData: features,
+          opacity: 0.9,
+          resolvedDimWhen: { attribute: 'active', equals: 0, opacity: 0.15 },
+        } as any],
+      }
+      const result = buildMapRenderConfig(input, LIGHT_STYLE)
+      expect(result.layers[0].paint['fill-opacity']).toEqual([
+        'case',
+        ['==', ['to-string', ['get', 'active']], '0'],
+        0.15,
+        0.9,
+      ])
     })
   })
 })
