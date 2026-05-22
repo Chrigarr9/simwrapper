@@ -112,7 +112,9 @@ export function buildMapRenderConfig(input: MapInput, style: ChartStyle): MapRen
 
   const styleUrl = resolveStyleUrl(input.mapStyle, style)
   const center = input.center ?? computeCenter(input.layers)
-  const zoom = input.zoom ?? DEFAULT_ZOOM
+  const pixelWidth = (input.width ?? DEFAULT_WIDTH) * (input.scale ?? DEFAULT_SCALE)
+  const pixelHeight = (input.height ?? DEFAULT_HEIGHT) * (input.scale ?? DEFAULT_SCALE)
+  const zoom = input.zoom ?? computeAutoZoom(input.layers, pixelWidth, pixelHeight)
 
   return {
     center,
@@ -551,8 +553,15 @@ export function generateBezierArc(
   const dist = Math.sqrt(dx * dx + dy * dy)
 
   if (dist < 1e-10) {
-    // Degenerate: source and destination are the same point
-    return [src, dst]
+    // Intra-zone arc: source == destination. Render a small circle so the arc
+    // stays visible in headless export (a zero-length LineString is invisible).
+    const loopRadius = 0.008 // degrees — ~600-700m at mid-latitudes
+    const coords: [number, number][] = []
+    for (let i = 0; i <= segments; i++) {
+      const angle = (2 * Math.PI * i) / segments
+      coords.push([src[0] + loopRadius * Math.cos(angle), src[1] + loopRadius * Math.sin(angle)])
+    }
+    return coords
   }
 
   // Perpendicular (rotate 90 degrees CCW), then apply tilt
@@ -616,6 +625,42 @@ function computeCenter(layers: MapLayerInput[]): [number, number] {
   if (count === 0) return DEFAULT_CENTER
 
   return [sumLon / count, sumLat / count]
+}
+
+function computeAutoZoom(
+  layers: MapLayerInput[],
+  pixelWidth: number,
+  pixelHeight: number,
+  paddingFactor = 0.1,
+): number {
+  let minLon = Infinity,
+    maxLon = -Infinity
+  let minLat = Infinity,
+    maxLat = -Infinity
+
+  for (const layer of layers) {
+    for (const feature of layer.geojsonData.features) {
+      const coords = extractAllCoordinates(feature.geometry)
+      for (const [lon, lat] of coords) {
+        if (lon < minLon) minLon = lon
+        if (lon > maxLon) maxLon = lon
+        if (lat < minLat) minLat = lat
+        if (lat > maxLat) maxLat = lat
+      }
+    }
+  }
+
+  if (!isFinite(minLon) || minLon === maxLon || minLat === maxLat) return DEFAULT_ZOOM
+
+  const paddedLonSpan = (maxLon - minLon) * (1 + paddingFactor)
+  const mercatorY = (lat: number): number =>
+    Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
+  const paddedMercatorSpan = (mercatorY(maxLat) - mercatorY(minLat)) * (1 + paddingFactor)
+
+  const lonZoom = Math.log2((pixelWidth * 360) / (256 * paddedLonSpan))
+  const latZoom = Math.log2((pixelHeight * 2 * Math.PI) / (256 * paddedMercatorSpan))
+
+  return Math.max(0, Math.min(18, Math.min(lonZoom, latZoom)))
 }
 
 function extractAllCoordinates(geometry: any): [number, number][] {

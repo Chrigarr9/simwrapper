@@ -121,7 +121,9 @@ describe('buildMapRenderConfig', () => {
       // center should be computed from data
       expect(result.center[0]).toBeCloseTo(11, 0)
       expect(result.center[1]).toBeCloseTo(49, 0)
-      expect(result.zoom).toBe(10)
+      // zoom is auto-computed to fit the data bbox (not the DEFAULT_ZOOM=10 fallback)
+      expect(result.zoom).toBeGreaterThan(7)
+      expect(result.zoom).toBeLessThan(12)
     })
 
     it('uses custom width/height/scale when provided', () => {
@@ -883,10 +885,17 @@ describe('generateBezierArc', () => {
 
   it('handles degenerate case (same source and destination)', () => {
     const coords = generateBezierArc([5, 5], [5, 5], 0.3, 25, 20)
-    // Should return [src, dst] without crashing
-    expect(coords.length).toBeGreaterThanOrEqual(2)
-    expect(coords[0]).toEqual([5, 5])
-    expect(coords[coords.length - 1]).toEqual([5, 5])
+    // Intra-zone arcs render as a small circle loop (not a zero-length line)
+    expect(coords.length).toBe(21) // segments + 1
+    // All points within the loop radius (~0.008°) of the center
+    const loopRadius = 0.008
+    for (const [lon, lat] of coords) {
+      const d = Math.sqrt((lon - 5) ** 2 + (lat - 5) ** 2)
+      expect(d).toBeCloseTo(loopRadius, 4)
+    }
+    // Closed loop: first point equals last
+    expect(coords[0][0]).toBeCloseTo(coords[coords.length - 1][0], 10)
+    expect(coords[0][1]).toBeCloseTo(coords[coords.length - 1][1], 10)
   })
 
   it('tilt rotates the arc in a different direction', () => {
