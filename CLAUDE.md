@@ -1,567 +1,164 @@
-# CLAUDE.md
+# SimWrapper — CLAUDE.md
 
-## Project-Bound Memory
+<!-- Keep under 200 lines. Vue/Plotly/reactivity gotchas and dashboard config traps live in
+     <repo-root>/.claude/rules/vue-simwrapper.md and load when you touch .vue/.ts here. -->
 
-This project uses **`.project-memory/`** (at the Dissertation repo root) as a git-tracked shared memory store.
-When you learn something worth remembering, sync it to `.project-memory/` — see the root `CLAUDE.md` for the full protocol.
+## Memory & Planning
 
-## Planning & Context
-
-Check `.planning/` for project roadmap, phase plans, codebase analysis, research notes, resolved debug sessions, and todos.
-Also check the root `.project-memory/` for cross-project insights.
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+- `.project-memory/` (Dissertation root) is the git-tracked shared memory store. Protocol:
+  root `CLAUDE.md`.
+- `.planning/` holds the roadmap, phase plans, research notes, resolved debug sessions,
+  and todos.
+- **Code-level rules load automatically** from `.claude/rules/vue-simwrapper.md`: hard
+  constraints (TypeScript, Pug, Vue 2.7, path aliases, master auto-deploy), Plotly handler
+  lifecycle, Vue Set reactivity, event semantics, and dashboard config traps.
 
 ## Project Overview
 
-SimWrapper is an interactive data visualization tool for transportation simulations and analysis. Built as a Vue 2 SPA with TypeScript, it uses deck.gl/ThreeJS for WebGL visualizations and supports multiple file storage backends.
+Interactive data visualization for transportation simulations. Vue 2.7 SPA in TypeScript,
+deck.gl / ThreeJS for WebGL, MapLibre GL base maps, Vuex global state (`src/store.ts`),
+Vite build, Pug templates.
 
-**Live Site:** https://simwrapper.app
-**Documentation:** https://docs.simwrapper.app/docs
+- Live site: https://simwrapper.app
+- Docs: https://docs.simwrapper.app/docs
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-npm ci
-
-# Development server with hot reload (http://localhost:8080)
-npm run dev
-
-# Production build
-npm run build
-
-# Run tests (vitest)
-npm run test:run
-
-# Run tests with UI
-npm run test:ui
-
-# Headless export (pure Node.js, no browser)
+npm ci                # install
+npm run dev           # dev server, hot reload, http://localhost:8080
+npm run build         # production build
+npm run test:run      # vitest
+npm run test:ui       # vitest with UI
+npm run wasm          # rebuild WASM modules
 npm run export <config.yaml> [--output <dir>] [--states <s1,s2>] [--format png|svg] [--scale N]
-
-# Build WASM modules (if needed)
-npm run wasm
 ```
 
-## Core Technologies
-
-- **TypeScript** - All code must be TypeScript
-- **Vue 2.7** - Component framework with Composition API support
-- **Pug** - Template language (Python-style indentation instead of HTML tags)
-- **Vite** - Build tool and dev server
-- **Vuex** - Global state management (`src/store.ts`)
-- **deck.gl** - WebGL visualization layers
-- **MapLibre GL** - Base map rendering
+Tests are vitest + jsdom, in `**/__tests__/*.test.ts`.
 
 ## Architecture
 
-### Plugin System
+### Plugin system
 
-SimWrapper uses a plugin-based architecture. Each visualization type is a plugin:
+Each visualization type is a self-contained plugin folder under `src/plugins/` with a main
+`.vue` component, registered in `src/plugins/pluginRegistry.ts`. Plugins activate on file
+patterns (`*.geojson`, `viz-*.yaml`).
 
-- **Location:** `src/plugins/`
-- **Registration:** `src/plugins/pluginRegistry.ts` - Register new plugins here
-- **Pattern:** Each plugin is a self-contained folder with a main `.vue` component
-- **Activation:** Plugins activate based on file patterns (e.g., `*.geojson`, `viz-*.yaml`)
+### Two dashboard types
 
-### Dashboard System
+| Type | Component | Activates when |
+|---|---|---|
+| Standard | `src/layout-manager/DashBoard.vue` | default; independent cards, no cross-card interaction |
+| Interactive | `src/plugins/interactive-dashboard/` | the YAML config contains a `table` section |
 
-Two dashboard types exist:
+`TabbedDashboardView.vue` routes between them by checking `config.table`.
 
-1. **Standard Dashboard** (`src/layout-manager/DashBoard.vue`)
-   - Traditional independent visualization cards
-   - No cross-card interaction
+### Interactive dashboard — three layers
 
-2. **Interactive Dashboard** (`src/plugins/interactive-dashboard/`)
-   - **Activated when:** YAML config contains a `table` section
-   - **Detection:** `TabbedDashboardView.vue:178` checks for `config.table`
-   - Enables coordinated interactions between cards via centralized data management
+1. **Data management** (`managers/`): `DataTableManager` (central table + filtered views),
+   `FilterManager` (observer pattern for filter state), `LinkageManager` (coordinates card
+   interactions).
+2. **Components** (`components/cards/`): `LinkableCardWrapper` wraps each card to add
+   interactive capability; `Histogram`/`PieChart`/`Scatter`/`CorrelationMatrix`/`Timeline`/
+   `MapCard`.
+3. **Dashboard**: `InteractiveDashboard.vue` initializes the managers and orchestrates cards.
 
-### Interactive Dashboard Architecture
+**Data flow:** user interacts -> card emits through `LinkableCardWrapper` -> wrapper updates
+`FilterManager`/`LinkageManager` -> managers notify observers -> cards receive updated
+`filteredData`, `hoveredIds`, `selectedIds` -> cards re-render.
 
-The Interactive Dashboard plugin (`src/plugins/interactive-dashboard/`) implements coordinated visualizations:
-
-#### Three-Layer Architecture
-
-**1. Data Management Layer** (`managers/`)
-- `DataTableManager.ts` - Manages central data table and provides filtered views
-- `FilterManager.ts` - Observer pattern for filter state across cards
-- `LinkageManager.ts` - Coordinates card interactions based on linkage configs
-
-**2. Component Layer** (`components/cards/`)
-- `LinkableCardWrapper.vue` - Wraps cards to add interactive capabilities
-- `HistogramCard.vue` - Interactive histogram with filtering (uses shared trace builder)
-- `PieChartCard.vue` - Interactive pie chart (uses shared trace builder)
-- `ScatterCard.vue` - Interactive scatter plot with 5 trace paths (uses shared trace builder)
-- `CorrelationMatrixCard.vue` - Pearson correlation heatmap (uses shared trace builder)
-- `TimelineCard.vue` - Gantt-style timeline with swim lanes (uses shared trace builder)
-- `MapCard.vue` - Interactive map with deck.gl layers and linkage support
-
-**3. Dashboard Layer**
-- `InteractiveDashboard.vue` - Main component that initializes managers and orchestrates cards
-
-#### Key Concepts
-
-**Linkage Configuration:**
-Cards connect to the central data table via linkage config:
+### Linkage configuration
 
 ```yaml
 linkage:
   type: filter           # 'filter' or 'highlight'
-  column: columnName     # Column in central table to link
-  behavior: toggle       # 'toggle' or 'replace' for selections
-  onHover: highlight     # Optional hover behavior
-  onSelect: filter       # Optional selection behavior
+  column: columnName     # column in the central table
+  behavior: toggle       # 'toggle' or 'replace'
+  onHover: highlight
+  onSelect: filter
 ```
 
-**Map Layer Linkage:**
-Map layers can also link to the central table:
+Map layers link the same way, but name both sides of the join:
 
-```yaml
-layers:
-  - name: points
-    file: points.geojson
-    linkage:
-      tableColumn: id       # Column in central data table
-      geoProperty: id       # Property in GeoJSON features
-      onHover: highlight
-      onSelect: filter
-```
-
-**Data Flow:**
-1. User interacts with a card (hover/click)
-2. Card emits event through `LinkableCardWrapper`
-3. Wrapper updates `FilterManager` or `LinkageManager`
-4. Managers notify all observers
-5. Cards receive updated `filteredData`, `hoveredIds`, `selectedIds` props
-6. Cards re-render with filtered/highlighted data
-
-### File System
-
-- **HTTP/Subversion servers** - Most common data source
-- **Local file handles** - Browser File System Access API
-- **GitHub** - Direct repo browsing via Octokit
-- **Implementation:** `src/js/HTTPFileSystem.ts` and related utilities
-
-### State Management
-
-Global state in Vuex store (`src/store.ts`):
-- View state (camera position, zoom)
-- UI state (dark mode, panels, breadcrumbs)
-- File system configurations
-- User favorites and credentials
-
-## Project Structure
-
-```
-src/
-├── export/                # Headless export pipeline (pure Node.js)
-│   ├── types.ts           # Shared types (PlotlyFigure, ChartStyle, etc.)
-│   ├── defaults.ts        # Export defaults, print style, map style URLs
-│   ├── configParser.ts    # YAML config parser with 3-level override cascade
-│   ├── cli.ts             # CLI entry point (npm run export)
-│   ├── trace-builders/    # Pure functions: (input, style) → PlotlyFigure
-│   │   ├── index.ts       # Registry mapping card types to builders
-│   │   ├── histogram.ts   # Histogram trace builder
-│   │   ├── scatter.ts     # Scatter plot trace builder (5 trace paths)
-│   │   ├── pie.ts         # Pie/donut chart trace builder
-│   │   ├── correlation.ts # Correlation matrix heatmap builder
-│   │   ├── timeline.ts    # Gantt-style timeline builder
-│   │   ├── map.ts         # Map config builder (deck.gl → MapLibre translation)
-│   │   └── __tests__/     # 255 unit tests for all builders
-│   ├── renderers/
-│   │   ├── chartRenderer.ts  # jsdom + plotly → SVG → resvg → PNG
-│   │   ├── mapRenderer.ts    # maplibre-gl-native + sharp → PNG
-│   │   └── __tests__/
-│   └── __tests__/         # Config parser tests
-├── plugins/               # Visualization plugins
-│   ├── interactive-dashboard/
-│   │   ├── managers/      # Data/filter/linkage managers
-│   │   ├── components/    # Linkable cards (histogram, pie, scatter, map, etc.)
-│   │   ├── InteractiveDashboard.vue
-│   │   └── README.md      # Plugin-specific documentation
-│   ├── shape-file/        # Map viewer for GeoJSON/shapefiles
-│   ├── xy-hexagons/       # Hexbin aggregation
-│   └── ...                # Other plugins
-├── layout-manager/        # Main app layout and dashboard views
-│   ├── TabbedDashboardView.vue  # Routes to correct dashboard type
-│   ├── DashBoard.vue            # Standard dashboard
-│   └── FolderBrowser.vue
-├── dash-panels/           # Individual dashboard card types (bar, pie, etc.)
-├── components/            # Shared Vue components
-├── js/                    # TypeScript utilities
-├── store.ts               # Vuex global state
-└── router.ts              # Vue Router configuration
-```
-
-## Testing
-
-Tests use **vitest** with jsdom environment:
-
-- Test files: `**/__tests__/*.test.ts`
-- Run with: `npm run test:run` or `npm run test:ui`
-- Example tests in `src/plugins/interactive-dashboard/managers/__tests__/`
-
-### Writing Tests for Interactive Dashboard
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
-import { FilterManager } from '../FilterManager'
-
-describe('FilterManager', () => {
-  let manager: FilterManager
-
-  beforeEach(() => {
-    manager = new FilterManager()
-  })
-
-  it('should add and notify observers', () => {
-    // Test implementation
-  })
-})
-```
-
-## Common Development Patterns
-
-### Adding a New Card Type to Interactive Dashboard
-
-1. Create a **trace builder** in `src/export/trace-builders/yourcard.ts` as a pure function: `(input, style) → PlotlyFigure`
-2. Add tests in `src/export/trace-builders/__tests__/yourcard.test.ts`
-3. Register the builder in `src/export/trace-builders/index.ts`
-4. Create Vue component in `src/plugins/interactive-dashboard/components/cards/YourCard.vue`
-5. In the component, call the trace builder and apply interactive overrides (hover/selection) on top
-6. Implement props interface:
-   ```typescript
-   interface Props {
-     filteredData: any[]       // From LinkableCardWrapper
-     hoveredIds?: Set<string>  // Items to highlight
-     selectedIds?: Set<string> // Items to filter
-     linkage?: LinkageConfig   // Linkage configuration
-     // ... card-specific props
-   }
-   ```
-7. Emit events for user interactions (via `LinkableCardWrapper`)
-8. Add card type to `InteractiveDashboard.vue` component mapping
-9. Document YAML configuration in plugin README
-
-### Working with MapCard Layers
-
-MapCard uses deck.gl layers rendered via MapLibre GL:
-
-- **Supported layer types:** `polygon`, `line`, `arc`, `scatterplot`
-- **Styling:** Static colors OR dynamic via `colorBy` attribute mapping
-- **Linkage:** Connect layer features to central data table rows
-- **File loading:** GeoJSON files loaded via `fileSystemConfig.getFileSystem()`
-
-Example layer with linkage:
 ```yaml
 layers:
   - name: zones
     file: zones.geojson
-    type: polygon
-    colorBy:
-      attribute: population
-      type: numeric
-      scale: [0, 10000]
+    type: polygon          # polygon | line | arc | scatterplot
+    clusterType: origin    # optional: only shown for this cluster type
+    colorBy: { attribute: population, type: numeric, scale: [0, 10000] }
     linkage:
-      tableColumn: zone_id
-      geoProperty: id
+      tableColumn: zone_id   # central table column
+      geoProperty: id        # GeoJSON feature property
       onHover: highlight
       onSelect: filter
 ```
 
-### Reading YAML Configurations
+Map controls are declared under `map.controls` (`clusterType`, `colorBy`), with the
+selectable options under `map.clusterTypes` and `map.colorBy.attributes`.
 
-Dashboard configs are YAML files that define layout and visualizations:
+### File system backends
 
-```typescript
-// Configs are loaded by TabbedDashboardView and parsed as JavaScript objects
-interface DashboardConfig {
-  header: { tab: string; title: string; description?: string }
-  table?: TableConfig  // Presence triggers InteractiveDashboard
-  layout: {
-    [rowKey: string]: CardConfig[]
-  }
-}
-```
+HTTP/Subversion servers (most common), browser File System Access API handles, and GitHub
+via Octokit. Implementation in `src/js/HTTPFileSystem.ts`.
 
-## Export System (Headless)
+## Export system (headless)
 
-The export system (`src/export/`) renders dashboard charts to PNG/SVG without a browser, using pure Node.js.
-
-### Architecture
+`src/export/` renders dashboard charts to PNG/SVG with no browser, pure Node.js.
 
 ```
-YAML config → configParser → resolveExportPlan → [ExportItem per state+plot]
-                                                        │
-                                              ┌─────────┴──────────┐
-                                         chart type?            map type?
-                                              │                    │
-                                    trace builder → PlotlyFigure   map builder → MapRenderConfig
-                                              │                    │
-                                    chartRenderer (jsdom+plotly)   mapRenderer (maplibre-native)
-                                              │                    │
-                                         SVG / PNG              PNG
+YAML config -> configParser -> resolveExportPlan -> [ExportItem per state+plot]
+                                           |
+                        chart type?                     map type?
+                   trace builder -> PlotlyFigure   map builder -> MapRenderConfig
+                   chartRenderer (jsdom+plotly)    mapRenderer (maplibre-native)
+                        SVG / PNG                          PNG
 ```
 
-### Shared Trace Builders
+**Trace builders are the shared core.** Pure functions `(input, style) -> PlotlyFigure` with
+zero Vue/DOM/StyleManager dependencies, in `src/export/trace-builders/`. Both the headless
+CLI and the interactive Vue cards call them; cards then layer interactive-only overrides on
+top. Builders exist for `histogram`, `scatter-plot`, `pie-chart`, `correlation-matrix`,
+`timeline`, and `map`.
 
-Trace builders are **pure functions** with signature `(input, style) → PlotlyFigure`. They have **zero** Vue/DOM/StyleManager dependencies. Both the headless CLI export and the interactive Vue cards call the same builders.
+**Renderers:** `chartRenderer` runs jsdom + plotly.js, `Plotly.toImage()` to SVG, then
+`@resvg/resvg-js` to PNG. `mapRenderer` uses `@maplibre/maplibre-gl-native` plus `sharp`.
 
-| Builder | Card type | Key features |
-|---------|-----------|--------------|
-| `histogram.ts` | `histogram` | Binning, comparison mode, categorical/numeric colorBy, adaptive tick thinning |
-| `scatter.ts` | `scatter-plot` | 5 trace paths, secondary Y-axis, connectLines, scientific symbols, sizeColumn |
-| `pie.ts` | `pie-chart` | Donut, comparison dual-ring, pattern fills, text positioning thresholds |
-| `correlation.ts` | `correlation-matrix` | Pearson computation, heatmap, lower triangle, cell annotations |
-| `timeline.ts` | `timeline` | Gantt horizontal bars, greedy track allocation, HH:MM time axis |
-| `map.ts` | `map` | deck.gl→MapLibre translation, arc→bezier, data-driven expressions |
-
-### Card ↔ Builder Integration Pattern
-
-Vue cards delegate to trace builders, then apply interactive-only overrides:
-
-```typescript
-// In a Vue card component:
-import { buildHistogramFigure } from '@/export/trace-builders/histogram'
-
-const buildChartData = () => {
-  const style: ChartStyle = { /* resolve from StyleManager for interactive mode */ }
-  const input: HistogramInput = { /* map Vue props to builder input */ }
-  const figure = buildHistogramFigure(input, style)
-
-  // Apply interactive-only overrides (hover, selection highlights)
-  applyInteractiveHighlights(figure, props.hoveredIds, props.selectedIds)
-  return figure
-}
-```
-
-### Config Override Cascade
-
-Export configs support a 3-level override cascade: `defaults → per-plot → per-state per-plot`.
+**Config override cascade** — three levels, `defaults -> per-plot -> per-state per-plot`:
 
 ```yaml
 export:
-  defaults:                    # Level 1: global defaults
-    format: png
-    width: 1200
+  defaults: { format: png, width: 1200 }
   plots:
-    dist-hist:                 # Level 2: per-plot overrides
-      width: 800
+    dist-hist: { width: 800 }
   states:
     car-only:
       filters: { mode: car }
       export: [dist-hist]
       plots:
-        dist-hist:             # Level 3: per-state per-plot overrides
-          title: Car Distance
+        dist-hist: { title: Car Distance }
 ```
 
-### Renderers
+## Adding a card type to the interactive dashboard
 
-- **chartRenderer:** Creates a jsdom instance, loads plotly.js, calls `Plotly.toImage()` for SVG, then `@resvg/resvg-js` for PNG rasterization
-- **mapRenderer:** Uses `@maplibre/maplibre-gl-native` for server-side tile rendering, `sharp` for PNG encoding
+1. Trace builder in `src/export/trace-builders/yourcard.ts` — a pure function.
+2. Tests in `src/export/trace-builders/__tests__/yourcard.test.ts`.
+3. Register it in `src/export/trace-builders/index.ts`.
+4. Vue component in `src/plugins/interactive-dashboard/components/cards/YourCard.vue` that
+   calls the builder, then applies hover/selection overrides.
+5. Props: `filteredData`, `hoveredIds?`, `selectedIds?`, `linkage?`, plus card-specific.
+6. Emit interaction events via `LinkableCardWrapper`.
+7. Add the card type to the `InteractiveDashboard.vue` component mapping.
+8. Document the YAML config in the plugin README.
 
-## Important Constraints
+## Code style
 
-1. **All code must be TypeScript** - No JavaScript files except configs
-2. **Use Pug templates** - Not HTML in `.vue` files
-3. **Vue 2.7 syntax** - Composition API available but Options API is common
-4. **No build-time `.env` files** - Configuration via `src/fileSystemConfig.ts`
-5. **WebGL required** - deck.gl/ThreeJS need WebGL support
-6. **Travis CI auto-deploys on master push** - Don't push to master until ready for production
+Prettier enforces formatting. 2-space indentation (Pug requires consistency). Imports
+grouped external / internal / relative. camelCase for variables and functions, PascalCase
+for components and classes.
 
-## Path Aliases
+## Further docs
 
-Configured in `vite.config.mts` and `tsconfig.json`:
-
-- `@/` → `src/`
-- `~/` → `node_modules/`
-
-Example: `import globalStore from '@/store'`
-
-## Interactive Dashboard - Current Status
-
-All chart cards use **shared trace builders** (`src/export/trace-builders/`) for rendering logic, with interactive-only overrides (hover, selection) applied on top in the Vue component.
-
-**Chart Cards** (all use shared trace builders):
-- `HistogramCard` - Binned filtering, comparison mode, categorical/numeric colorBy, adaptive tick thinning
-- `ScatterCard` - 5 trace paths, secondary Y-axis, connectLines, scientific symbols, sizeColumn
-- `PieChartCard` - Donut chart, comparison dual-ring, pattern fills, categorical colors
-- `CorrelationMatrixCard` - Pearson heatmap, lower triangle masking, cell annotations
-- `TimelineCard` - Gantt swim lanes, greedy track allocation, zoom, request detail view
-
-**MapCard Features:**
-- Core MapCard with polygon/line/arc/scatterplot layers
-- Dynamic coloring via `colorBy` attribute mapping
-- Layer linkage to central data table
-- ColorLegend component with filtering support
-- Hover/select interactions with highlight/filter behaviors
-- Cluster type selector (origin/destination/spatial)
-- Color-by attribute selector
-
-**Table Features:**
-- Sortable columns (click header to sort)
-- Filtered rows highlighted and shown at top
-- Auto-scroll to hovered row (map→table sync)
-- Fullscreen toggle
-- Filter reset button
-
-### Map Controls Configuration
-
-```yaml
-map:
-  controls:
-    clusterType: true          # Show cluster type selector
-    colorBy: true              # Show color-by selector
-  clusterTypes:                # Custom cluster type options
-    - value: origin
-      label: Origin Clusters
-    - value: destination
-      label: Destination Clusters
-  colorBy:
-    default: main_mode
-    attributes:
-      - attribute: main_mode
-        label: Transport Mode
-        type: categorical
-      - attribute: distance
-        label: Distance
-        type: numeric
-```
-
-### Layer Cluster Type Filtering
-
-Layers can be filtered by cluster type:
-
-```yaml
-layers:
-  - name: origin-clusters
-    file: clusters_origin.geojson
-    type: polygon
-    clusterType: origin        # Only shown when cluster type = origin
-  - name: destination-clusters
-    file: clusters_dest.geojson
-    type: polygon
-    clusterType: destination   # Only shown when cluster type = destination
-```
-
-See these docs in `src/plugins/interactive-dashboard/`:
-- `MAPCARD_TASKS_PART1_CORE_AND_LAYERS.md`
-- `MAPCARD_TASKS_PART2_STYLING_AND_COLORS.md`
-- `MAPCARD_TASKS_PART3_INTEGRATION_AND_TESTING.md`
-- `MAPCARD_VALIDATION.md`
-
-## Code Style
-
-- **Prettier** enforces formatting - install VS Code extension
-- **Indentation:** 2 spaces (Pug requires consistent indentation)
-- **Imports:** Group by external, internal, relative
-- **Naming:** camelCase for variables/functions, PascalCase for components/classes
-
-## Known Pitfalls and Debugging Learnings
-
-### Plotly.js Event Handling
-
-Plotly.js has specific behavior around event handlers that can cause issues:
-
-1. **Register handlers ONCE** - Event handlers (`.on('plotly_click', ...)`) should only be registered during initialization, not on every update
-2. **Memory leaks** - Re-registering handlers without cleanup causes `MaxListenersExceededWarning` (e.g., "11 plotly_click listeners added")
-3. **newPlot vs react**:
-   - `Plotly.newPlot()` - Creates new chart, clears all event handlers
-   - `Plotly.react()` - Updates data/layout while preserving event handlers
-4. **Pattern**: Initialize chart once with `newPlot()` + register handlers, then use `react()` for updates
-
-```typescript
-// CORRECT pattern
-const initializeChart = () => {
-  Plotly.newPlot(container, traces, layout, config)
-  container.on('plotly_click', handleClick)  // Register ONCE
-}
-
-const updateChart = () => {
-  Plotly.react(container, traces, layout, config)  // Preserves handlers
-}
-
-// WRONG - causes memory leak
-const updateChart = () => {
-  Plotly.react(container, traces, layout, config)
-  container.on('plotly_click', handleClick)  // Adds duplicate listener every time!
-}
-```
-
-### Vue Reactivity with Sets
-
-Vue's reactivity system doesn't always track Set mutations properly:
-
-```typescript
-// Watch both reference AND size to catch all changes
-watch(
-  [
-    () => props.selectedIds,
-    () => props.selectedIds?.size ?? 0
-  ],
-  () => { /* handle change */ }
-)
-
-// When updating a Set, create a new instance to trigger reactivity
-hoveredIds.value = new Set(ids)  // ✓ Vue detects change
-hoveredIds.value.add(id)          // ✗ Vue may miss this
-```
-
-### Selection vs Filter Event Pattern
-
-Cards emit different events based on user intent:
-
-| Event | Intent | Example Cards | Threshold? |
-|-------|--------|---------------|------------|
-| `@filter` | "Filter to this category/bin" | HistogramCard, PieChartCard | No - immediate |
-| `@select` | "Mark/identify this item" | ScatterCard, DataTableCard | Yes - use threshold |
-| `@hover` | "Temporarily highlight" | All cards | No - immediate |
-
-**Threshold-based comparison mode** (for selection events):
-- 1 selection = highlight only, no comparison mode
-- 2+ selections = trigger comparison mode (selection-to-filter promotion)
-
-### Handling Overlapping Points in Scatter Plots
-
-When multiple data points share the same coordinates:
-
-```typescript
-// Use tolerance-based matching to find ALL points at a coordinate
-const findIdsAtCoordinate = (x: number, y: number): any[] => {
-  const xRange = Math.max(...data.x) - Math.min(...data.x)
-  const yRange = Math.max(...data.y) - Math.min(...data.y)
-  const xTolerance = Math.max(xRange * 0.001, 0.001)  // 0.1% of range
-  const yTolerance = Math.max(yRange * 0.001, 0.001)
-
-  return data.filter(row =>
-    Math.abs(row.x - x) < xTolerance &&
-    Math.abs(row.y - y) < yTolerance
-  )
-}
-```
-
-### Debugging Best Practices
-
-1. **Use `debugLog()` utility** instead of `console.log()` - controlled output via `src/plugins/interactive-dashboard/utils/debug.ts`
-2. **Check for event handler memory leaks** - Look for `MaxListenersExceededWarning` in console
-3. **Debounce rapid updates** - Prevent excessive re-renders that can break event handlers
-4. **Keep axis ranges stable** - Use baseline data (not filtered data) for axis range calculation to prevent zoom on filter
-
-### Comparison Mode Architecture
-
-When implementing comparison mode (baseline vs filtered data):
-
-1. **Baseline layer** - Gray/transparent, shows all data for context
-2. **Filtered layer** - Colored, shows selected/filtered items
-3. **Axis ranges** - Calculate from baseline data to prevent zooming when filtering
-4. **Skip baseline in interactions** - Check `curveNumber` to ignore clicks on baseline trace
-
-## Resources
-
-- **Main Docs:** https://docs.simwrapper.app/docs
-- **Vue 2 Guide:** https://v2.vuejs.org/v2/guide/
-- **deck.gl:** https://deck.gl/docs
-- **Pug:** https://pugjs.org
+- `src/plugins/interactive-dashboard/README.md`
+- `MAPCARD_TASKS_PART{1,2,3}_*.md` and `MAPCARD_VALIDATION.md` in the same directory
+- Vue 2: https://v2.vuejs.org/v2/guide/ · deck.gl: https://deck.gl/docs · Pug: https://pugjs.org
